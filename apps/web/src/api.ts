@@ -3,15 +3,18 @@ import type {
   Category,
   CreateBookmarkInput,
   CreateCategoryInput,
+  CreateSearchEngineInput,
   CreateSessionInput,
   CreateSessionItemInput,
   CreateWorkspaceInput,
   CreateWorkspaceItemInput,
   HealthCheck,
+  SearchEngine,
   SessionItem,
   SessionWithItems,
   UpdateBookmarkInput,
   UpdateCategoryInput,
+  UpdateSearchEngineInput,
   UpdateSessionInput,
   UpdateSessionItemInput,
   UpdateWorkspaceInput,
@@ -223,4 +226,29 @@ export async function deleteSessionItem(sessionId: string, itemId: string) {
     `/api/sessions/${encodeURIComponent(sessionId)}/items/${encodeURIComponent(itemId)}`,
     { method: "DELETE" },
   );
+}
+
+export async function listSearchEngines() {
+  const response = await request<{ engines: SearchEngine[] }>("/api/search-engines");
+  return response.engines;
+}
+
+export async function createSearchEngine(input: CreateSearchEngineInput) {
+  const response = await request<{ engine: SearchEngine }>("/api/search-engines", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.engine;
+}
+
+export async function updateSearchEngine(id: string, input: UpdateSearchEngineInput) {
+  const response = await request<{ engine: SearchEngine }>(
+    `/api/search-engines/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return response.engine;
+}
+
+export async function deleteSearchEngine(id: string) {
+  await request<void>(`/api/search-engines/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
