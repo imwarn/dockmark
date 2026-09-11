@@ -164,14 +164,15 @@ export function BookmarkManager({ bookmarks, categories, loading, onChanged }: P
 
   async function submitEdit(event: FormEvent, id: string) {
     event.preventDefault();
-    if (editDraft.healthPolicy === "auto") return;
+    const healthPolicy = editDraft.healthPolicy;
+    if (healthPolicy === "auto") return;
 
     await run(async () => {
       await updateBookmark(id, {
         title: editDraft.title,
         url: editDraft.url,
         categoryId: editDraft.categoryId || null,
-        healthPolicy: editDraft.healthPolicy,
+        healthPolicy,
       });
       setEditingId(null);
     });
