@@ -15,9 +15,14 @@
     "dev:web": "npm run dev -w @dockmark/web",
     "dev:extension": "npm run dev -w @dockmark/extension",
     "build": "npm run build -ws --if-present",
+    "build:web": "npm run build -w @dockmark/web",
+    "build:extension": "npm run build -w @dockmark/extension",
+    "package:extension": "npm run zip -w @dockmark/extension",
     "typecheck": "npm run typecheck -ws --if-present",
     "db:migrate:local": "npm run db:migrate:local -w @dockmark/web",
-    "db:migrate:remote": "npm run db:migrate:remote -w @dockmark/web"
+    "db:migrate:remote": "npm run db:migrate:remote -w @dockmark/web",
+    "deploy": "npm run deploy -w @dockmark/web",
+    "smoke:chromium": "node scripts/chromium-extension-smoke.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

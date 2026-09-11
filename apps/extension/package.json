@@ -1,6 +1,6 @@
 {
   "name": "@dockmark/extension",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
     "typecheck": "wxt prepare && tsc -p tsconfig.json"
   },
   "dependencies": {

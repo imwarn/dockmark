@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "dockmark",
   "compatibility_date": "2026-09-11",
-  "main": "./worker/router.ts",
+  "main": "./apps/web/worker/router.ts",
   "assets": {
     "not_found_handling": "single-page-application"
   },
@@ -11,7 +11,7 @@
       "binding": "DB",
       "database_name": "dockmark",
       "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
+      "migrations_dir": "apps/web/migrations"
     }
   ]
 }

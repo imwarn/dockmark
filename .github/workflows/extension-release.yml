@@ -1,0 +1,42 @@
+name: Extension Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck extension
+        run: npm run typecheck -w @dockmark/extension
+
+      - name: Package Chromium extension
+        run: npm run package:extension
+
+      - name: Stage Chromium package
+        run: |
+          mkdir -p artifacts
+          cp apps/extension/.output/*.zip artifacts/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" artifacts/*.zip --generate-notes --title "Dockmark $GITHUB_REF_NAME"

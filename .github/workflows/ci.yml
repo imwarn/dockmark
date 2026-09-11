@@ -35,3 +35,47 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  chromium-extension:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Chromium extension
+        run: npm run build:extension
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps --no-shell chromium
+
+      - name: Chromium extension smoke test
+        run: npm run smoke:chromium
+
+      - name: Package Chromium extension
+        run: npm run package:extension
+
+      - name: Stage Chromium package
+        run: |
+          mkdir -p artifacts
+          cp apps/extension/.output/*.zip artifacts/
+
+      - name: Upload Chromium package
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockmark-chromium-extension
+          path: artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 14

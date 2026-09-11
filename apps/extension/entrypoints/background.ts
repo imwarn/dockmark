@@ -3,6 +3,17 @@ import { browser } from "wxt/browser";
 const SERVER_KEY = "dockmarkServerUrl";
 const BRIDGE_SCRIPT_ID = "dockmark-web-bridge";
 const BRIDGE_FILE = "/dockmark-bridge.js";
+const BRIDGE_PROTOCOL_VERSION = 1;
+const BRIDGE_CAPABILITIES = {
+  openTabs: true,
+  activateTabs: true,
+  workspaceReuse: true,
+  workspacePinned: true,
+  sessionRestore: true,
+  sessionPinned: true,
+  nativeBookmarks: false,
+  localHealth: false,
+} as const;
 
 type RestoreItem = {
   url: string;
@@ -13,6 +24,15 @@ type WorkspaceBridgeItem = {
   url: string;
   openMode: "reuse" | "new-tab" | "pinned";
 };
+
+function bridgeStatus() {
+  return {
+    connected: true as const,
+    protocolVersion: BRIDGE_PROTOCOL_VERSION,
+    extensionVersion: browser.runtime.getManifest().version,
+    capabilities: BRIDGE_CAPABILITIES,
+  };
+}
 
 function isHttpUrl(value: unknown): value is string {
   if (typeof value !== "string") return false;
@@ -226,6 +246,7 @@ export default defineBackground(() => {
   });
 
   browser.runtime.onMessage.addListener(async (message, sender) => {
+    if (message?.type === "dockmark:get-capabilities") return bridgeStatus();
     if (message?.type === "dockmark:get-open-tabs") return currentWindowTabs();
 
     if (message?.type === "dockmark:activate-tab" && typeof message.tabId === "number") {
@@ -245,9 +266,7 @@ export default defineBackground(() => {
     if (message?.type === "dockmark:web-bridge" && typeof message.action === "string") {
       await assertTrustedBridgeSender(sender.tab?.url);
 
-      if (message.action === "status") {
-        return { connected: true, version: browser.runtime.getManifest().version };
-      }
+      if (message.action === "status") return bridgeStatus();
       if (message.action === "get-open-tabs") {
         return { tabs: await bridgeOpenTabs() };
       }
