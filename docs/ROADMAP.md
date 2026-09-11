@@ -17,7 +17,7 @@
 - [x] Netscape `bookmarks.html` import plus Dockmark/simple JSON import
 - [x] JSON and browser-compatible HTML export
 - [ ] configurable search engines and bang shortcuts
-- [ ] Workspaces: create/edit/open-all
+- [x] Workspaces: create/edit/delete, bookmark/custom items, ordering and open-all
 - [ ] Sessions: save/import/open from the web
 - [ ] command palette with keyboard navigation
 - [ ] appearance/theme preferences
@@ -36,7 +36,8 @@
 
 - [ ] browser-native bookmark import and optional two-way mapping
 - [ ] save current window as Session
-- [ ] reuse existing matching tab before opening a new one
+- [ ] make Workspace `reuse` focus an existing matching tab before opening a new one
+- [ ] make Workspace `pinned` create/focus pinned tabs through the extension
 - [ ] extension capability handshake with Web app
 - [ ] Chromium first; Firefox validation next
 
