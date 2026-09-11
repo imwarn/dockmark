@@ -5,7 +5,7 @@ export default defineConfig({
   manifest: {
     name: "Dockmark",
     description: "Optional browser bridge for Dockmark tabs, bookmarks and sessions.",
-    permissions: ["storage", "tabs", "bookmarks"],
+    permissions: ["storage", "tabs", "bookmarks", "scripting"],
     optional_host_permissions: ["http://*/*", "https://*/*"],
   },
 });
