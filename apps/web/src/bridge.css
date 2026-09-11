@@ -1,0 +1,15 @@
+.command.bridge-connected {
+  border-color: color-mix(in srgb, currentColor 24%, transparent);
+}
+
+.bridge-label.connected::before {
+  content: "●";
+  display: inline-block;
+  margin-right: 0.45rem;
+  font-size: 0.65em;
+  vertical-align: 0.12em;
+}
+
+.result .pill .bang-token {
+  display: inline;
+}
