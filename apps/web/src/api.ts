@@ -3,11 +3,17 @@ import type {
   Category,
   CreateBookmarkInput,
   CreateCategoryInput,
+  CreateSessionInput,
+  CreateSessionItemInput,
   CreateWorkspaceInput,
   CreateWorkspaceItemInput,
   HealthCheck,
+  SessionItem,
+  SessionWithItems,
   UpdateBookmarkInput,
   UpdateCategoryInput,
+  UpdateSessionInput,
+  UpdateSessionItemInput,
   UpdateWorkspaceInput,
   UpdateWorkspaceItemInput,
   WorkspaceItem,
@@ -163,6 +169,58 @@ export async function updateWorkspaceItem(
 export async function deleteWorkspaceItem(workspaceId: string, itemId: string) {
   await request<void>(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/items/${encodeURIComponent(itemId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function listSessions() {
+  const response = await request<{ sessions: SessionWithItems[] }>("/api/sessions");
+  return response.sessions;
+}
+
+export async function createSession(input: CreateSessionInput) {
+  const response = await request<{ session: SessionWithItems }>("/api/sessions", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.session;
+}
+
+export async function updateSession(id: string, input: UpdateSessionInput) {
+  const response = await request<{ session: SessionWithItems }>(
+    `/api/sessions/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return response.session;
+}
+
+export async function deleteSession(id: string) {
+  await request<void>(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function createSessionItem(sessionId: string, input: CreateSessionItemInput) {
+  const response = await request<{ item: SessionItem }>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/items`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return response.item;
+}
+
+export async function updateSessionItem(
+  sessionId: string,
+  itemId: string,
+  input: UpdateSessionItemInput,
+) {
+  const response = await request<{ item: SessionItem }>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/items/${encodeURIComponent(itemId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return response.item;
+}
+
+export async function deleteSessionItem(sessionId: string, itemId: string) {
+  await request<void>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/items/${encodeURIComponent(itemId)}`,
     { method: "DELETE" },
   );
 }
