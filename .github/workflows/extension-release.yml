@@ -31,7 +31,12 @@ jobs:
       - name: Package Chromium extension
         run: npm run package:extension
 
+      - name: Stage Chromium package
+        run: |
+          mkdir -p artifacts
+          cp apps/extension/.output/*.zip artifacts/
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" .output/*.zip --generate-notes --title "Dockmark $GITHUB_REF_NAME"
+        run: gh release create "$GITHUB_REF_NAME" artifacts/*.zip --generate-notes --title "Dockmark $GITHUB_REF_NAME"
