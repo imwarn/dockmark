@@ -7,6 +7,7 @@ import {
   type HealthStatus,
 } from "@dockmark/core";
 import { checkBookmarkHealth, listBookmarkHealthChecks } from "./health-check";
+import { handleWorkspaceApi, WorkspaceHttpError } from "./workspaces";
 
 interface Env {
   DB: D1DatabaseLike;
@@ -509,6 +510,9 @@ async function handleApi(request: Request, env: Env) {
     return json({ service: "dockmark", status: "ok", database });
   }
 
+  const workspaceResponse = await handleWorkspaceApi(request, env.DB, pathname);
+  if (workspaceResponse) return workspaceResponse;
+
   if (pathname === "/api/categories") {
     if (request.method === "GET") return json({ categories: await listCategories(env) });
     if (request.method === "POST") return createCategory(request, env);
@@ -569,7 +573,7 @@ export default {
     try {
       return await handleApi(request, env);
     } catch (error) {
-      if (error instanceof HttpError) {
+      if (error instanceof HttpError || error instanceof WorkspaceHttpError) {
         return problem(error.status, error.code, error.message);
       }
       console.error("Dockmark API error", error);
