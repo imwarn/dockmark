@@ -12,8 +12,10 @@
 
 ## V1 — usable personal launcher
 
-- [ ] bookmark CRUD, categories and drag/reorder
-- [ ] `bookmarks.html` and JSON import/export
+- [x] bookmark CRUD and categories
+- [ ] drag/reorder bookmarks and categories
+- [x] Netscape `bookmarks.html` import plus Dockmark/simple JSON import
+- [x] JSON and browser-compatible HTML export
 - [ ] configurable search engines and bang shortcuts
 - [ ] Workspaces: create/edit/open-all
 - [ ] Sessions: save/import/open from the web
