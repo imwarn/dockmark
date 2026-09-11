@@ -107,6 +107,42 @@ export interface WorkspaceItem {
   updatedAt: string;
 }
 
+export interface WorkspaceWithItems extends Workspace {
+  items: WorkspaceItem[];
+}
+
+export interface CreateWorkspaceInput {
+  name: string;
+  description?: string;
+  icon?: string;
+  position?: number;
+}
+
+export interface UpdateWorkspaceInput {
+  name?: string;
+  description?: string | null;
+  icon?: string | null;
+  position?: number;
+}
+
+export interface CreateWorkspaceItemInput {
+  bookmarkId?: Id | null;
+  title?: string;
+  url?: string;
+  openMode?: WorkspaceOpenMode;
+  healthPolicy?: HealthPolicy;
+  position?: number;
+}
+
+export interface UpdateWorkspaceItemInput {
+  bookmarkId?: Id | null;
+  title?: string;
+  url?: string;
+  openMode?: WorkspaceOpenMode;
+  healthPolicy?: HealthPolicy;
+  position?: number;
+}
+
 export interface Session {
   id: Id;
   name: string;

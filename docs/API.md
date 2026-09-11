@@ -51,6 +51,47 @@ Server checks use a short timeout, do not automatically follow redirects, and re
 
 A check records status, HTTP status when available, final URL, elapsed milliseconds, optional error code and timestamp in D1. The bookmark's current `health_status` is updated from the latest result.
 
+## Workspaces
+
+A Workspace is a cloud-stored reusable set of URLs. Items can either reference an existing Dockmark bookmark or exist only inside the Workspace.
+
+- `GET /api/workspaces` — list workspaces with their ordered items.
+- `POST /api/workspaces` — `{ name, description?, icon?, position? }`
+- `GET /api/workspaces/:id`
+- `PATCH /api/workspaces/:id` — `{ name?, description?, icon?, position? }`
+- `DELETE /api/workspaces/:id`
+- `GET /api/workspaces/:id/items`
+- `POST /api/workspaces/:id/items`
+- `PATCH /api/workspaces/:id/items/:itemId`
+- `DELETE /api/workspaces/:id/items/:itemId`
+
+Add an existing bookmark:
+
+```json
+{
+  "bookmarkId": "bookmark-id",
+  "openMode": "reuse"
+}
+```
+
+Add a Workspace-only URL:
+
+```json
+{
+  "title": "Local dashboard",
+  "url": "localhost:3000",
+  "openMode": "reuse"
+}
+```
+
+Supported open modes:
+
+- `reuse` — Web mode opens the URL normally; the browser extension will later focus a matching existing tab when possible.
+- `new-tab` — always request a new tab.
+- `pinned` — Web mode still opens a normal tab; the browser extension will later apply pinned-tab behavior.
+
+Workspace item URLs use the same normalization and local/private URL policy as bookmarks. Deleting a Workspace deletes its Workspace items. Deleting a referenced bookmark does not delete the Workspace item; the stored title/URL remain usable because `bookmark_id` is set to null by D1.
+
 ## Errors
 
 Errors use a stable envelope:
