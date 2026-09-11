@@ -1,0 +1,10 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #edf3ef; background: #0e1311; }
+body { margin: 0; width: 340px; }
+main { padding: 16px; }
+header { display: flex; justify-content: space-between; align-items: center; }
+header span, p, small { color: #839087; }
+p { font-size: 12px; line-height: 1.55; }
+.tabs { display: grid; gap: 6px; margin-top: 14px; }
+button { display: flex; gap: 12px; justify-content: space-between; width: 100%; border: 1px solid #29322d; border-radius: 10px; padding: 10px; color: inherit; background: #161d19; text-align: left; cursor: pointer; }
+button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button:hover { border-color: #496455; }

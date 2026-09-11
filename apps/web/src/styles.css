@@ -1,0 +1,69 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0b0f0e;
+  color: #edf3ef;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+html { min-height: 100%; background: #0b0f0e; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input { font: inherit; }
+a { color: inherit; text-decoration: none; }
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(99, 159, 126, .16), transparent 42rem),
+    linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+}
+
+.shell { position: relative; width: min(1100px, calc(100% - 40px)); margin: 0 auto; padding-bottom: 72px; }
+.topbar { height: 82px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #202623; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -.02em; }
+.brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #39433e; border-radius: 10px; background: #151b18; color: #b8e0c5; }
+nav { display: flex; align-items: center; gap: 6px; }
+.ghost, .settings { border: 0; color: #a9b2ad; background: transparent; cursor: pointer; }
+.ghost { padding: 10px 12px; }
+.settings { width: 36px; height: 36px; border: 1px solid #2a322e; border-radius: 10px; background: #121714; }
+
+.hero { padding: 92px 0 46px; max-width: 820px; margin: auto; text-align: center; }
+.eyebrow { color: #84b394; letter-spacing: .18em; font-size: 11px; font-weight: 700; }
+h1 { font-size: clamp(42px, 7vw, 72px); line-height: 1.02; letter-spacing: -.055em; margin: 18px 0 36px; font-weight: 620; }
+.command { display: flex; align-items: center; gap: 12px; padding: 9px 12px 9px 16px; min-height: 62px; border: 1px solid #34403a; background: rgba(18, 24, 21, .88); border-radius: 18px; box-shadow: 0 20px 80px rgba(0, 0, 0, .3); text-align: left; }
+.command:focus-within { border-color: #729f82; box-shadow: 0 0 0 3px rgba(114,159,130,.12), 0 20px 80px rgba(0,0,0,.3); }
+.search-icon { color: #8fa198; font-size: 24px; }
+.command input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f5faf7; font-size: 16px; }
+.command input::placeholder { color: #6f7a74; }
+kbd { padding: 6px 8px; color: #77827c; border: 1px solid #303934; border-radius: 8px; background: #0d1210; font-size: 11px; }
+
+.panel { max-width: 820px; margin: 0 auto; border: 1px solid #252d29; background: rgba(15, 20, 18, .75); border-radius: 20px; overflow: hidden; }
+.panel-heading { display: flex; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #222925; color: #aab4ae; font-size: 12px; text-transform: uppercase; letter-spacing: .09em; }
+.muted { color: #65706a; }
+.results { padding: 7px; }
+.result { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 8px 11px; border-radius: 13px; }
+.result:hover { background: #171e1a; }
+.favicon { display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; border: 1px solid #303a35; border-radius: 11px; background: #202823; color: #b9d8c4; font-weight: 700; }
+.result-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; text-align: left; }
+.result-copy strong { font-size: 14px; font-weight: 600; }
+.result-copy small { overflow: hidden; color: #7d8982; text-overflow: ellipsis; white-space: nowrap; }
+.pill { color: #718078; font-size: 11px; }
+
+.feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 72px; }
+.feature-grid article { min-height: 190px; padding: 22px; border: 1px solid #222925; border-radius: 18px; background: rgba(15,20,18,.55); }
+.feature-grid article > span { color: #627068; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.feature-grid h2 { margin: 42px 0 8px; font-size: 17px; }
+.feature-grid p { margin: 0; color: #818c86; font-size: 13px; line-height: 1.6; }
+
+@media (max-width: 720px) {
+  .shell { width: min(100% - 24px, 1100px); }
+  .topbar .ghost { display: none; }
+  .hero { padding-top: 58px; }
+  .feature-grid { grid-template-columns: 1fr; margin-top: 42px; }
+}
