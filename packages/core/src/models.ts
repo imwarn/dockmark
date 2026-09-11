@@ -198,6 +198,22 @@ export interface SearchEngine {
   position: number;
 }
 
+export interface CreateSearchEngineInput {
+  name: string;
+  keyword?: string | null;
+  searchUrl: string;
+  isDefault?: boolean;
+  position?: number;
+}
+
+export interface UpdateSearchEngineInput {
+  name?: string;
+  keyword?: string | null;
+  searchUrl?: string;
+  isDefault?: boolean;
+  position?: number;
+}
+
 export type CommandSource = "tab" | "workspace" | "session" | "bookmark" | "navigation" | "search";
 
 export interface CommandResult {
