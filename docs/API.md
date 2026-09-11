@@ -86,11 +86,52 @@ Add a Workspace-only URL:
 
 Supported open modes:
 
-- `reuse` — Web mode opens the URL normally; the browser extension will later focus a matching existing tab when possible.
+- `reuse` — Web mode opens the URL normally; the browser extension can focus a matching existing tab when possible.
 - `new-tab` — always request a new tab.
-- `pinned` — Web mode still opens a normal tab; the browser extension will later apply pinned-tab behavior.
+- `pinned` — Web mode still opens a normal tab; the browser extension applies pinned-tab behavior.
 
 Workspace item URLs use the same normalization and local/private URL policy as bookmarks. Deleting a Workspace deletes its Workspace items. Deleting a referenced bookmark does not delete the Workspace item; the stored title/URL remain usable because `bookmark_id` is set to null by D1.
+
+## Sessions
+
+A Session is a timestamped browsing snapshot rather than a long-lived Workspace. It stores tab order and pinned state so a temporary browser state can be resumed later or from another browser.
+
+- `GET /api/sessions` — list sessions newest first, including ordered items.
+- `POST /api/sessions` — create a session, optionally with the full item array in one request.
+- `GET /api/sessions/:id`
+- `PATCH /api/sessions/:id` — `{ name?, sourceDevice? }`
+- `DELETE /api/sessions/:id`
+- `GET /api/sessions/:id/items`
+- `POST /api/sessions/:id/items`
+- `PATCH /api/sessions/:id/items/:itemId`
+- `DELETE /api/sessions/:id/items/:itemId`
+
+Browser-extension snapshot example:
+
+```json
+{
+  "name": "Window · Sep 11, 18:30",
+  "sourceDevice": "Main MacBook",
+  "items": [
+    {
+      "title": "GitHub",
+      "url": "https://github.com/",
+      "pinned": true,
+      "position": 0
+    },
+    {
+      "title": "Cloudflare",
+      "url": "https://dash.cloudflare.com/",
+      "pinned": false,
+      "position": 1
+    }
+  ]
+}
+```
+
+A single create request accepts at most 300 items. Only HTTP/HTTPS URLs are accepted by the API. The browser extension filters browser-internal pages such as `chrome://`, `about:` and extension pages before saving a window. Web restore opens normal tabs; extension restore preserves the stored pinned flag.
+
+Session creation behaves as one logical snapshot: if an item write fails after the session row is created, the newly created session is deleted so a partial snapshot is not retained.
 
 ## Errors
 
