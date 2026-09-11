@@ -67,11 +67,15 @@ jobs:
       - name: Package Chromium extension
         run: npm run package:extension
 
+      - name: Stage Chromium package
+        run: |
+          mkdir -p artifacts
+          cp apps/extension/.output/*.zip artifacts/
+
       - name: Upload Chromium package
         uses: actions/upload-artifact@v4
         with:
           name: dockmark-chromium-extension
-          path: .output/*.zip
+          path: artifacts/*.zip
           if-no-files-found: error
-          include-hidden-files: true
           retention-days: 14
