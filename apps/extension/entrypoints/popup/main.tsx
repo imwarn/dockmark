@@ -95,6 +95,7 @@ function Popup() {
       try {
         const allowed = await browser.permissions.contains({ origins: [hostPattern(storedServer)] });
         if (!allowed) return;
+        await browser.runtime.sendMessage({ type: "dockmark:configure-bridge", origin: storedServer });
         setConnected(true);
         await refreshSessions(storedServer);
       } catch {
@@ -125,16 +126,24 @@ function Popup() {
   async function connect() {
     await run(async () => {
       const origin = normalizeServerUrl(serverUrl);
+      const stored = await browser.storage.local.get(SERVER_KEY);
+      const previousOrigin = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
       const granted = await browser.permissions.request({ origins: [hostPattern(origin)] });
       if (!granted) throw new Error("Dockmark site access was not granted.");
 
       const label = deviceLabel.trim() || "Main browser";
       await browser.storage.local.set({ [SERVER_KEY]: origin, [DEVICE_KEY]: label });
+      await browser.runtime.sendMessage({ type: "dockmark:configure-bridge", origin });
+
+      if (previousOrigin && previousOrigin !== origin) {
+        await browser.permissions.remove({ origins: [hostPattern(previousOrigin)] }).catch(() => false);
+      }
+
       setServerUrl(origin);
       setDeviceLabel(label);
       setConnected(true);
       await refreshSessions(origin);
-      setStatus("Connected to Dockmark.");
+      setStatus("Connected to Dockmark. Browser bridge ready.");
     });
   }
 
