@@ -18,7 +18,7 @@
 - [x] JSON and browser-compatible HTML export
 - [ ] configurable search engines and bang shortcuts
 - [x] Workspaces: create/edit/delete, bookmark/custom items, ordering and open-all
-- [ ] Sessions: save/import/open from the web
+- [x] Sessions: cloud CRUD, URL-list capture, Web restore and pinned-state snapshots
 - [ ] command palette with keyboard navigation
 - [ ] appearance/theme preferences
 - [ ] local-first settings with D1 persistence
@@ -35,7 +35,8 @@
 ## V2 — browser bridge
 
 - [ ] browser-native bookmark import and optional two-way mapping
-- [ ] save current window as Session
+- [x] save current browser window as a cloud Session
+- [x] restore a Session from the extension with pinned state preserved
 - [ ] make Workspace `reuse` focus an existing matching tab before opening a new one
 - [ ] make Workspace `pinned` create/focus pinned tabs through the extension
 - [ ] extension capability handshake with Web app
