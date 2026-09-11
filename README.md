@@ -71,7 +71,7 @@ Open the Dockmark extension popup, enter your deployed Dockmark origin (for exam
 npm run package:extension
 ```
 
-WXT writes the Chromium package under `apps/extension/.output/`. Every CI run also uploads the ZIP as the `dockmark-chromium-extension` GitHub Actions artifact. Tags matching `v*` create a GitHub Release containing the packaged extension.
+The unpacked Chromium build stays under `apps/extension/.output/chrome-mv3`, while WXT writes the install/release ZIP to the repository-root `.output/` directory (for example `.output/dockmarkextension-0.1.0-chrome.zip`). Every CI run also uploads that ZIP as the `dockmark-chromium-extension` GitHub Actions artifact. Tags matching `v*` create a GitHub Release containing the packaged extension.
 
 ### Chromium smoke test
 
