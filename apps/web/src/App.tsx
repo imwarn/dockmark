@@ -1,14 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
+  buildSearchUrl,
+  matchingBangEngines,
+  parseBangQuery,
   rankCommands,
   type Bookmark,
   type Category,
   type CommandResult,
+  type SearchEngine,
   type SessionWithItems,
   type WorkspaceWithItems,
 } from "@dockmark/core";
-import { listBookmarks, listCategories, listSessions, listWorkspaces } from "./api";
+import {
+  listBookmarks,
+  listCategories,
+  listSearchEngines,
+  listSessions,
+  listWorkspaces,
+} from "./api";
 import { BookmarkManager } from "./BookmarkManager";
+import { SearchEngineManager } from "./SearchEngineManager";
 import { SessionManager } from "./SessionManager";
 import { TransferManager } from "./TransferManager";
 import { WorkspaceManager } from "./WorkspaceManager";
@@ -22,34 +33,46 @@ const sourceLabel: Record<CommandResult["source"], string> = {
   search: "Search",
 };
 
-type View = "launcher" | "workspaces" | "sessions" | "bookmarks" | "transfer";
+type View = "launcher" | "workspaces" | "sessions" | "bookmarks" | "search" | "transfer";
+
+function openUrls(urls: string[]) {
+  for (const url of urls) {
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (opened) opened.opener = null;
+  }
+}
 
 export function App() {
   const [view, setView] = useState<View>("launcher");
   const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceWithItems[]>([]);
   const [sessions, setSessions] = useState<SessionWithItems[]>([]);
+  const [searchEngines, setSearchEngines] = useState<SearchEngine[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
+  const commandInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setDataError(null);
     try {
-      const [nextCategories, nextBookmarks, nextWorkspaces, nextSessions] = await Promise.all([
+      const [nextCategories, nextBookmarks, nextWorkspaces, nextSessions, nextSearchEngines] = await Promise.all([
         listCategories(),
         listBookmarks(),
         listWorkspaces(),
         listSessions(),
+        listSearchEngines(),
       ]);
       setCategories(nextCategories);
       setBookmarks(nextBookmarks);
       setWorkspaces(nextWorkspaces);
       setSessions(nextSessions);
+      setSearchEngines(nextSearchEngines);
     } catch (error) {
       setDataError(error instanceof Error ? error.message : "Could not load Dockmark data.");
     } finally {
@@ -61,20 +84,63 @@ export function App() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const onGlobalKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setView("launcher");
+        requestAnimationFrame(() => commandInputRef.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onGlobalKeyDown);
+    return () => window.removeEventListener("keydown", onGlobalKeyDown);
+  }, []);
+
+  const defaultEngine = useMemo(
+    () => searchEngines.find((engine) => engine.isDefault) ?? searchEngines[0] ?? null,
+    [searchEngines],
+  );
+
   const results = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
+    const trimmed = query.trim();
+    const normalized = trimmed.toLowerCase();
+    const bang = parseBangQuery(trimmed, searchEngines);
+
+    if (bang) {
+      const canRun = Boolean(bang.query);
+      return [{
+        id: `search-run:${bang.engine.id}`,
+        source: "search" as const,
+        title: canRun ? `Search ${bang.engine.name} for “${bang.query}”` : `Search with ${bang.engine.name}`,
+        subtitle: `!${bang.engine.keyword ?? ""} · ${bang.engine.searchUrl}`,
+        ...(canRun ? { url: buildSearchUrl(bang.engine, bang.query) } : {}),
+        score: 100,
+      }];
+    }
+
+    const bangSuggestions = matchingBangEngines(trimmed, searchEngines);
+    if (bangSuggestions.length) {
+      return bangSuggestions.slice(0, 8).map((engine) => ({
+        id: `search-shortcut:${engine.id}`,
+        source: "search" as const,
+        title: engine.name,
+        subtitle: `!${engine.keyword} · type a query`,
+        score: 100,
+      }));
+    }
+
     const workspaceResults: CommandResult[] = workspaces.map((workspace) => ({
       id: workspace.id,
       source: "workspace",
       title: workspace.name,
-      subtitle: `Workspace · ${workspace.items.length} tabs`,
+      subtitle: `Open workspace · ${workspace.items.length} tabs`,
       score: 30,
     }));
     const sessionResults: CommandResult[] = sessions.map((session, index) => ({
       id: session.id,
       source: "session",
       title: session.name,
-      subtitle: `Session · ${session.items.length} tabs${session.sourceDevice ? ` · ${session.sourceDevice}` : ""}`,
+      subtitle: `Restore session · ${session.items.length} tabs${session.sourceDevice ? ` · ${session.sourceDevice}` : ""}`,
       score: Math.max(0, 30 - index),
     }));
     const bookmarkResults: CommandResult[] = bookmarks.map((bookmark) => ({
@@ -92,25 +158,91 @@ export function App() {
       score: 30,
     }));
 
-    const candidates = [...workspaceResults, ...sessionResults, ...bookmarkResults];
+    const localCandidates = [...workspaceResults, ...sessionResults, ...bookmarkResults];
     const filtered = normalized
-      ? candidates.filter((item) =>
+      ? localCandidates.filter((item) =>
           `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
         )
-      : candidates;
+      : localCandidates;
+    const localResults = rankCommands(filtered).slice(0, trimmed && defaultEngine ? 7 : 8);
 
-    return rankCommands(filtered).slice(0, 8);
-  }, [bookmarks, query, sessions, workspaces]);
+    if (trimmed && defaultEngine) {
+      localResults.push({
+        id: `search-run:${defaultEngine.id}`,
+        source: "search",
+        title: `Search ${defaultEngine.name} for “${trimmed}”`,
+        subtitle: defaultEngine.keyword ? `Default · !${defaultEngine.keyword}` : "Default search engine",
+        url: buildSearchUrl(defaultEngine, trimmed),
+        score: 0,
+      });
+    }
 
-  function activateResult(item: CommandResult) {
-    if (item.source === "workspace") {
-      setSelectedWorkspaceId(item.id);
-      setView("workspaces");
+    return localResults;
+  }, [bookmarks, defaultEngine, query, searchEngines, sessions, workspaces]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
+
+  useEffect(() => {
+    if (selectedIndex >= results.length) setSelectedIndex(Math.max(0, results.length - 1));
+  }, [results.length, selectedIndex]);
+
+  function executeResult(item: CommandResult, forceNewTab = false) {
+    if (item.id.startsWith("search-shortcut:")) {
+      const engineId = item.id.slice("search-shortcut:".length);
+      const engine = searchEngines.find((candidate) => candidate.id === engineId);
+      if (engine?.keyword) {
+        setQuery(`!${engine.keyword} `);
+        requestAnimationFrame(() => commandInputRef.current?.focus());
+      }
       return;
     }
+
+    if (item.source === "workspace") {
+      const workspace = workspaces.find((candidate) => candidate.id === item.id);
+      if (workspace) openUrls([...workspace.items].sort((a, b) => a.position - b.position).map((entry) => entry.url));
+      return;
+    }
+
     if (item.source === "session") {
-      setSelectedSessionId(item.id);
-      setView("sessions");
+      const session = sessions.find((candidate) => candidate.id === item.id);
+      if (session) openUrls([...session.items].sort((a, b) => a.position - b.position).map((entry) => entry.url));
+      return;
+    }
+
+    if (!item.url) return;
+    if (forceNewTab) {
+      const opened = window.open(item.url, "_blank", "noopener,noreferrer");
+      if (opened) opened.opener = null;
+    } else {
+      window.location.assign(item.url);
+    }
+  }
+
+  function onCommandKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (results.length) setSelectedIndex((index) => (index + 1) % results.length);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (results.length) setSelectedIndex((index) => (index - 1 + results.length) % results.length);
+      return;
+    }
+    if (event.key === "Enter") {
+      const selected = results[selectedIndex];
+      if (selected) {
+        event.preventDefault();
+        executeResult(selected, event.shiftKey);
+      }
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (query) setQuery("");
+      else commandInputRef.current?.blur();
     }
   }
 
@@ -126,8 +258,8 @@ export function App() {
           <button className={`ghost ${view === "workspaces" ? "active" : ""}`} type="button" onClick={() => setView("workspaces")}>Workspaces</button>
           <button className={`ghost ${view === "sessions" ? "active" : ""}`} type="button" onClick={() => setView("sessions")}>Sessions</button>
           <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" onClick={() => setView("bookmarks")}>Bookmarks</button>
+          <button className={`ghost ${view === "search" ? "active" : ""}`} type="button" onClick={() => setView("search")}>Search</button>
           <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" onClick={() => setView("transfer")}>Transfer</button>
-          <button className="settings" aria-label="Settings" type="button" title="Settings are coming later">⌘</button>
         </nav>
       </header>
 
@@ -150,6 +282,8 @@ export function App() {
         />
       ) : view === "bookmarks" ? (
         <BookmarkManager bookmarks={bookmarks} categories={categories} loading={loading} onChanged={refresh} />
+      ) : view === "search" ? (
+        <SearchEngineManager engines={searchEngines} loading={loading} onChanged={refresh} />
       ) : view === "transfer" ? (
         <TransferManager bookmarks={bookmarks} categories={categories} onChanged={refresh} />
       ) : (
@@ -159,15 +293,27 @@ export function App() {
             <h1>Everything you return to,<br />one command away.</h1>
             <div className="command">
               <span className="search-icon">⌕</span>
-              <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search workspaces, sessions, bookmarks or the web…" aria-label="Search Dockmark" />
-              <kbd>⌘ K</kbd>
+              <input
+                ref={commandInputRef}
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={onCommandKeyDown}
+                placeholder="Search Dockmark or type !g, !gh, !ddg…"
+                aria-label="Search Dockmark"
+                aria-controls="dockmark-command-results"
+                aria-activedescendant={results[selectedIndex] ? `command-result-${selectedIndex}` : undefined}
+                role="combobox"
+                aria-expanded="true"
+              />
+              <span className="command-shortcuts"><kbd>⌘ K</kbd></span>
             </div>
           </section>
 
           <section className="panel" aria-label="Command results">
             <div className="panel-heading">
-              <span>{query ? "Matches" : "Quick access"}</span>
-              <span className="muted">{loading ? "Loading…" : "Web mode"}</span>
+              <span>{query ? "Command results" : "Quick access"}</span>
+              <span className="muted">{loading ? "Loading…" : defaultEngine ? `Default search · ${defaultEngine.name}` : "Web mode"}</span>
             </div>
             {dataError ? (
               <div className="panel-error">
@@ -176,29 +322,39 @@ export function App() {
                 <button className="secondary" type="button" onClick={() => void refresh()}>Retry</button>
               </div>
             ) : (
-              <div className="results">
-                {results.map((item) => item.source === "workspace" || item.source === "session" ? (
-                  <button className="result result-button" type="button" key={`${item.source}-${item.id}`} onClick={() => activateResult(item)}>
-                    <span className="favicon">{item.source === "session" ? "↺" : item.title.slice(0, 1)}</span>
-                    <span className="result-copy"><strong>{item.title}</strong><small>{item.subtitle}</small></span>
-                    <span className="pill">{sourceLabel[item.source]}</span>
+              <div className="results" id="dockmark-command-results" role="listbox">
+                {results.map((item, index) => (
+                  <button
+                    className={`result result-button ${selectedIndex === index ? "selected" : ""}`}
+                    type="button"
+                    role="option"
+                    aria-selected={selectedIndex === index}
+                    id={`command-result-${index}`}
+                    key={`${item.source}-${item.id}`}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    onClick={() => executeResult(item)}
+                  >
+                    <span className="favicon">{item.source === "session" ? "↺" : item.source === "search" ? "⌕" : item.title.slice(0, 1)}</span>
+                    <span className="result-copy">
+                      <strong>{item.title}</strong>
+                      <small>{item.subtitle}</small>
+                    </span>
+                    <span className="pill">{item.source === "search" && item.id.startsWith("search-shortcut:") ? <span className="bang-token">Bang</span> : sourceLabel[item.source]}</span>
                   </button>
-                ) : (
-                  <a className="result" href={item.url ?? "#"} key={`${item.source}-${item.id}`} onClick={(event) => { if (!item.url) event.preventDefault(); }}>
-                    <span className="favicon">{item.title.slice(0, 1)}</span>
-                    <span className="result-copy"><strong>{item.title}</strong><small>{item.subtitle}</small></span>
-                    <span className="pill">{sourceLabel[item.source]}</span>
-                  </a>
                 ))}
-                {!loading && !results.length && <div className="empty-command">No matching workspaces, sessions or bookmarks yet.</div>}
+                {!loading && !results.length && <div className="empty-command">No matches. Configure a search engine or try another query.</div>}
               </div>
             )}
+            <div className="command-footer">
+              <span><kbd>↑</kbd><kbd>↓</kbd> select <kbd>Enter</kbd> run</span>
+              <span><kbd>Shift</kbd>+<kbd>Enter</kbd> new tab <kbd>Esc</kbd> clear</span>
+            </div>
           </section>
 
           <section className="feature-grid">
-            <article><span>01</span><h2>Bookmarks</h2><p>Import, organize and enrich links without binding your data to one browser.</p></article>
-            <article><span>02</span><h2>Workspaces</h2><p>Keep reusable groups of tabs in the cloud and open them from any browser.</p></article>
-            <article><span>03</span><h2>Sessions</h2><p>Capture a temporary browsing state and resume it later or in another browser.</p></article>
+            <article><span>01</span><h2>Commands</h2><p>Use the keyboard to launch workspaces, restore sessions, open bookmarks or search the web.</p></article>
+            <article><span>02</span><h2>Bang shortcuts</h2><p>Route a query instantly with configurable shortcuts such as !g, !gh and !ddg.</p></article>
+            <article><span>03</span><h2>Cross-browser</h2><p>Your search setup, workspaces and sessions live in Dockmark rather than one browser profile.</p></article>
           </section>
         </>
       )}
