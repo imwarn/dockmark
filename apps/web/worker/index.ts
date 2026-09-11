@@ -1,10 +1,12 @@
 import {
   inferHealthPolicy,
+  normalizeBookmarkUrl,
   type Bookmark,
   type Category,
   type HealthPolicy,
   type HealthStatus,
 } from "@dockmark/core";
+import { checkBookmarkHealth, listBookmarkHealthChecks } from "./health-check";
 
 interface Env {
   DB: D1DatabaseLike;
@@ -194,45 +196,16 @@ function optionalHealthPolicy(body: Record<string, unknown>): HealthPolicy | und
   return value as HealthPolicy;
 }
 
-function isLikelyLocalBareUrl(value: string) {
-  const lowered = value.toLowerCase();
-  return (
-    lowered.startsWith("localhost") ||
-    lowered.startsWith("127.") ||
-    lowered.startsWith("10.") ||
-    lowered.startsWith("192.168.") ||
-    lowered.startsWith("169.254.") ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(lowered) ||
-    lowered.startsWith("[::1]")
-  );
-}
-
-function normalizeBookmarkUrl(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    throw new HttpError(400, "invalid_field", "url must be a non-empty string.");
-  }
-  if (trimmed.length > 4096) {
-    throw new HttpError(400, "invalid_field", "url is too long.");
-  }
-
-  const hasHttpScheme = /^https?:\/\//i.test(trimmed);
-  const candidate = hasHttpScheme
-    ? trimmed
-    : `${isLikelyLocalBareUrl(trimmed) ? "http" : "https"}://${trimmed}`;
-
-  let parsed: URL;
+function parseBookmarkUrl(raw: string) {
   try {
-    parsed = new URL(candidate);
-  } catch {
-    throw new HttpError(400, "invalid_field", "url must be a valid HTTP or HTTPS URL.");
+    return normalizeBookmarkUrl(raw);
+  } catch (error) {
+    throw new HttpError(
+      400,
+      "invalid_field",
+      error instanceof Error ? error.message : "url must be a valid HTTP or HTTPS URL.",
+    );
   }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new HttpError(400, "invalid_field", "Only HTTP and HTTPS bookmarks are supported in v1.");
-  }
-
-  return parsed.toString();
 }
 
 function statusForPolicy(policy: HealthPolicy): HealthStatus {
@@ -375,7 +348,7 @@ async function createBookmark(request: Request, env: Env) {
   const body = await readBody(request);
   const title = requiredString(body, "title", 200);
   const rawUrl = requiredString(body, "url", 4096);
-  const url = normalizeBookmarkUrl(rawUrl);
+  const url = parseBookmarkUrl(rawUrl);
   const description = optionalString(body, "description", 2000) ?? null;
   const iconUrl = optionalString(body, "iconUrl", 4096) ?? null;
 
@@ -434,7 +407,7 @@ async function updateBookmark(request: Request, env: Env, id: string) {
   const title = hasOwn(body, "title") ? requiredString(body, "title", 200) : existing.title;
   const urlChanged = hasOwn(body, "url");
   const url = urlChanged
-    ? normalizeBookmarkUrl(requiredString(body, "url", 4096))
+    ? parseBookmarkUrl(requiredString(body, "url", 4096))
     : existing.url;
   const descriptionInput = nullableString(body, "description", 2000);
   const description = descriptionInput === undefined ? existing.description : descriptionInput;
@@ -511,6 +484,12 @@ function routeId(pathname: string, collection: "categories" | "bookmarks") {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
+function healthRoute(pathname: string) {
+  const match = pathname.match(/^\/api\/bookmarks\/([^/]+)\/(check|health)$/);
+  if (!match?.[1] || !match[2]) return null;
+  return { id: decodeURIComponent(match[1]), action: match[2] };
+}
+
 async function handleApi(request: Request, env: Env) {
   const url = new URL(request.url);
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
@@ -552,6 +531,17 @@ async function handleApi(request: Request, env: Env) {
     if (request.method === "GET") return json({ bookmarks: await listBookmarks(url, env) });
     if (request.method === "POST") return createBookmark(request, env);
     throw new HttpError(405, "method_not_allowed", "Method not allowed for bookmarks.");
+  }
+
+  const health = healthRoute(pathname);
+  if (health) {
+    if (health.action === "check" && request.method === "POST") {
+      return checkBookmarkHealth(env.DB, health.id);
+    }
+    if (health.action === "health" && request.method === "GET") {
+      return listBookmarkHealthChecks(env.DB, health.id);
+    }
+    throw new HttpError(405, "method_not_allowed", "Method not allowed for bookmark health.");
   }
 
   const bookmarkId = routeId(pathname, "bookmarks");

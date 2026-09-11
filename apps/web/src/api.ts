@@ -3,6 +3,7 @@ import type {
   Category,
   CreateBookmarkInput,
   CreateCategoryInput,
+  HealthCheck,
   UpdateBookmarkInput,
   UpdateCategoryInput,
 } from "@dockmark/core";
@@ -91,4 +92,19 @@ export async function updateBookmark(id: string, input: UpdateBookmarkInput) {
 
 export async function deleteBookmark(id: string) {
   await request<void>(`/api/bookmarks/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function checkBookmarkHealth(id: string) {
+  const response = await request<{ check: HealthCheck }>(
+    `/api/bookmarks/${encodeURIComponent(id)}/check`,
+    { method: "POST" },
+  );
+  return response.check;
+}
+
+export async function listBookmarkHealthChecks(id: string) {
+  const response = await request<{ checks: HealthCheck[] }>(
+    `/api/bookmarks/${encodeURIComponent(id)}/health`,
+  );
+  return response.checks;
 }
