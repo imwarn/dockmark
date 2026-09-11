@@ -37,10 +37,13 @@
 - [ ] browser-native bookmark import and optional two-way mapping
 - [x] save current browser window as a cloud Session
 - [x] restore a Session from the extension with pinned state preserved
-- [ ] make Workspace `reuse` focus an existing matching tab before opening a new one
-- [ ] make Workspace `pinned` create/focus pinned tabs through the extension
-- [ ] extension capability handshake with Web app
-- [ ] Chromium first; Firefox validation next
+- [x] inject live open tabs into the Web Command Palette
+- [x] make Workspace `reuse` focus an existing matching tab before opening a new one
+- [x] make Workspace `pinned` create/reuse pinned tabs through the extension
+- [x] extension capability handshake with the configured Dockmark Web origin
+- [x] dynamic content-script registration limited to the explicitly authorized Dockmark origin
+- [ ] Chromium validation and packaged extension smoke test
+- [ ] Firefox validation next
 
 ## V3 — AI-assisted organization
 
