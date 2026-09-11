@@ -40,10 +40,22 @@
 - [x] inject live open tabs into the Web Command Palette
 - [x] make Workspace `reuse` focus an existing matching tab before opening a new one
 - [x] make Workspace `pinned` create/reuse pinned tabs through the extension
-- [x] extension capability handshake with the configured Dockmark Web origin
+- [x] versioned extension capability handshake with the configured Dockmark Web origin
 - [x] dynamic content-script registration limited to the explicitly authorized Dockmark origin
-- [ ] Chromium validation and packaged extension smoke test
+- [x] Chromium Manifest V3 packaging (`wxt zip`)
+- [x] real Playwright Chromium smoke test for MV3 worker, capabilities, tabs and pinned restore
+- [x] CI artifact for installable Chromium ZIP
+- [x] tag-driven GitHub Release packaging
+- [ ] deployed-origin manual bridge permission smoke check
 - [ ] Firefox validation next
+
+## Deployment
+
+- [x] canonical root Wrangler configuration
+- [x] Cloudflare Worker + Static Assets + D1 single-unit deployment
+- [x] Deploy to Cloudflare README button
+- [x] documented existing-GitHub-repository Workers Builds setup
+- [x] D1 migrations included in the deploy path
 
 ## V3 — AI-assisted organization
 
