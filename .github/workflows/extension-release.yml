@@ -34,4 +34,4 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" apps/extension/.output/*.zip --generate-notes --title "Dockmark $GITHUB_REF_NAME"
+        run: gh release create "$GITHUB_REF_NAME" .output/*.zip --generate-notes --title "Dockmark $GITHUB_REF_NAME"
