@@ -47,10 +47,12 @@ export function parseBangQuery(input: string, engines: SearchEngine[]): BangQuer
 
   const match = trimmed.match(/^!([^\s]+)(?:\s+(.*))?$/);
   if (!match?.[1]) return null;
+  const query = match[2]?.trim() ?? "";
+  if (!query) return null;
   const keyword = match[1].toLowerCase();
   const engine = engines.find((candidate) => candidate.keyword?.toLowerCase() === keyword);
   if (!engine) return null;
-  return { engine, query: match[2]?.trim() ?? "" };
+  return { engine, query };
 }
 
 export function matchingBangEngines(input: string, engines: SearchEngine[]): SearchEngine[] {
