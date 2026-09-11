@@ -3,9 +3,15 @@ import type {
   Category,
   CreateBookmarkInput,
   CreateCategoryInput,
+  CreateWorkspaceInput,
+  CreateWorkspaceItemInput,
   HealthCheck,
   UpdateBookmarkInput,
   UpdateCategoryInput,
+  UpdateWorkspaceInput,
+  UpdateWorkspaceItemInput,
+  WorkspaceItem,
+  WorkspaceWithItems,
 } from "@dockmark/core";
 
 interface ErrorEnvelope {
@@ -107,4 +113,56 @@ export async function listBookmarkHealthChecks(id: string) {
     `/api/bookmarks/${encodeURIComponent(id)}/health`,
   );
   return response.checks;
+}
+
+export async function listWorkspaces() {
+  const response = await request<{ workspaces: WorkspaceWithItems[] }>("/api/workspaces");
+  return response.workspaces;
+}
+
+export async function createWorkspace(input: CreateWorkspaceInput) {
+  const response = await request<{ workspace: WorkspaceWithItems }>("/api/workspaces", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.workspace;
+}
+
+export async function updateWorkspace(id: string, input: UpdateWorkspaceInput) {
+  const response = await request<{ workspace: WorkspaceWithItems }>(
+    `/api/workspaces/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return response.workspace;
+}
+
+export async function deleteWorkspace(id: string) {
+  await request<void>(`/api/workspaces/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function createWorkspaceItem(workspaceId: string, input: CreateWorkspaceItemInput) {
+  const response = await request<{ item: WorkspaceItem }>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/items`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return response.item;
+}
+
+export async function updateWorkspaceItem(
+  workspaceId: string,
+  itemId: string,
+  input: UpdateWorkspaceItemInput,
+) {
+  const response = await request<{ item: WorkspaceItem }>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/items/${encodeURIComponent(itemId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return response.item;
+}
+
+export async function deleteWorkspaceItem(workspaceId: string, itemId: string) {
+  await request<void>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/items/${encodeURIComponent(itemId)}`,
+    { method: "DELETE" },
+  );
 }
