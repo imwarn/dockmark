@@ -12,6 +12,15 @@ import {
   type WorkspaceWithItems,
 } from "@dockmark/core";
 import {
+  activateBridgeTab,
+  getBridgeStatus,
+  getOpenTabs,
+  onBridgeEvent,
+  openWorkspaceWithBridge,
+  restoreSessionWithBridge,
+  type BridgeTab,
+} from "./browser-bridge";
+import {
   listBookmarks,
   listCategories,
   listSearchEngines,
@@ -42,6 +51,14 @@ function openUrls(urls: string[]) {
   }
 }
 
+function hostLabel(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 export function App() {
   const [view, setView] = useState<View>("launcher");
   const [query, setQuery] = useState("");
@@ -51,6 +68,8 @@ export function App() {
   const [workspaces, setWorkspaces] = useState<WorkspaceWithItems[]>([]);
   const [sessions, setSessions] = useState<SessionWithItems[]>([]);
   const [searchEngines, setSearchEngines] = useState<SearchEngine[]>([]);
+  const [openTabs, setOpenTabs] = useState<BridgeTab[]>([]);
+  const [bridgeConnected, setBridgeConnected] = useState(false);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,21 +99,48 @@ export function App() {
     }
   }, []);
 
+  const refreshBridge = useCallback(async () => {
+    try {
+      const status = await getBridgeStatus();
+      if (!status.connected) throw new Error("Browser bridge is unavailable.");
+      const tabs = await getOpenTabs();
+      setBridgeConnected(true);
+      setOpenTabs(tabs);
+    } catch {
+      setBridgeConnected(false);
+      setOpenTabs([]);
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const unsubscribe = onBridgeEvent((event) => {
+      if (event === "ready" || event === "tabs-changed") void refreshBridge();
+    });
+    const onFocus = () => void refreshBridge();
+    window.addEventListener("focus", onFocus);
+    void refreshBridge();
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshBridge]);
 
   useEffect(() => {
     const onGlobalKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setView("launcher");
+        void refreshBridge();
         requestAnimationFrame(() => commandInputRef.current?.focus());
       }
     };
     window.addEventListener("keydown", onGlobalKeyDown);
     return () => window.removeEventListener("keydown", onGlobalKeyDown);
-  }, []);
+  }, [refreshBridge]);
 
   const defaultEngine = useMemo(
     () => searchEngines.find((engine) => engine.isDefault) ?? searchEngines[0] ?? null,
@@ -129,6 +175,15 @@ export function App() {
       }));
     }
 
+    const tabCandidates = normalized ? openTabs : openTabs.slice(0, 4);
+    const tabResults: CommandResult[] = tabCandidates.map((tab) => ({
+      id: `tab:${tab.id}`,
+      source: "tab",
+      title: tab.title,
+      subtitle: `${hostLabel(tab.url)}${tab.pinned ? " · Pinned" : ""}${tab.active ? " · Active" : ""}`,
+      url: tab.url,
+      score: 40 + (tab.pinned ? 4 : 0) + (tab.active ? 2 : 0),
+    }));
     const workspaceResults: CommandResult[] = workspaces.map((workspace) => ({
       id: workspace.id,
       source: "workspace",
@@ -147,18 +202,12 @@ export function App() {
       id: bookmark.id,
       source: "bookmark",
       title: bookmark.title,
-      subtitle: (() => {
-        try {
-          return new URL(bookmark.url).host;
-        } catch {
-          return bookmark.url;
-        }
-      })(),
+      subtitle: hostLabel(bookmark.url),
       url: bookmark.url,
       score: 30,
     }));
 
-    const localCandidates = [...workspaceResults, ...sessionResults, ...bookmarkResults];
+    const localCandidates = [...tabResults, ...workspaceResults, ...sessionResults, ...bookmarkResults];
     const filtered = normalized
       ? localCandidates.filter((item) =>
           `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
@@ -178,7 +227,7 @@ export function App() {
     }
 
     return localResults;
-  }, [bookmarks, defaultEngine, query, searchEngines, sessions, workspaces]);
+  }, [bookmarks, defaultEngine, openTabs, query, searchEngines, sessions, workspaces]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -188,7 +237,7 @@ export function App() {
     if (selectedIndex >= results.length) setSelectedIndex(Math.max(0, results.length - 1));
   }, [results.length, selectedIndex]);
 
-  function executeResult(item: CommandResult, forceNewTab = false) {
+  async function executeResult(item: CommandResult, forceNewTab = false) {
     if (item.id.startsWith("search-shortcut:")) {
       const engineId = item.id.slice("search-shortcut:".length);
       const engine = searchEngines.find((candidate) => candidate.id === engineId);
@@ -199,15 +248,64 @@ export function App() {
       return;
     }
 
+    if (item.source === "tab") {
+      if (forceNewTab && item.url) {
+        const opened = window.open(item.url, "_blank", "noopener,noreferrer");
+        if (opened) opened.opener = null;
+        return;
+      }
+
+      const tabId = Number(item.id.slice("tab:".length));
+      if (Number.isFinite(tabId)) {
+        try {
+          await activateBridgeTab(tabId);
+          return;
+        } catch {
+          setBridgeConnected(false);
+          setOpenTabs([]);
+        }
+      }
+      if (item.url) window.location.assign(item.url);
+      return;
+    }
+
     if (item.source === "workspace") {
       const workspace = workspaces.find((candidate) => candidate.id === item.id);
-      if (workspace) openUrls([...workspace.items].sort((a, b) => a.position - b.position).map((entry) => entry.url));
+      if (!workspace) return;
+      const ordered = [...workspace.items].sort((a, b) => a.position - b.position);
+      if (bridgeConnected) {
+        try {
+          await openWorkspaceWithBridge(ordered.map((entry) => ({
+            url: entry.url,
+            openMode: entry.openMode,
+          })));
+          return;
+        } catch {
+          setBridgeConnected(false);
+          setOpenTabs([]);
+        }
+      }
+      openUrls(ordered.map((entry) => entry.url));
       return;
     }
 
     if (item.source === "session") {
       const session = sessions.find((candidate) => candidate.id === item.id);
-      if (session) openUrls([...session.items].sort((a, b) => a.position - b.position).map((entry) => entry.url));
+      if (!session) return;
+      const ordered = [...session.items].sort((a, b) => a.position - b.position);
+      if (bridgeConnected) {
+        try {
+          await restoreSessionWithBridge(ordered.map((entry) => ({
+            url: entry.url,
+            pinned: entry.pinned,
+          })));
+          return;
+        } catch {
+          setBridgeConnected(false);
+          setOpenTabs([]);
+        }
+      }
+      openUrls(ordered.map((entry) => entry.url));
       return;
     }
 
@@ -235,7 +333,7 @@ export function App() {
       const selected = results[selectedIndex];
       if (selected) {
         event.preventDefault();
-        executeResult(selected, event.shiftKey);
+        void executeResult(selected, event.shiftKey);
       }
       return;
     }
@@ -245,6 +343,14 @@ export function App() {
       else commandInputRef.current?.blur();
     }
   }
+
+  const launcherStatus = loading
+    ? "Loading…"
+    : bridgeConnected
+      ? `Browser bridge · ${openTabs.length} open tabs`
+      : defaultEngine
+        ? `Web mode · default ${defaultEngine.name}`
+        : "Web mode";
 
   return (
     <main className="shell">
@@ -291,15 +397,16 @@ export function App() {
           <section className="hero">
             <p className="eyebrow">YOUR PERSONAL LAUNCHER</p>
             <h1>Everything you return to,<br />one command away.</h1>
-            <div className="command">
+            <div className={`command ${bridgeConnected ? "bridge-connected" : ""}`}>
               <span className="search-icon">⌕</span>
               <input
                 ref={commandInputRef}
                 autoFocus
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                onFocus={() => void refreshBridge()}
                 onKeyDown={onCommandKeyDown}
-                placeholder="Search Dockmark or type !g, !gh, !ddg…"
+                placeholder="Search open tabs, Dockmark or type !g, !gh, !ddg…"
                 aria-label="Search Dockmark"
                 aria-controls="dockmark-command-results"
                 aria-activedescendant={results[selectedIndex] ? `command-result-${selectedIndex}` : undefined}
@@ -313,7 +420,7 @@ export function App() {
           <section className="panel" aria-label="Command results">
             <div className="panel-heading">
               <span>{query ? "Command results" : "Quick access"}</span>
-              <span className="muted">{loading ? "Loading…" : defaultEngine ? `Default search · ${defaultEngine.name}` : "Web mode"}</span>
+              <span className={`muted bridge-label ${bridgeConnected ? "connected" : ""}`}>{launcherStatus}</span>
             </div>
             {dataError ? (
               <div className="panel-error">
@@ -332,9 +439,9 @@ export function App() {
                     id={`command-result-${index}`}
                     key={`${item.source}-${item.id}`}
                     onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => executeResult(item)}
+                    onClick={() => void executeResult(item)}
                   >
-                    <span className="favicon">{item.source === "session" ? "↺" : item.source === "search" ? "⌕" : item.title.slice(0, 1)}</span>
+                    <span className="favicon">{item.source === "tab" ? "↗" : item.source === "session" ? "↺" : item.source === "search" ? "⌕" : item.title.slice(0, 1)}</span>
                     <span className="result-copy">
                       <strong>{item.title}</strong>
                       <small>{item.subtitle}</small>
@@ -352,9 +459,9 @@ export function App() {
           </section>
 
           <section className="feature-grid">
-            <article><span>01</span><h2>Commands</h2><p>Use the keyboard to launch workspaces, restore sessions, open bookmarks or search the web.</p></article>
-            <article><span>02</span><h2>Bang shortcuts</h2><p>Route a query instantly with configurable shortcuts such as !g, !gh and !ddg.</p></article>
-            <article><span>03</span><h2>Cross-browser</h2><p>Your search setup, workspaces and sessions live in Dockmark rather than one browser profile.</p></article>
+            <article><span>01</span><h2>Open tabs</h2><p>With the browser bridge connected, jump to an existing tab before creating another copy.</p></article>
+            <article><span>02</span><h2>Smart workspaces</h2><p>Workspace reuse and pinned modes become real browser actions while Web mode stays portable.</p></article>
+            <article><span>03</span><h2>Cross-browser fallback</h2><p>Without the extension, the same launcher, workspaces, sessions and search still work normally.</p></article>
           </section>
         </>
       )}
