@@ -160,6 +160,35 @@ export interface SessionItem {
   position: number;
 }
 
+export interface SessionWithItems extends Session {
+  items: SessionItem[];
+}
+
+export interface CreateSessionItemInput {
+  title: string;
+  url: string;
+  pinned?: boolean;
+  position?: number;
+}
+
+export interface UpdateSessionItemInput {
+  title?: string;
+  url?: string;
+  pinned?: boolean;
+  position?: number;
+}
+
+export interface CreateSessionInput {
+  name: string;
+  sourceDevice?: string;
+  items?: CreateSessionItemInput[];
+}
+
+export interface UpdateSessionInput {
+  name?: string;
+  sourceDevice?: string | null;
+}
+
 export interface SearchEngine {
   id: Id;
   name: string;
@@ -169,7 +198,7 @@ export interface SearchEngine {
   position: number;
 }
 
-export type CommandSource = "tab" | "workspace" | "bookmark" | "navigation" | "search";
+export type CommandSource = "tab" | "workspace" | "session" | "bookmark" | "navigation" | "search";
 
 export interface CommandResult {
   id: string;

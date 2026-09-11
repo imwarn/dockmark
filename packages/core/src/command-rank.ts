@@ -3,6 +3,7 @@ import type { CommandResult, CommandSource } from "./models";
 const SOURCE_WEIGHT: Record<CommandSource, number> = {
   tab: 500,
   workspace: 400,
+  session: 350,
   bookmark: 300,
   navigation: 200,
   search: 100,

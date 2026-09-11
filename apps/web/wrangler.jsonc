@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "dockmark",
   "compatibility_date": "2026-09-11",
-  "main": "./worker/index.ts",
+  "main": "./worker/router.ts",
   "assets": {
     "not_found_handling": "single-page-application"
   },
