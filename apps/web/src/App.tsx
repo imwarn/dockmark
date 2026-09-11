@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { rankCommands, type Bookmark, type Category, type CommandResult } from "@dockmark/core";
-import { listBookmarks, listCategories } from "./api";
+import {
+  rankCommands,
+  type Bookmark,
+  type Category,
+  type CommandResult,
+  type WorkspaceWithItems,
+} from "@dockmark/core";
+import { listBookmarks, listCategories, listWorkspaces } from "./api";
 import { BookmarkManager } from "./BookmarkManager";
 import { TransferManager } from "./TransferManager";
+import { WorkspaceManager } from "./WorkspaceManager";
 
 const sourceLabel: Record<CommandResult["source"], string> = {
   tab: "Open tab",
@@ -12,21 +19,15 @@ const sourceLabel: Record<CommandResult["source"], string> = {
   search: "Search",
 };
 
-const workspacePlaceholder: CommandResult = {
-  id: "workspace-dev",
-  source: "workspace",
-  title: "Development",
-  subtitle: "Workspace · coming next",
-  score: 24,
-};
-
-type View = "launcher" | "bookmarks" | "transfer";
+type View = "launcher" | "workspaces" | "bookmarks" | "transfer";
 
 export function App() {
   const [view, setView] = useState<View>("launcher");
   const [query, setQuery] = useState("");
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceWithItems[]>([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
 
@@ -34,12 +35,14 @@ export function App() {
     setLoading(true);
     setDataError(null);
     try {
-      const [nextCategories, nextBookmarks] = await Promise.all([
+      const [nextCategories, nextBookmarks, nextWorkspaces] = await Promise.all([
         listCategories(),
         listBookmarks(),
+        listWorkspaces(),
       ]);
       setCategories(nextCategories);
       setBookmarks(nextBookmarks);
+      setWorkspaces(nextWorkspaces);
     } catch (error) {
       setDataError(error instanceof Error ? error.message : "Could not load Dockmark data.");
     } finally {
@@ -53,6 +56,13 @@ export function App() {
 
   const results = useMemo(() => {
     const normalized = query.trim().toLowerCase();
+    const workspaceResults: CommandResult[] = workspaces.map((workspace) => ({
+      id: workspace.id,
+      source: "workspace",
+      title: workspace.name,
+      subtitle: `Workspace · ${workspace.items.length} tabs`,
+      score: 30,
+    }));
     const bookmarkResults: CommandResult[] = bookmarks.map((bookmark) => ({
       id: bookmark.id,
       source: "bookmark",
@@ -68,7 +78,7 @@ export function App() {
       score: 30,
     }));
 
-    const candidates = [workspacePlaceholder, ...bookmarkResults];
+    const candidates = [...workspaceResults, ...bookmarkResults];
     const filtered = normalized
       ? candidates.filter((item) =>
           `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
@@ -76,7 +86,14 @@ export function App() {
       : candidates;
 
     return rankCommands(filtered).slice(0, 8);
-  }, [bookmarks, query]);
+  }, [bookmarks, query, workspaces]);
+
+  function activateResult(item: CommandResult) {
+    if (item.source === "workspace") {
+      setSelectedWorkspaceId(item.id);
+      setView("workspaces");
+    }
+  }
 
   return (
     <main className="shell">
@@ -87,14 +104,23 @@ export function App() {
         </button>
         <nav>
           <button className={`ghost ${view === "launcher" ? "active" : ""}`} type="button" onClick={() => setView("launcher")}>Launcher</button>
-          <button className="ghost" type="button" disabled title="Workspaces are next">Workspaces</button>
+          <button className={`ghost ${view === "workspaces" ? "active" : ""}`} type="button" onClick={() => setView("workspaces")}>Workspaces</button>
           <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" onClick={() => setView("bookmarks")}>Bookmarks</button>
           <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" onClick={() => setView("transfer")}>Transfer</button>
           <button className="settings" aria-label="Settings" type="button" title="Settings are coming later">⌘</button>
         </nav>
       </header>
 
-      {view === "bookmarks" ? (
+      {view === "workspaces" ? (
+        <WorkspaceManager
+          workspaces={workspaces}
+          bookmarks={bookmarks}
+          loading={loading}
+          selectedWorkspaceId={selectedWorkspaceId}
+          onSelectedChange={setSelectedWorkspaceId}
+          onChanged={refresh}
+        />
+      ) : view === "bookmarks" ? (
         <BookmarkManager bookmarks={bookmarks} categories={categories} loading={loading} onChanged={refresh} />
       ) : view === "transfer" ? (
         <TransferManager bookmarks={bookmarks} categories={categories} onChanged={refresh} />
@@ -123,14 +149,20 @@ export function App() {
               </div>
             ) : (
               <div className="results">
-                {results.map((item) => (
-                  <a className="result" href={item.url ?? "#"} key={item.id} onClick={(event) => { if (!item.url) event.preventDefault(); }}>
+                {results.map((item) => item.source === "workspace" ? (
+                  <button className="result result-button" type="button" key={`${item.source}-${item.id}`} onClick={() => activateResult(item)}>
+                    <span className="favicon">{item.title.slice(0, 1)}</span>
+                    <span className="result-copy"><strong>{item.title}</strong><small>{item.subtitle}</small></span>
+                    <span className="pill">{sourceLabel[item.source]}</span>
+                  </button>
+                ) : (
+                  <a className="result" href={item.url ?? "#"} key={`${item.source}-${item.id}`} onClick={(event) => { if (!item.url) event.preventDefault(); }}>
                     <span className="favicon">{item.title.slice(0, 1)}</span>
                     <span className="result-copy"><strong>{item.title}</strong><small>{item.subtitle}</small></span>
                     <span className="pill">{sourceLabel[item.source]}</span>
                   </a>
                 ))}
-                {!loading && !results.length && <div className="empty-command">No matching bookmarks yet.</div>}
+                {!loading && !results.length && <div className="empty-command">No matching bookmarks or workspaces yet.</div>}
               </div>
             )}
           </section>
