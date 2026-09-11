@@ -73,4 +73,5 @@ jobs:
           name: dockmark-chromium-extension
           path: .output/*.zip
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
