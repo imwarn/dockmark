@@ -16,10 +16,10 @@
 - [ ] drag/reorder bookmarks and categories
 - [x] Netscape `bookmarks.html` import plus Dockmark/simple JSON import
 - [x] JSON and browser-compatible HTML export
-- [ ] configurable search engines and bang shortcuts
+- [x] configurable search engines and bang shortcuts
 - [x] Workspaces: create/edit/delete, bookmark/custom items, ordering and open-all
 - [x] Sessions: cloud CRUD, URL-list capture, Web restore and pinned-state snapshots
-- [ ] command palette with keyboard navigation
+- [x] command palette with keyboard navigation and executable results
 - [ ] appearance/theme preferences
 - [ ] local-first settings with D1 persistence
 
