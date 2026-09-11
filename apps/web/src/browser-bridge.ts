@@ -1,3 +1,23 @@
+export const BRIDGE_PROTOCOL_VERSION = 1;
+
+export interface BridgeCapabilities {
+  openTabs: boolean;
+  activateTabs: boolean;
+  workspaceReuse: boolean;
+  workspacePinned: boolean;
+  sessionRestore: boolean;
+  sessionPinned: boolean;
+  nativeBookmarks: boolean;
+  localHealth: boolean;
+}
+
+export interface BrowserBridgeStatus {
+  connected: true;
+  protocolVersion: number;
+  extensionVersion: string;
+  capabilities: BridgeCapabilities;
+}
+
 export interface BridgeTab {
   id: number;
   windowId: number;
@@ -105,8 +125,14 @@ async function request<T>(action: string, payload?: unknown, timeoutMs = 1200): 
   });
 }
 
-export async function getBridgeStatus() {
-  return request<{ connected: boolean; version?: string }>("status", undefined, 600);
+export async function getBridgeStatus(): Promise<BrowserBridgeStatus> {
+  const status = await request<BrowserBridgeStatus>("status", undefined, 600);
+  if (!status.connected || status.protocolVersion !== BRIDGE_PROTOCOL_VERSION) {
+    throw new Error(
+      `Dockmark browser bridge protocol ${status.protocolVersion ?? "unknown"} is incompatible with Web protocol ${BRIDGE_PROTOCOL_VERSION}.`,
+    );
+  }
+  return status;
 }
 
 export async function getOpenTabs() {
