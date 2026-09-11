@@ -1,0 +1,124 @@
+export interface BridgeTab {
+  id: number;
+  windowId: number;
+  title: string;
+  url: string;
+  pinned: boolean;
+  active: boolean;
+}
+
+export interface BridgeWorkspaceItem {
+  url: string;
+  openMode: "reuse" | "new-tab" | "pinned";
+}
+
+export interface BridgeWorkspaceResult {
+  opened: number;
+  reused: number;
+  pinned: number;
+}
+
+interface BridgeRequestMessage {
+  source: "dockmark-web";
+  type: "dockmark:bridge:request";
+  requestId: string;
+  action: string;
+  payload?: unknown;
+}
+
+interface BridgeResponseMessage {
+  source: "dockmark-extension";
+  type: "dockmark:bridge:response";
+  requestId: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+interface BridgeEventMessage {
+  source: "dockmark-extension";
+  type: "dockmark:bridge:event";
+  event: string;
+}
+
+type PendingRequest = {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  timeout: number;
+};
+
+const pending = new Map<string, PendingRequest>();
+const listeners = new Set<(event: string) => void>();
+let installed = false;
+
+function installListener() {
+  if (installed || typeof window === "undefined") return;
+  installed = true;
+
+  window.addEventListener("message", (event: MessageEvent<BridgeResponseMessage | BridgeEventMessage>) => {
+    if (event.source !== window || !event.data || event.data.source !== "dockmark-extension") return;
+
+    if (event.data.type === "dockmark:bridge:event") {
+      for (const listener of listeners) listener(event.data.event);
+      return;
+    }
+
+    if (event.data.type !== "dockmark:bridge:response") return;
+    const request = pending.get(event.data.requestId);
+    if (!request) return;
+    pending.delete(event.data.requestId);
+    window.clearTimeout(request.timeout);
+
+    if (event.data.ok) request.resolve(event.data.result);
+    else request.reject(new Error(event.data.error ?? "Browser bridge request failed."));
+  });
+}
+
+async function request<T>(action: string, payload?: unknown, timeoutMs = 1200): Promise<T> {
+  installListener();
+  const requestId = crypto.randomUUID();
+  const message: BridgeRequestMessage = {
+    source: "dockmark-web",
+    type: "dockmark:bridge:request",
+    requestId,
+    action,
+    ...(payload === undefined ? {} : { payload }),
+  };
+
+  return new Promise<T>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      pending.delete(requestId);
+      reject(new Error("Dockmark browser extension is not connected."));
+    }, timeoutMs);
+
+    pending.set(requestId, {
+      resolve: (value) => resolve(value as T),
+      reject,
+      timeout,
+    });
+    window.postMessage(message, window.location.origin);
+  });
+}
+
+export async function getBridgeStatus() {
+  return request<{ connected: boolean; version?: string }>("status", undefined, 600);
+}
+
+export async function getOpenTabs() {
+  const response = await request<{ tabs: BridgeTab[] }>("get-open-tabs");
+  return response.tabs;
+}
+
+export async function activateBridgeTab(tabId: number) {
+  return request<{ ok: boolean }>("activate-tab", { tabId });
+}
+
+export async function openWorkspaceWithBridge(items: BridgeWorkspaceItem[]) {
+  return request<BridgeWorkspaceResult>("open-workspace", { items }, 4000);
+}
+
+export function onBridgeEvent(listener: (event: string) => void) {
+  installListener();
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
