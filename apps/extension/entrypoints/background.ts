@@ -2,7 +2,7 @@ import { browser } from "wxt/browser";
 
 const SERVER_KEY = "dockmarkServerUrl";
 const BRIDGE_SCRIPT_ID = "dockmark-web-bridge";
-const BRIDGE_FILE = "dockmark-bridge.js";
+const BRIDGE_FILE = "/dockmark-bridge.js";
 
 type RestoreItem = {
   url: string;
