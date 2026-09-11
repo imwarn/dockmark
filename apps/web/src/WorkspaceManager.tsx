@@ -13,6 +13,7 @@ import {
   updateWorkspace,
   updateWorkspaceItem,
 } from "./api";
+import { getBridgeStatus, openWorkspaceWithBridge } from "./browser-bridge";
 
 interface Props {
   workspaces: WorkspaceWithItems[];
@@ -176,9 +177,24 @@ export function WorkspaceManager({
     });
   }
 
-  function openAll() {
+  async function openAll() {
     if (!selected) return;
-    for (const item of [...selected.items].sort((a, b) => a.position - b.position)) {
+    const ordered = [...selected.items].sort((a, b) => a.position - b.position);
+
+    try {
+      const status = await getBridgeStatus();
+      if (status.connected) {
+        await openWorkspaceWithBridge(ordered.map((item) => ({
+          url: item.url,
+          openMode: item.openMode,
+        })));
+        return;
+      }
+    } catch {
+      // Web-only mode remains the fallback when no browser bridge is present.
+    }
+
+    for (const item of ordered) {
       const opened = window.open(item.url, "_blank", "noopener,noreferrer");
       if (opened) opened.opener = null;
     }
@@ -244,7 +260,7 @@ export function WorkspaceManager({
                       <p>{selected.description ?? "A reusable set of links that stays portable across browsers."}</p>
                     </div>
                     <div className="workspace-header-actions">
-                      <button className="primary" type="button" disabled={!selected.items.length} onClick={openAll}>Open all · {selected.items.length}</button>
+                      <button className="primary" type="button" disabled={!selected.items.length} onClick={() => void openAll()}>Open all · {selected.items.length}</button>
                       <button className="secondary" type="button" onClick={beginMetaEdit}>Edit</button>
                       <button
                         className="danger-button"
@@ -330,7 +346,7 @@ export function WorkspaceManager({
 
                 {!selected.items.length && <div className="empty-state"><strong>This workspace is empty.</strong><span>Add a saved bookmark or custom URL above.</span></div>}
               </div>
-              <p className="workspace-web-note">In Web mode, Open all creates normal browser tabs. “Reuse” and “Pinned” become browser-aware when the optional extension is connected.</p>
+              <p className="workspace-web-note">Web mode opens normal tabs. When the browser bridge is connected, “Reuse” and “Pinned” are applied by the extension.</p>
             </>
           ) : (
             <div className="empty-state workspace-empty"><strong>No workspace selected.</strong><span>Create one to save a reusable group of tabs.</span></div>
