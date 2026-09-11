@@ -26,11 +26,11 @@
 ## V1.5 — health and metadata
 
 - [ ] URL metadata fetch: title, description, canonical, favicon and OpenGraph
-- [ ] server-side public URL health checks with SSRF protection
+- [x] server-side public URL health checks with redirect revalidation and SSRF safeguards
 - [ ] extension-only local URL health checks
 - [ ] redirect review and one-click URL replacement
 - [ ] bulk cleanup that excludes ignored/local/manual entries
-- [ ] health history and last-check timestamps
+- [x] health history storage and API
 
 ## V2 — browser bridge
 

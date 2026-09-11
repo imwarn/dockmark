@@ -1,0 +1,14 @@
+.management-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.health-feedback { margin-bottom: 16px; }
+.health-badge.status-healthy { color: #99c9a8; border-color: #355442; }
+.health-badge.status-redirected { color: #a9b8d7; border-color: #3b465d; }
+.health-badge.status-auth-required, .health-badge.status-forbidden { color: #c7ad83; border-color: #55482f; }
+.health-badge.status-rate-limited { color: #c2a3ce; border-color: #503c58; }
+.health-badge.status-timeout, .health-badge.status-dns-error, .health-badge.status-tls-error, .health-badge.status-unavailable { color: #d09a96; border-color: #5a3835; }
+.health-badge.status-local-only { color: #b6b97d; border-color: #484a30; }
+.health-badge.status-ignored { color: #988e88; border-color: #3e3733; }
+.health-check-button { min-width: 68px; }
+
+@media (max-width: 720px) {
+  .management-summary { justify-content: flex-start; }
+}

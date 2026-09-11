@@ -16,6 +16,17 @@ export type HealthStatus =
   | "local-only"
   | "ignored";
 
+export interface HealthCheck {
+  id: Id;
+  bookmarkId: Id;
+  status: HealthStatus;
+  httpStatus?: number;
+  finalUrl?: string;
+  responseMs?: number;
+  errorCode?: string;
+  checkedAt: string;
+}
+
 export interface Category {
   id: Id;
   name: string;
