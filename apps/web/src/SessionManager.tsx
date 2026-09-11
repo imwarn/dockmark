@@ -13,6 +13,7 @@ import {
   updateSession,
   updateSessionItem,
 } from "./api";
+import { getBridgeStatus, restoreSessionWithBridge } from "./browser-bridge";
 
 interface Props {
   sessions: SessionWithItems[];
@@ -206,9 +207,24 @@ export function SessionManager({
     });
   }
 
-  function restoreInWeb() {
+  async function restoreSession() {
     if (!selected) return;
-    for (const item of [...selected.items].sort((a, b) => a.position - b.position)) {
+    const ordered = [...selected.items].sort((a, b) => a.position - b.position);
+
+    try {
+      const status = await getBridgeStatus();
+      if (status.connected) {
+        await restoreSessionWithBridge(ordered.map((item) => ({
+          url: item.url,
+          pinned: item.pinned,
+        })));
+        return;
+      }
+    } catch {
+      // Web-only mode remains the fallback when no browser bridge is present.
+    }
+
+    for (const item of ordered) {
       const opened = window.open(item.url, "_blank", "noopener,noreferrer");
       if (opened) opened.opener = null;
     }
@@ -283,7 +299,7 @@ export function SessionManager({
                       </p>
                     </div>
                     <div className="session-header-actions">
-                      <button className="primary" type="button" disabled={!selected.items.length} onClick={restoreInWeb}>Restore · {selected.items.length}</button>
+                      <button className="primary" type="button" disabled={!selected.items.length} onClick={() => void restoreSession()}>Restore · {selected.items.length}</button>
                       <button className="secondary" type="button" onClick={beginMetaEdit}>Edit</button>
                       <button
                         className="danger-button"
@@ -345,7 +361,7 @@ export function SessionManager({
                 {!selected.items.length && <div className="empty-state"><strong>This session has no tabs.</strong><span>Add URLs above or save a browser window from the extension.</span></div>}
               </div>
 
-              <p className="session-web-note">Web restore opens normal tabs. The browser extension restores the same snapshot with pinned state preserved.</p>
+              <p className="session-web-note">Web-only restore opens normal tabs. When the browser bridge is connected, pinned state is restored by the extension.</p>
             </>
           ) : (
             <div className="empty-state session-empty"><strong>No session selected.</strong><span>Save a temporary browsing state so it can be resumed elsewhere.</span></div>
