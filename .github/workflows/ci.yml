@@ -36,6 +36,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Cloudflare deploy dry run
+        run: npm run deploy:dry-run
+
   chromium-extension:
     needs: verify
     runs-on: ubuntu-latest
