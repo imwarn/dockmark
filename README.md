@@ -12,21 +12,29 @@ Dockmark is a **Cloudflare Worker with Static Assets + D1**, not a separate Page
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/imwarn/dockmark)
 
-The repository root contains the canonical `wrangler.jsonc`. Cloudflare's Deploy to Cloudflare flow can clone the repository, provision the D1 database, bind it to the Worker and configure Workers Builds. Dockmark's deploy script applies D1 migrations before deployment.
+The repository-root `wrangler.jsonc` is the canonical Worker/D1 input configuration. The Web app itself lives in `apps/web` and uses `@cloudflare/vite-plugin`; after `vite build`, Cloudflare creates a generated deployment config below `apps/web/.wrangler/`. Dockmark's root deploy adapter rewrites that redirect at the repository root before calling Wrangler so the user config and generated deploy config share the same base path.
+
+> Keep Cloudflare's project root at `/`. Do **not** point a Deploy-to-Cloudflare URL or Workers Builds root directly at `apps/web`, because the Web workspace depends on the shared `packages/core` workspace.
+
+### Deploy to Cloudflare button
+
+The button uses the repository root so Cloudflare can see the root Wrangler resource declarations and provision D1. The root `deploy` script then builds only the Web workspace, prepares the Vite-generated deployment redirect, applies D1 migrations through the `DB` binding, and deploys the generated Worker/static-assets bundle.
+
+Cloudflare currently documents limited monorepo support for Deploy Buttons. Dockmark therefore also runs a real `wrangler deploy --dry-run` in CI after every build; this specifically catches mismatches between the root Wrangler config and Vite's generated deploy config before changes reach `main`.
 
 ### Connect this existing GitHub repository
 
-If you are deploying your own checkout rather than creating a copy through the button:
+For the most predictable long-running deployment of your own Dockmark checkout:
 
 1. In Cloudflare, create a D1 database named `dockmark`.
 2. Put its database ID into the root `wrangler.jsonc` in place of the all-zero placeholder.
 3. Go to **Workers & Pages → Create application → Import a repository** and select this repository.
-4. Use repository root `/` as the root directory.
+4. Use repository root `/` as the Root directory.
 5. Build command: `npm run build:web`
-6. Deploy command: `npm run db:migrate:remote && npm run deploy:built -w @dockmark/web`
+6. Deploy command: `npm run deploy:built`
 7. Use `main` as the production branch.
 
-Workers Git integration will then build/deploy pushes automatically. Pull requests can use Workers preview/version workflows separately if desired.
+`npm run deploy:built` performs three production steps: prepares the root Wrangler redirect from the Vite build output, applies remote D1 migrations, then runs `wrangler deploy` from the repository root.
 
 ### Deploy from the CLI
 
@@ -44,7 +52,7 @@ Copy the returned D1 database ID into the root `wrangler.jsonc`, then:
 npm run deploy
 ```
 
-`npm run deploy` builds the React/Worker application, applies remote D1 migrations, and deploys the Worker/static assets as one unit.
+`npm run deploy` builds the Web application, prepares Cloudflare's generated deployment config, applies remote D1 migrations, and deploys the Worker/static assets as one unit.
 
 ## Browser extension
 
@@ -125,11 +133,12 @@ packages/
   core/         shared domain models, URL policy, search and command ranking
 scripts/
   chromium-extension-smoke.mjs
+  prepare-cloudflare-deploy.mjs
 docs/
   ARCHITECTURE.md
   API.md
   ROADMAP.md
-wrangler.jsonc  canonical Worker + D1 deployment configuration
+wrangler.jsonc  canonical Worker + D1 input configuration
 ```
 
 ## Local development
