@@ -15,10 +15,10 @@ export default defineBackground(() => {
 
     if (message?.type === "dockmark:activate-tab" && typeof message.tabId === "number") {
       const tab = await browser.tabs.update(message.tabId, { active: true });
-      if (tab.windowId != null) {
+      if (tab?.windowId != null) {
         await browser.windows.update(tab.windowId, { focused: true });
       }
-      return { ok: true };
+      return { ok: Boolean(tab) };
     }
 
     return undefined;
