@@ -148,7 +148,7 @@ export function SearchEngineManager({ engines, loading, onChanged }: Props) {
                   <div className="search-engine-actions">
                     <button className="text-action" type="button" disabled={busy || index === 0} onClick={() => void move(engine, -1)}>↑</button>
                     <button className="text-action" type="button" disabled={busy || index === ordered.length - 1} onClick={() => void move(engine, 1)}>↓</button>
-                    {!engine.isDefault && <button className="secondary" type="button" disabled={busy} onClick={() => void run(() => updateSearchEngine(engine.id, { isDefault: true }))}>Make default</button>}
+                    {!engine.isDefault && <button className="secondary" type="button" disabled={busy} onClick={() => void run(async () => { await updateSearchEngine(engine.id, { isDefault: true }); })}>Make default</button>}
                     <button className="secondary" type="button" onClick={() => beginEdit(engine)}>Edit</button>
                     <button className="danger-button" type="button" disabled={busy || ordered.length <= 1} onClick={() => { if (window.confirm(`Delete search engine “${engine.name}”?`)) void run(() => deleteSearchEngine(engine.id)); }}>Delete</button>
                   </div>
