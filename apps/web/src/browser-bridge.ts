@@ -12,6 +12,11 @@ export interface BridgeWorkspaceItem {
   openMode: "reuse" | "new-tab" | "pinned";
 }
 
+export interface BridgeSessionItem {
+  url: string;
+  pinned?: boolean;
+}
+
 export interface BridgeWorkspaceResult {
   opened: number;
   reused: number;
@@ -115,6 +120,10 @@ export async function activateBridgeTab(tabId: number) {
 
 export async function openWorkspaceWithBridge(items: BridgeWorkspaceItem[]) {
   return request<BridgeWorkspaceResult>("open-workspace", { items }, 4000);
+}
+
+export async function restoreSessionWithBridge(items: BridgeSessionItem[]) {
+  return request<{ ok: boolean; opened: number }>("restore-session", { items }, 4000);
 }
 
 export function onBridgeEvent(listener: (event: string) => void) {
