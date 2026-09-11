@@ -25,6 +25,18 @@ export interface Category {
   updatedAt: string;
 }
 
+export interface CreateCategoryInput {
+  name: string;
+  icon?: string;
+  position?: number;
+}
+
+export interface UpdateCategoryInput {
+  name?: string;
+  icon?: string | null;
+  position?: number;
+}
+
 export interface Bookmark {
   id: Id;
   categoryId?: Id;
@@ -37,6 +49,26 @@ export interface Bookmark {
   position: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreateBookmarkInput {
+  categoryId?: Id | null;
+  title: string;
+  url: string;
+  description?: string;
+  iconUrl?: string;
+  healthPolicy?: HealthPolicy;
+  position?: number;
+}
+
+export interface UpdateBookmarkInput {
+  categoryId?: Id | null;
+  title?: string;
+  url?: string;
+  description?: string | null;
+  iconUrl?: string | null;
+  healthPolicy?: HealthPolicy;
+  position?: number;
 }
 
 export type WorkspaceOpenMode = "reuse" | "new-tab" | "pinned";
