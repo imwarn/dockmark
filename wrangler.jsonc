@@ -4,6 +4,7 @@
   "compatibility_date": "2026-09-11",
   "main": "./apps/web/worker/router.ts",
   "assets": {
+    "directory": "./apps/web/dist/client",
     "not_found_handling": "single-page-application"
   },
   "d1_databases": [
