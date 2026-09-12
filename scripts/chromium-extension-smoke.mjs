@@ -40,17 +40,23 @@ try {
   await popup.goto(`chrome-extension://${extensionId}/popup.html`);
   await popup.waitForLoadState("domcontentloaded");
 
+  const manifest = await popup.evaluate(() => chrome.runtime.getManifest());
+  assert.equal(manifest.version, "0.2.0");
+  assert.ok(!manifest.permissions?.includes("bookmarks"), "Bookmarks should not be a required install-time permission.");
+  assert.ok(manifest.optional_permissions?.includes("bookmarks"), "Bookmarks should be declared as an optional permission.");
+
   const capabilities = await popup.evaluate(async () =>
     chrome.runtime.sendMessage({ type: "dockmark:get-capabilities" }),
   );
   assert.equal(capabilities.connected, true);
   assert.equal(capabilities.protocolVersion, 1);
-  assert.equal(capabilities.extensionVersion, "0.1.0");
+  assert.equal(capabilities.extensionVersion, "0.2.0");
   assert.equal(capabilities.capabilities.openTabs, true);
   assert.equal(capabilities.capabilities.workspaceReuse, true);
   assert.equal(capabilities.capabilities.workspacePinned, true);
   assert.equal(capabilities.capabilities.sessionPinned, true);
-  assert.equal(capabilities.capabilities.nativeBookmarks, false);
+  assert.equal(capabilities.capabilities.nativeBookmarks, true);
+  assert.equal(capabilities.permissions.nativeBookmarks, false);
   assert.equal(capabilities.capabilities.localHealth, false);
 
   const first = await context.newPage();
@@ -91,7 +97,8 @@ try {
   assert.equal(restored?.pinned, true, "Session restore should preserve pinned state.");
 
   console.log(`✓ Dockmark Chromium extension loaded: ${extensionId}`);
-  console.log("✓ Capability handshake protocol 1 / extension 0.1.0");
+  console.log("✓ Capability handshake protocol 1 / extension 0.2.0");
+  console.log("✓ Native bookmark capability is optional and ungranted by default");
   console.log("✓ Open-tab enumeration and activation");
   console.log("✓ Pinned Session restore");
 } finally {

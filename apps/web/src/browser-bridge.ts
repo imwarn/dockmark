@@ -11,11 +11,16 @@ export interface BridgeCapabilities {
   localHealth: boolean;
 }
 
+export interface BridgePermissions {
+  nativeBookmarks: boolean;
+}
+
 export interface BrowserBridgeStatus {
   connected: true;
   protocolVersion: number;
   extensionVersion: string;
   capabilities: BridgeCapabilities;
+  permissions?: BridgePermissions;
 }
 
 export interface BridgeTab {
@@ -41,6 +46,27 @@ export interface BridgeWorkspaceResult {
   opened: number;
   reused: number;
   pinned: number;
+}
+
+export interface NativeBrowserBookmark {
+  id: string;
+  parentId?: string;
+  title: string;
+  url: string;
+  folderPath: string[];
+  dateAdded?: number;
+}
+
+export interface NativeBookmarkMapping {
+  browserBookmarkId: string;
+  dockmarkBookmarkId: string;
+  url: string;
+  mappedAt: string;
+}
+
+export interface NativeBookmarkSnapshot {
+  bookmarks: NativeBrowserBookmark[];
+  mappings: NativeBookmarkMapping[];
 }
 
 interface BridgeRequestMessage {
@@ -150,6 +176,16 @@ export async function openWorkspaceWithBridge(items: BridgeWorkspaceItem[]) {
 
 export async function restoreSessionWithBridge(items: BridgeSessionItem[]) {
   return request<{ ok: boolean; opened: number }>("restore-session", { items }, 4000);
+}
+
+export async function getNativeBookmarksWithBridge() {
+  return request<NativeBookmarkSnapshot>("get-native-bookmarks", undefined, 5000);
+}
+
+export async function saveNativeBookmarkMappingsWithBridge(
+  items: Array<Pick<NativeBookmarkMapping, "browserBookmarkId" | "dockmarkBookmarkId" | "url">>,
+) {
+  return request<{ saved: number }>("save-native-bookmark-mappings", { items }, 5000);
 }
 
 export function onBridgeEvent(listener: (event: string) => void) {

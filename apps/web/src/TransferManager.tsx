@@ -9,6 +9,7 @@ import {
   parseBookmarkFile,
   type ImportCandidate,
 } from "./bookmark-transfer";
+import { NativeBookmarkImport } from "./NativeBookmarkImport";
 import "./transfer.css";
 
 interface Props {
@@ -154,9 +155,11 @@ export function TransferManager({ bookmarks, categories, onChanged }: Props) {
         <span className="library-count">{bookmarks.length} stored</span>
       </div>
 
+      <NativeBookmarkImport bookmarks={bookmarks} categories={categories} onChanged={onChanged} />
+
       <div className="transfer-grid">
         <article className="form-card transfer-card">
-          <div className="card-heading"><div><h2>Import</h2><p>Chrome, Edge, Firefox Netscape HTML or Dockmark / simple JSON.</p></div></div>
+          <div className="card-heading"><div><h2>Import file</h2><p>Chrome, Edge, Firefox Netscape HTML or Dockmark / simple JSON.</p></div></div>
           <label className="file-drop">
             <input type="file" accept=".html,.htm,.json,text/html,application/json" onChange={loadFile} />
             <strong>Choose bookmark file</strong>
@@ -179,7 +182,7 @@ export function TransferManager({ bookmarks, categories, onChanged }: Props) {
       {items.length > 0 && (
         <section className="import-preview">
           <div className="preview-heading">
-            <div><p className="eyebrow">IMPORT PREVIEW</p><h2>{fileName}</h2></div>
+            <div><p className="eyebrow">FILE IMPORT PREVIEW</p><h2>{fileName}</h2></div>
             <div className="preview-actions">
               <button className="text-action" type="button" onClick={() => selectAll(true)}>Select new</button>
               <button className="text-action muted-action" type="button" onClick={() => selectAll(false)}>Clear</button>

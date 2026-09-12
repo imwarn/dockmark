@@ -1,6 +1,7 @@
 import { browser } from "wxt/browser";
 
 const SERVER_KEY = "dockmarkServerUrl";
+const NATIVE_BOOKMARK_MAPPINGS_KEY = "dockmarkNativeBookmarkMappingsV1";
 const BRIDGE_SCRIPT_ID = "dockmark-web-bridge";
 const BRIDGE_FILE = "/dockmark-bridge.js";
 const BRIDGE_PROTOCOL_VERSION = 1;
@@ -11,7 +12,7 @@ const BRIDGE_CAPABILITIES = {
   workspacePinned: true,
   sessionRestore: true,
   sessionPinned: true,
-  nativeBookmarks: false,
+  nativeBookmarks: true,
   localHealth: false,
 } as const;
 
@@ -25,12 +26,35 @@ type WorkspaceBridgeItem = {
   openMode: "reuse" | "new-tab" | "pinned";
 };
 
-function bridgeStatus() {
+type NativeBookmarkItem = {
+  id: string;
+  parentId?: string;
+  title: string;
+  url: string;
+  folderPath: string[];
+  dateAdded?: number;
+};
+
+type NativeBookmarkMapping = {
+  browserBookmarkId: string;
+  dockmarkBookmarkId: string;
+  url: string;
+  mappedAt: string;
+};
+
+async function hasNativeBookmarkPermission() {
+  return browser.permissions.contains({ permissions: ["bookmarks"] });
+}
+
+async function bridgeStatus() {
   return {
     connected: true as const,
     protocolVersion: BRIDGE_PROTOCOL_VERSION,
     extensionVersion: browser.runtime.getManifest().version,
     capabilities: BRIDGE_CAPABILITIES,
+    permissions: {
+      nativeBookmarks: await hasNativeBookmarkPermission(),
+    },
   };
 }
 
@@ -203,6 +227,88 @@ async function openWorkspace(items: WorkspaceBridgeItem[]) {
   return { opened, reused, pinned };
 }
 
+async function loadNativeBookmarkMappings() {
+  const stored = await browser.storage.local.get(NATIVE_BOOKMARK_MAPPINGS_KEY);
+  const value = stored[NATIVE_BOOKMARK_MAPPINGS_KEY];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {} as Record<string, NativeBookmarkMapping>;
+  return value as Record<string, NativeBookmarkMapping>;
+}
+
+async function flattenNativeBookmarks() {
+  if (!(await hasNativeBookmarkPermission())) {
+    throw new Error("Native bookmark access is not enabled. Open the Dockmark extension and enable it first.");
+  }
+
+  const roots = await browser.bookmarks.getTree();
+  const output: NativeBookmarkItem[] = [];
+
+  function walk(node: (typeof roots)[number], folderPath: string[]) {
+    if (node.url) {
+      output.push({
+        id: node.id,
+        ...(node.parentId ? { parentId: node.parentId } : {}),
+        title: node.title?.trim() || node.url,
+        url: node.url,
+        folderPath,
+        ...(typeof node.dateAdded === "number" ? { dateAdded: node.dateAdded } : {}),
+      });
+      return;
+    }
+
+    const nextPath = node.title?.trim() ? [...folderPath, node.title.trim()] : folderPath;
+    for (const child of node.children ?? []) walk(child, nextPath);
+  }
+
+  for (const root of roots) walk(root, []);
+  return output;
+}
+
+async function nativeBookmarkSnapshot() {
+  const bookmarks = await flattenNativeBookmarks();
+  const liveById = new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark]));
+  const storedMappings = await loadNativeBookmarkMappings();
+  const mappings: NativeBookmarkMapping[] = [];
+  let pruned = false;
+
+  for (const [nativeId, mapping] of Object.entries(storedMappings)) {
+    const bookmark = liveById.get(nativeId);
+    if (!bookmark || bookmark.url !== mapping.url) {
+      delete storedMappings[nativeId];
+      pruned = true;
+      continue;
+    }
+    mappings.push(mapping);
+  }
+
+  if (pruned) await browser.storage.local.set({ [NATIVE_BOOKMARK_MAPPINGS_KEY]: storedMappings });
+  return { bookmarks, mappings };
+}
+
+async function saveNativeBookmarkMappings(items: unknown[]) {
+  const mappings = await loadNativeBookmarkMappings();
+  let saved = 0;
+
+  for (const item of items.slice(0, 5000)) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const browserBookmarkId = typeof record.browserBookmarkId === "string" ? record.browserBookmarkId : "";
+    const dockmarkBookmarkId = typeof record.dockmarkBookmarkId === "string" ? record.dockmarkBookmarkId : "";
+    const url = typeof record.url === "string" ? record.url : "";
+    if (!browserBookmarkId || !dockmarkBookmarkId || !isHttpUrl(url)) continue;
+
+    mappings[browserBookmarkId] = {
+      browserBookmarkId,
+      dockmarkBookmarkId,
+      url,
+      mappedAt: new Date().toISOString(),
+    };
+    saved += 1;
+  }
+
+  await browser.storage.local.set({ [NATIVE_BOOKMARK_MAPPINGS_KEY]: mappings });
+  return { saved };
+}
+
 async function assertTrustedBridgeSender(senderUrl: string | undefined) {
   const origin = await configuredOrigin();
   if (!origin || urlOrigin(senderUrl) !== origin) {
@@ -244,6 +350,8 @@ export default defineBackground(() => {
       scheduleTabsChanged();
     }
   });
+  browser.permissions.onAdded.addListener(() => void broadcastBridgeEvent("capabilities-changed"));
+  browser.permissions.onRemoved.addListener(() => void broadcastBridgeEvent("capabilities-changed"));
 
   browser.runtime.onMessage.addListener(async (message, sender) => {
     if (message?.type === "dockmark:get-capabilities") return bridgeStatus();
@@ -284,6 +392,14 @@ export default defineBackground(() => {
         const items = (message.payload as { items?: unknown } | undefined)?.items;
         if (!Array.isArray(items)) throw new Error("Session items must be an array.");
         return restoreItems(items as RestoreItem[]);
+      }
+      if (message.action === "get-native-bookmarks") {
+        return nativeBookmarkSnapshot();
+      }
+      if (message.action === "save-native-bookmark-mappings") {
+        const items = (message.payload as { items?: unknown } | undefined)?.items;
+        if (!Array.isArray(items)) throw new Error("Bookmark mappings must be an array.");
+        return saveNativeBookmarkMappings(items);
       }
       throw new Error(`Unknown Dockmark bridge action: ${message.action}`);
     }

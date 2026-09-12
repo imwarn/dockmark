@@ -2,7 +2,7 @@
 
 **A cloud-synced personal launcher for bookmarks, workspaces and browser tabs.**
 
-Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and configurable search live in one self-hosted launcher that works across browsers. The optional browser extension adds privileged capabilities such as live open-tab search, switching to an existing tab, Workspace reuse/pinning and pinned Session restore.
+Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and configurable search live in one self-hosted launcher that works across browsers. The optional browser extension adds privileged capabilities such as live open-tab search, switching to an existing tab, Workspace reuse/pinning, pinned Session restore and reviewed browser-native bookmark import.
 
 > Status: active V1 development. The Web app, D1 data model, search/command palette and Chromium browser bridge are functional; packaging and browser validation are automated in CI.
 
@@ -73,17 +73,33 @@ apps/extension/.output/chrome-mv3
 
 Open the Dockmark extension popup, enter your deployed Dockmark origin (for example a `workers.dev` URL or your custom domain), and choose **Connect**. The extension requests host permission only for the Dockmark origin you explicitly connect and dynamically registers the Web bridge there.
 
+### Import native browser bookmarks
+
+Native bookmark access is optional. Dockmark Extension `0.2.0` does not request the Chromium `bookmarks` permission at install time.
+
+1. Open the extension popup and choose **Enable bookmark access** under **Native bookmarks**.
+2. Open Dockmark Web and go to **Transfer**.
+3. Choose **Read browser bookmarks**.
+4. Review the detected folders, duplicates, existing Dockmark links and `local-only` entries.
+5. Select what to import/map and confirm.
+
+Dockmark preserves the browser folder path as a Dockmark category path when creating a new cloud bookmark. Multiple native bookmarks with the same normalized URL map to one Dockmark bookmark, and an already-existing Dockmark URL is linked instead of duplicated.
+
+The mapping `browserBookmarkId ↔ dockmarkBookmarkId` is stored only in the extension's local storage. Browser-internal bookmark IDs are not uploaded to D1. If the native bookmark is removed or its URL changes, the stale local mapping is pruned the next time the browser tree is read.
+
+This import path is deliberately **read-only in 0.2.0**: Dockmark does not create, rename, move, edit or delete native browser bookmarks. Two-way synchronization is a separate future feature.
+
 ### Create an installable ZIP
 
 ```bash
 npm run package:extension
 ```
 
-WXT writes both the unpacked Chromium build and release ZIP under `apps/extension/.output/`; for example `apps/extension/.output/chrome-mv3` and `apps/extension/.output/dockmarkextension-0.1.0-chrome.zip`. CI copies the ZIP into a visible staging directory before uploading it as the `dockmark-chromium-extension` GitHub Actions artifact. Tags matching `v*` likewise stage the ZIP and create a GitHub Release containing the packaged extension.
+WXT writes both the unpacked Chromium build and release ZIP under `apps/extension/.output/`; for example `apps/extension/.output/chrome-mv3` and `apps/extension/.output/dockmarkextension-0.2.0-chrome.zip`. CI copies the ZIP into a visible staging directory before uploading it as the `dockmark-chromium-extension` GitHub Actions artifact. Tags matching `v*` likewise stage the ZIP and create a GitHub Release containing the packaged extension.
 
 ### Chromium smoke test
 
-CI runs a real headless Chromium instance with the unpacked Manifest V3 extension loaded. It verifies the service worker, versioned capability handshake, open-tab enumeration/activation and pinned Session restore.
+CI runs a real headless Chromium instance with the unpacked Manifest V3 extension loaded. It verifies the service worker, versioned capability handshake, optional native-bookmark permission semantics, open-tab enumeration/activation and pinned Session restore.
 
 To run the same smoke test locally:
 
@@ -95,7 +111,7 @@ npx playwright install --with-deps --no-shell chromium
 npm run smoke:chromium
 ```
 
-The CI smoke test intentionally does **not** bypass Chromium's optional-host permission prompt. After deploying the Web app, do this one-minute live bridge check once:
+The CI smoke test intentionally does **not** bypass Chromium's optional permission prompts. After deploying the Web app, do this live bridge check once:
 
 1. Load the unpacked extension and connect it to the deployed Dockmark origin.
 2. Open two ordinary HTTP/HTTPS tabs outside the Dockmark origin.
@@ -103,6 +119,7 @@ The CI smoke test intentionally does **not** bypass Chromium's optional-host per
 4. Select an Open Tab result; Dockmark should focus the existing tab instead of duplicating it.
 5. Open a Workspace containing a `reuse` item and a `pinned` item; the existing matching tab should be reused and the pinned item should become pinned.
 6. Restore a Session containing a pinned tab; its pinned state should be preserved.
+7. Enable **Native bookmarks**, read them from **Transfer**, import a small reviewed subset, refresh the native preview and confirm the imported entries show as mapped while the browser's own bookmark tree remains unchanged.
 
 ## Design principles
 
@@ -110,6 +127,7 @@ The CI smoke test intentionally does **not** bypass Chromium's optional-host per
 - Workspaces and Sessions are cloud-portable across browsers.
 - Command priority is `Open Tabs > Workspace > Session > Bookmark > Navigation > Search` when the extension is connected.
 - The Web/Extension bridge uses a versioned capability handshake so the two sides can evolve independently.
+- Browser-native bookmark access is optional and reviewed; native IDs/mappings stay local to the extension.
 - Local/private URLs are never health-checked from Cloudflare.
 - `ignore` and `local-only` entries are excluded from bulk broken-link deletion.
 - AI changes are suggestions with preview/diff/apply, never silent mutations.
