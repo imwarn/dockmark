@@ -39,6 +39,13 @@ jobs:
       - name: Validate source Wrangler config
         run: npm run deploy:source-dry-run
 
+      - name: Validate D1 deploy resolver
+        env:
+          DOCKMARK_D1_DATABASE_ID: 11111111-1111-4111-8111-111111111111
+        run: |
+          npm run prepare:cloudflare-deploy
+          npm run resolve:cloudflare-d1
+
       - name: Cloudflare deploy dry run
         run: npm run deploy:dry-run
 
