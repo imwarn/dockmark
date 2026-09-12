@@ -12,7 +12,7 @@ import {
   type NativeBookmarkMapping,
   type NativeBrowserBookmark,
 } from "./browser-bridge";
-import { buildImportPreview, type ImportCandidate } from "./bookmark-transfer";
+import { buildImportPreview, type ImportCandidate, type ParsedBookmark } from "./bookmark-transfer";
 
 interface Props {
   bookmarks: Bookmark[];
@@ -69,11 +69,14 @@ function buildNativePreview(
   mappings: NativeBookmarkMapping[],
   cloudBookmarks: Bookmark[],
 ) {
-  const parsed = nativeBookmarks.map((bookmark) => ({
-    title: bookmark.title || bookmark.url,
-    url: bookmark.url,
-    ...(folderCategory(bookmark.folderPath) ? { categoryName: folderCategory(bookmark.folderPath) } : {}),
-  }));
+  const parsed: ParsedBookmark[] = nativeBookmarks.map((bookmark) => {
+    const categoryName = folderCategory(bookmark.folderPath);
+    return {
+      title: bookmark.title || bookmark.url,
+      url: bookmark.url,
+      ...(categoryName ? { categoryName } : {}),
+    };
+  });
   const base = buildImportPreview(parsed, cloudBookmarks);
   const cloudByUrl = existingByUrl(cloudBookmarks);
   const cloudById = new Map(cloudBookmarks.map((bookmark) => [bookmark.id, bookmark]));
