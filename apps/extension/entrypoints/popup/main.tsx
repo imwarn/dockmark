@@ -71,6 +71,7 @@ function Popup() {
   const [sessionName, setSessionName] = useState(defaultSessionName);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [connected, setConnected] = useState(false);
+  const [bookmarkAccess, setBookmarkAccess] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +85,8 @@ function Popup() {
     void browser.runtime
       .sendMessage({ type: "dockmark:get-open-tabs" })
       .then((value) => setTabs((value as TabSummary[]) ?? []));
+
+    void browser.permissions.contains({ permissions: ["bookmarks"] }).then(setBookmarkAccess);
 
     void browser.storage.local.get([SERVER_KEY, DEVICE_KEY]).then(async (stored) => {
       const storedServer = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
@@ -147,6 +150,23 @@ function Popup() {
     });
   }
 
+  async function enableBookmarkAccess() {
+    await run(async () => {
+      const granted = await browser.permissions.request({ permissions: ["bookmarks"] });
+      if (!granted) throw new Error("Native bookmark access was not granted.");
+      setBookmarkAccess(true);
+      setStatus("Native bookmark access enabled. Dockmark import is read-only in this version.");
+    });
+  }
+
+  async function disableBookmarkAccess() {
+    await run(async () => {
+      const removed = await browser.permissions.remove({ permissions: ["bookmarks"] });
+      setBookmarkAccess(!removed);
+      setStatus(removed ? "Native bookmark access disabled." : "Native bookmark access is still enabled.");
+    });
+  }
+
   async function saveWindow() {
     await run(async () => {
       if (!connected) throw new Error("Connect the extension to your Dockmark site first.");
@@ -201,6 +221,14 @@ function Popup() {
           <input value={deviceLabel} onChange={(event) => setDeviceLabel(event.target.value)} placeholder="Main MacBook" />
           <button className="secondary" disabled={busy || !serverUrl.trim()} onClick={() => void connect()}>Connect</button>
         </div>
+      </section>
+
+      <section className="card permission-card">
+        <div className="section-heading"><strong>Native bookmarks</strong><span className={bookmarkAccess ? "online" : "offline"}>{bookmarkAccess ? "Enabled" : "Optional"}</span></div>
+        <p>Used only to read your browser bookmark tree for reviewed import and local mapping. Dockmark does not modify native bookmarks in this version.</p>
+        <button className="secondary" disabled={busy} onClick={() => void (bookmarkAccess ? disableBookmarkAccess() : enableBookmarkAccess())}>
+          {bookmarkAccess ? "Disable bookmark access" : "Enable bookmark access"}
+        </button>
       </section>
 
       {connected && (
