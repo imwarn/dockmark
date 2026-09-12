@@ -36,6 +36,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Validate source Wrangler config
+        run: npm run deploy:source-dry-run
+
       - name: Cloudflare deploy dry run
         run: npm run deploy:dry-run
 
