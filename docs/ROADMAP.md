@@ -34,7 +34,8 @@
 
 ## V2 — browser bridge
 
-- [ ] browser-native bookmark import and optional two-way mapping
+- [x] reviewed browser-native bookmark import with URL de-duplication and extension-local mapping
+- [ ] optional two-way browser bookmark synchronization
 - [x] save current browser window as a cloud Session
 - [x] restore a Session from the extension with pinned state preserved
 - [x] inject live open tabs into the Web Command Palette
@@ -43,10 +44,10 @@
 - [x] versioned extension capability handshake with the configured Dockmark Web origin
 - [x] dynamic content-script registration limited to the explicitly authorized Dockmark origin
 - [x] Chromium Manifest V3 packaging (`wxt zip`)
-- [x] real Playwright Chromium smoke test for MV3 worker, capabilities, tabs and pinned restore
+- [x] real Playwright Chromium smoke test for MV3 worker, capabilities, optional permissions, tabs and pinned restore
 - [x] CI artifact for installable Chromium ZIP
 - [x] tag-driven GitHub Release packaging
-- [ ] deployed-origin manual bridge permission smoke check
+- [ ] deployed-origin manual bridge + native bookmark permission smoke check
 - [ ] Firefox validation next
 
 ## Deployment
@@ -56,6 +57,7 @@
 - [x] Deploy to Cloudflare README button
 - [x] documented existing-GitHub-repository Workers Builds setup
 - [x] D1 migrations included in the deploy path
+- [x] CI Wrangler deploy dry-run using Vite's generated deployment config
 
 ## V3 — AI-assisted organization
 
