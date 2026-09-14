@@ -22,6 +22,7 @@ const capabilityLabels: Array<[keyof BrowserBridgeStatus["capabilities"], string
   ["sessionRestore", "Session restore"],
   ["sessionPinned", "Pinned session restore"],
   ["nativeBookmarks", "Native bookmarks"],
+  ["nativeBookmarkSync", "Native bookmark mapping sync"],
   ["localHealth", "Local URL health checks"],
 ];
 
@@ -51,7 +52,9 @@ export function BrowserExtensionManager() {
 
   useEffect(() => {
     const unsubscribe = onBridgeEvent((event) => {
-      if (event === "ready" || event === "tabs-changed") void refresh();
+      if (event === "ready" || event === "tabs-changed" || event === "bookmarks-changed" || event === "capabilities-changed") {
+        void refresh();
+      }
     });
     const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
@@ -90,7 +93,7 @@ export function BrowserExtensionManager() {
           <span className="extension-version">Chromium · v{EXTENSION_RELEASE_VERSION}</span>
           <h2>{status ? `Extension ${status.extensionVersion} detected` : "Unlock native browser actions"}</h2>
           <p>
-            Search and activate open tabs, reuse Workspace tabs, restore pinned Sessions and review native browser bookmarks before importing them into Dockmark.
+            Search and activate open tabs, reuse Workspace tabs, restore pinned Sessions and review native browser bookmark mappings before applying browser → Dockmark changes.
           </p>
           <div className="extension-actions">
             {webStoreUrl ? (
