@@ -31,10 +31,18 @@ jobs:
       - name: Package Chromium extension
         run: npm run package:extension
 
+      - name: Validate Chromium package
+        run: |
+          VERSION=$(node -p "require('./apps/extension/package.json').version")
+          PACKAGE="apps/extension/.output/dockmark-chrome-v${VERSION}.zip"
+          test -f "$PACKAGE"
+          unzip -Z1 "$PACKAGE" | grep -qx "manifest.json"
+
       - name: Stage Chromium package
         run: |
+          VERSION=$(node -p "require('./apps/extension/package.json').version")
           mkdir -p artifacts
-          cp apps/extension/.output/*.zip artifacts/
+          cp "apps/extension/.output/dockmark-chrome-v${VERSION}.zip" artifacts/
 
       - name: Create GitHub Release
         env:
