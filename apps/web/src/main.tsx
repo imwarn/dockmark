@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { PrivateRoot } from "./PrivateRoot";
+import { PublicPage } from "./PublicPage";
 import "./styles.css";
 import "./workspaces.css";
 import "./session.css";
@@ -10,8 +11,10 @@ import "./bridge.css";
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root");
 
+const privateRoute = window.location.pathname === "/app" || window.location.pathname.startsWith("/app/");
+
 createRoot(root).render(
   <StrictMode>
-    <App />
+    {privateRoute ? <PrivateRoot /> : <PublicPage />}
   </StrictMode>,
 );
