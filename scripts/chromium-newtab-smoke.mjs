@@ -149,6 +149,7 @@ try {
 
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
+  await page.bringToFront();
   await page.getByText("Cached Example", { exact: true }).waitFor();
   await page.getByText("Offline Workspace", { exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelector("#connection-state")?.textContent?.includes("Cached · manual refresh"));
