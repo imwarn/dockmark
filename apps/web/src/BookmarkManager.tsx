@@ -73,8 +73,12 @@ function moveByOffset(ids: string[], id: string, offset: -1 | 1) {
   const index = ids.indexOf(id);
   const target = index + offset;
   if (index < 0 || target < 0 || target >= ids.length) return ids;
+  const moving = ids[index];
+  const displaced = ids[target];
+  if (moving === undefined || displaced === undefined) return ids;
   const next = [...ids];
-  [next[index], next[target]] = [next[target], next[index]];
+  next[index] = displaced;
+  next[target] = moving;
   return next;
 }
 
@@ -156,7 +160,7 @@ export function BookmarkManager({ bookmarks, categories, loading, onChanged }: P
   );
 
   const bookmarkGroups = useMemo<BookmarkGroup[]>(() => {
-    const groups = categories.map((category) => ({
+    const groups: BookmarkGroup[] = categories.map((category) => ({
       categoryId: category.id,
       name: category.name,
       bookmarks: bookmarks
