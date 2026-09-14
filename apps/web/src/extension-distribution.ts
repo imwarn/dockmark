@@ -1,4 +1,4 @@
-export const EXTENSION_RELEASE_VERSION = "0.3.0";
+export const EXTENSION_RELEASE_VERSION = "0.3.1";
 
 // Fill this when the Chrome Web Store listing is public. The UI will promote it
 // to the primary action while keeping the manual download visible.
