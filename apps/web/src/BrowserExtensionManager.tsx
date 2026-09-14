@@ -34,6 +34,7 @@ export function BrowserExtensionManager() {
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  const webStoreUrl = CHROME_WEB_STORE_URL;
 
   const refresh = useCallback(async () => {
     setChecking(true);
@@ -92,14 +93,14 @@ export function BrowserExtensionManager() {
             Search and activate open tabs, reuse Workspace tabs, restore pinned Sessions and review native browser bookmarks before importing them into Dockmark.
           </p>
           <div className="extension-actions">
-            {CHROME_WEB_STORE_URL ? (
-              <button className="primary" type="button" onClick={() => external(CHROME_WEB_STORE_URL)}>Add to Chrome</button>
+            {webStoreUrl ? (
+              <button className="primary" type="button" onClick={() => external(webStoreUrl)}>Add to Chrome</button>
             ) : (
               <button className="primary" type="button" onClick={() => external(EXTENSION_DOWNLOAD_URL)}>
-                {updateAvailable || !protocolCompatible && Boolean(status) ? "Download latest extension" : "Download Extension"}
+                {updateAvailable || (!protocolCompatible && Boolean(status)) ? "Download latest extension" : "Download Extension"}
               </button>
             )}
-            {CHROME_WEB_STORE_URL ? (
+            {webStoreUrl ? (
               <button className="secondary" type="button" onClick={() => external(EXTENSION_DOWNLOAD_URL)}>Download Extension</button>
             ) : (
               <button className="secondary" type="button" onClick={() => setGuideOpen((open) => !open)}>Installation Guide</button>
