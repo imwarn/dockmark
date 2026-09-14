@@ -6,10 +6,12 @@ import {
   type BrowserBridgeStatus,
 } from "./browser-bridge";
 import {
+  CHROME_NEW_TAB_WEB_STORE_URL,
   CHROME_WEB_STORE_URL,
   EXTENSION_DOWNLOAD_URL,
   EXTENSION_RELEASE_URL,
   EXTENSION_RELEASE_VERSION,
+  NEW_TAB_EXTENSION_DOWNLOAD_URL,
   compareExtensionVersions,
 } from "./extension-distribution";
 import "./extension.css";
@@ -23,6 +25,7 @@ const capabilityLabels: Array<[keyof BrowserBridgeStatus["capabilities"], string
   ["sessionPinned", "Pinned session restore"],
   ["nativeBookmarks", "Native bookmarks"],
   ["nativeBookmarkSync", "Native bookmark mapping sync"],
+  ["nativeBookmarkWriteback", "Manual bookmark writeback"],
   ["localHealth", "Local URL health checks"],
 ];
 
@@ -36,6 +39,7 @@ export function BrowserExtensionManager() {
   const [error, setError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const webStoreUrl = CHROME_WEB_STORE_URL;
+  const newTabWebStoreUrl = CHROME_NEW_TAB_WEB_STORE_URL;
 
   const refresh = useCallback(async () => {
     setChecking(true);
@@ -95,12 +99,12 @@ export function BrowserExtensionManager() {
           <span className="extension-version">Chromium · v{EXTENSION_RELEASE_VERSION}</span>
           <h2>{status ? `Extension ${status.extensionVersion} detected` : "Unlock native browser actions"}</h2>
           <p>
-            Search and activate open tabs, reuse Workspace tabs, restore pinned Sessions and review native browser bookmark mappings before applying browser → Dockmark changes.
+            Search and activate open tabs, reuse Workspace tabs, restore pinned Sessions, review Browser ↔ Dockmark bookmark mappings and explicitly write a mapped Dockmark title/URL back to the browser when you choose to.
           </p>
           {status && protocolCompatible && !nativeBookmarksGranted && (
             <div className="extension-permission-callout">
               <strong>Native bookmarks are not enabled.</strong>
-              <span>Open the Dockmark extension popup and choose <b>Enable bookmark access</b>. Reinstalling the unpacked extension resets this optional permission.</span>
+              <span>Open the Dockmark extension popup and choose <b>Enable bookmark access</b>. This permission is used for reviewed import/sync and explicit manual writeback; Dockmark never writes browser bookmarks in the background.</span>
             </div>
           )}
           <div className="extension-actions">
@@ -139,10 +143,30 @@ export function BrowserExtensionManager() {
             <li>Enable <strong>Developer mode</strong>, then choose <strong>Load unpacked</strong>.</li>
             <li>Select the extracted Dockmark extension folder containing <code>manifest.json</code>.</li>
             <li>Open the Dockmark extension popup, set this site as the server, then grant site access when prompted.</li>
-            <li>If you need browser bookmark import/sync, separately choose <strong>Enable bookmark access</strong> in the popup.</li>
+            <li>If you need browser bookmark import/sync or manual writeback, separately choose <strong>Enable bookmark access</strong> in the popup.</li>
           </ol>
         </article>
       )}
+
+      <article className="extension-guide form-card">
+        <div className="card-heading">
+          <div>
+            <h2>Optional New Tab build</h2>
+            <p>Use the same Dockmark bridge, but make each new browser tab open your configured Dockmark site.</p>
+          </div>
+          <span className="native-readonly">OPT-IN</span>
+        </div>
+        <p className="extension-channel-note">
+          Chrome new-tab overrides are a static manifest capability, so they cannot be toggled safely at runtime. Dockmark therefore ships this as an explicit alternative build instead of silently changing every user's new tab page.
+        </p>
+        <div className="extension-actions">
+          {newTabWebStoreUrl && <button className="primary" type="button" onClick={() => external(newTabWebStoreUrl)}>Add New Tab build to Chrome</button>}
+          <button className={newTabWebStoreUrl ? "secondary" : "primary"} type="button" onClick={() => external(NEW_TAB_EXTENSION_DOWNLOAD_URL)}>Download New Tab build</button>
+        </div>
+        <p className="extension-channel-note">
+          For an existing unpacked Dockmark installation, replace the files in the same extension folder with the New Tab ZIP contents and click <strong>Reload</strong> in <code>chrome://extensions</code>. This preserves the extension ID and local mappings. Do not load both variants side-by-side. The standard build never overrides the new tab page.
+        </p>
+      </article>
 
       <div className="extension-diagnostics-grid">
         <article className="form-card extension-diagnostic-card">
