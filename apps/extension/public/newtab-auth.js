@@ -23,17 +23,19 @@
     return nativeFetch(input, init);
   };
 
-  document.getElementById("manage")?.addEventListener("click", async (event) => {
-    const stored = await chrome.storage.local.get(SERVER_KEY);
-    const origin = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
-    if (!origin) return;
+  document.getElementById("manage")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
-    const target = new URL("/app", `${origin}/`).toString();
-    try {
-      await chrome.tabs.update({ url: target });
-    } catch {
-      window.location.assign(target);
-    }
+    void (async () => {
+      const stored = await chrome.storage.local.get(SERVER_KEY);
+      const origin = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
+      if (!origin) return;
+      const target = new URL("/app", `${origin}/`).toString();
+      try {
+        await chrome.tabs.update({ url: target });
+      } catch {
+        window.location.assign(target);
+      }
+    })();
   }, true);
 })();
