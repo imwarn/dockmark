@@ -135,7 +135,7 @@ export function BrowserExtensionManager() {
           <div className="extension-actions">
             {newTabWebStoreUrl && <button className="primary" type="button" onClick={() => external(newTabWebStoreUrl)}>Add Dockmark New Tab</button>}
             <button className={newTabWebStoreUrl ? "secondary" : "primary"} type="button" onClick={() => external(NEW_TAB_EXTENSION_DOWNLOAD_URL)}>
-              {updateAvailable ? "Download New Tab v0.5.0" : "Download New Tab"}
+              {updateAvailable ? `Download New Tab v${EXTENSION_RELEASE_VERSION}` : "Download New Tab"}
             </button>
           </div>
         </article>
@@ -157,7 +157,7 @@ export function BrowserExtensionManager() {
           <div className="extension-actions">
             {webStoreUrl && <button className="primary" type="button" onClick={() => external(webStoreUrl)}>Add Standard Extension</button>}
             <button className={webStoreUrl ? "secondary" : "primary"} type="button" onClick={() => external(EXTENSION_DOWNLOAD_URL)}>
-              {updateAvailable || (!protocolCompatible && Boolean(status)) ? "Download Standard v0.5.0" : "Download Standard"}
+              {updateAvailable || (!protocolCompatible && Boolean(status)) ? `Download Standard v${EXTENSION_RELEASE_VERSION}` : "Download Standard"}
             </button>
           </div>
         </article>
