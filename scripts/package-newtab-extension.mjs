@@ -31,8 +31,7 @@ for (const required of ["newtab.html", "newtab.js"]) {
 
 const targetName = `dockmark-newtab-chrome-v${version}.zip`;
 const targetPath = path.join(outputRoot, targetName);
-const temporaryName = `${targetName}.tmp`;
-const temporaryPath = path.join(outputRoot, temporaryName);
+const temporaryPath = path.join(outputRoot, `dockmark-newtab-chrome-v${version}.tmp.zip`);
 await rm(targetPath, { force: true });
 await rm(temporaryPath, { force: true });
 
