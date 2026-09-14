@@ -18,6 +18,20 @@ export interface NativeMappingRow {
   safeToApply: boolean;
 }
 
+type MappingMetadataBaseline = {
+  browserBookmarkId: string;
+  dockmarkBookmarkId: string;
+  browserTitle: string;
+  browserUrl: string;
+  browserFolderPath: string[];
+  dockmarkTitle: string;
+  dockmarkUrl: string;
+  dockmarkCategoryId: string | null;
+  recordedAt: string;
+};
+
+const BASELINE_KEY = "dockmarkNativeBookmarkMetadataBaselinesV1";
+
 function normalized(value: string | undefined) {
   if (!value) return null;
   try {
@@ -27,6 +41,52 @@ function normalized(value: string | undefined) {
   }
 }
 
+function samePath(left: string[], right: string[]) {
+  return left.length === right.length && left.every((part, index) => part === right[index]);
+}
+
+function loadBaselines() {
+  if (typeof window === "undefined") return {} as Record<string, MappingMetadataBaseline>;
+  try {
+    const raw = window.localStorage.getItem(BASELINE_KEY);
+    if (!raw) return {} as Record<string, MappingMetadataBaseline>;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {} as Record<string, MappingMetadataBaseline>;
+    }
+    return parsed as Record<string, MappingMetadataBaseline>;
+  } catch {
+    return {} as Record<string, MappingMetadataBaseline>;
+  }
+}
+
+function persistBaselines(baselines: Record<string, MappingMetadataBaseline>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BASELINE_KEY, JSON.stringify(baselines));
+  } catch {
+    // Mapping health still works for URL changes if local storage is unavailable.
+  }
+}
+
+function currentBaseline(
+  mapping: NativeBookmarkMapping,
+  native: NativeBrowserBookmark,
+  cloud: Bookmark,
+): MappingMetadataBaseline {
+  return {
+    browserBookmarkId: mapping.browserBookmarkId,
+    dockmarkBookmarkId: mapping.dockmarkBookmarkId,
+    browserTitle: native.title,
+    browserUrl: native.url,
+    browserFolderPath: [...native.folderPath],
+    dockmarkTitle: cloud.title,
+    dockmarkUrl: cloud.url,
+    dockmarkCategoryId: cloud.categoryId ?? null,
+    recordedAt: new Date().toISOString(),
+  };
+}
+
 export function buildNativeMappingRows(
   nativeBookmarks: NativeBrowserBookmark[],
   mappings: NativeBookmarkMapping[],
@@ -34,8 +94,18 @@ export function buildNativeMappingRows(
 ): NativeMappingRow[] {
   const nativeById = new Map(nativeBookmarks.map((bookmark) => [bookmark.id, bookmark]));
   const cloudById = new Map(cloudBookmarks.map((bookmark) => [bookmark.id, bookmark]));
+  const baselines = loadBaselines();
+  const activeIds = new Set(mappings.map((mapping) => mapping.browserBookmarkId));
+  let baselinesChanged = false;
 
-  return mappings.map((mapping): NativeMappingRow => {
+  for (const browserBookmarkId of Object.keys(baselines)) {
+    if (!activeIds.has(browserBookmarkId)) {
+      delete baselines[browserBookmarkId];
+      baselinesChanged = true;
+    }
+  }
+
+  const rows = mappings.map((mapping): NativeMappingRow => {
     const native = nativeById.get(mapping.browserBookmarkId);
     const cloud = cloudById.get(mapping.dockmarkBookmarkId);
 
@@ -56,7 +126,68 @@ export function buildNativeMappingRows(
       return { mapping, native, cloud, state: "conflict", safeToApply: false };
     }
 
-    if (nativeUrl === cloudUrl) {
+    let baseline = baselines[mapping.browserBookmarkId];
+    if (baseline && baseline.dockmarkBookmarkId !== mapping.dockmarkBookmarkId) {
+      baseline = currentBaseline(mapping, native, cloud);
+      baselines[mapping.browserBookmarkId] = baseline;
+      baselinesChanged = true;
+    }
+
+    if (!baseline) {
+      // 0.3.0 mappings only stored URL. Preserve its directional URL logic first.
+      if (nativeUrl !== mappedUrl && cloudUrl === mappedUrl) {
+        return { mapping, native, cloud, state: "native-changed", safeToApply: true };
+      }
+      if (nativeUrl === mappedUrl && cloudUrl !== mappedUrl) {
+        return { mapping, native, cloud, state: "cloud-changed", safeToApply: false };
+      }
+      if (nativeUrl !== cloudUrl) {
+        return { mapping, native, cloud, state: "conflict", safeToApply: false };
+      }
+
+      // A legacy mapping cannot tell which side changed its title before this baseline existed.
+      // Surface that ambiguity rather than silently overwriting either side.
+      if (native.title !== cloud.title) {
+        return { mapping, native, cloud, state: "conflict", safeToApply: false };
+      }
+
+      baseline = currentBaseline(mapping, native, cloud);
+      baselines[mapping.browserBookmarkId] = baseline;
+      baselinesChanged = true;
+    }
+
+    const baselineNativeUrl = normalized(baseline.browserUrl);
+    const baselineCloudUrl = normalized(baseline.dockmarkUrl);
+    if (!baselineNativeUrl || !baselineCloudUrl) {
+      return { mapping, native, cloud, state: "conflict", safeToApply: false };
+    }
+
+    const nativeUrlChanged = nativeUrl !== baselineNativeUrl;
+    const cloudUrlChanged = cloudUrl !== baselineCloudUrl;
+    const nativeTitleChanged = native.title !== baseline.browserTitle;
+    const cloudTitleChanged = cloud.title !== baseline.dockmarkTitle;
+    const nativeFolderChanged = !samePath(native.folderPath, baseline.browserFolderPath);
+    const cloudCategoryChanged = (cloud.categoryId ?? null) !== baseline.dockmarkCategoryId;
+
+    // Folder/category changes are detected but kept out of Safe Apply until the category
+    // conflict policy is explicit. This prevents a folder move from silently recategorizing cloud data.
+    if (nativeFolderChanged || cloudCategoryChanged) {
+      if (!nativeUrlChanged && !cloudUrlChanged && !nativeTitleChanged && !cloudTitleChanged) {
+        return {
+          mapping,
+          native,
+          cloud,
+          state: nativeFolderChanged && !cloudCategoryChanged ? "conflict" : "cloud-changed",
+          safeToApply: false,
+        };
+      }
+      return { mapping, native, cloud, state: "conflict", safeToApply: false };
+    }
+
+    const nativeChanged = nativeUrlChanged || nativeTitleChanged;
+    const cloudChanged = cloudUrlChanged || cloudTitleChanged;
+
+    if (!nativeChanged && !cloudChanged) {
       return {
         mapping,
         native,
@@ -66,16 +197,27 @@ export function buildNativeMappingRows(
       };
     }
 
-    if (nativeUrl !== mappedUrl && cloudUrl === mappedUrl) {
+    if (nativeChanged && !cloudChanged) {
       return { mapping, native, cloud, state: "native-changed", safeToApply: true };
     }
 
-    if (nativeUrl === mappedUrl && cloudUrl !== mappedUrl) {
+    if (!nativeChanged && cloudChanged) {
       return { mapping, native, cloud, state: "cloud-changed", safeToApply: false };
+    }
+
+    // After an explicit browser → Dockmark apply both sides converge. Refresh only the
+    // local metadata baseline; no browser or cloud data is changed here.
+    if (nativeUrl === cloudUrl && native.title === cloud.title && mappedUrl === nativeUrl) {
+      baselines[mapping.browserBookmarkId] = currentBaseline(mapping, native, cloud);
+      baselinesChanged = true;
+      return { mapping, native, cloud, state: "synced", safeToApply: false };
     }
 
     return { mapping, native, cloud, state: "conflict", safeToApply: false };
   });
+
+  if (baselinesChanged) persistBaselines(baselines);
+  return rows;
 }
 
 export function nativeMappingStateLabel(state: NativeMappingState) {
@@ -86,6 +228,6 @@ export function nativeMappingStateLabel(state: NativeMappingState) {
     case "cloud-missing": return "DOCKMARK MISSING";
     case "mapping-stale": return "MAPPING STALE";
     case "cloud-changed": return "DOCKMARK CHANGED";
-    case "conflict": return "CONFLICT";
+    case "conflict": return "REVIEW";
   }
 }

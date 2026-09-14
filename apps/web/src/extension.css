@@ -9,6 +9,9 @@
 .extension-version { color: #84b394; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; }
 .extension-hero-copy h2 { margin: 10px 0 9px; font-size: clamp(24px, 4vw, 36px); letter-spacing: -.035em; }
 .extension-hero-copy > p { max-width: 650px; margin: 0; color: #8a958f; line-height: 1.65; }
+.extension-permission-callout { display: grid; gap: 3px; max-width: 650px; margin-top: 16px; padding: 12px 14px; border: 1px solid #584b2c; border-radius: 12px; background: rgba(80,60,24,.16); }
+.extension-permission-callout strong { color: #e1c985; font-size: 12px; }
+.extension-permission-callout span { color: #a99d7c; font-size: 12px; line-height: 1.5; }
 .extension-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
 .extension-channel-note { margin-top: 15px !important; color: #68746d !important; font-size: 12px; }
 .extension-mark { display: grid; place-items: center; width: 118px; height: 118px; justify-self: end; border: 1px solid #3a4b42; border-radius: 31px; background: #18211c; color: #bce2c7; font-size: 44px; font-weight: 680; letter-spacing: -.08em; box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 18px 55px rgba(0,0,0,.22); }

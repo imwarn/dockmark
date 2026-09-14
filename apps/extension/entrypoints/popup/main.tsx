@@ -72,6 +72,7 @@ function Popup() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [connected, setConnected] = useState(false);
   const [bookmarkAccess, setBookmarkAccess] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,29 +83,42 @@ function Popup() {
   );
 
   useEffect(() => {
-    void browser.runtime
-      .sendMessage({ type: "dockmark:get-open-tabs" })
-      .then((value) => setTabs((value as TabSummary[]) ?? []));
+    let cancelled = false;
 
-    void browser.permissions.contains({ permissions: ["bookmarks"] }).then(setBookmarkAccess);
-
-    void browser.storage.local.get([SERVER_KEY, DEVICE_KEY]).then(async (stored) => {
-      const storedServer = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
-      const storedDevice = typeof stored[DEVICE_KEY] === "string" ? stored[DEVICE_KEY] : "Main browser";
-      setServerUrl(storedServer);
-      setDeviceLabel(storedDevice);
-      if (!storedServer) return;
-
+    void (async () => {
       try {
+        const [openTabs, hasBookmarks, stored] = await Promise.all([
+          browser.runtime.sendMessage({ type: "dockmark:get-open-tabs" }),
+          browser.permissions.contains({ permissions: ["bookmarks"] }),
+          browser.storage.local.get([SERVER_KEY, DEVICE_KEY]),
+        ]);
+        if (cancelled) return;
+
+        setTabs((openTabs as TabSummary[]) ?? []);
+        setBookmarkAccess(hasBookmarks);
+
+        const storedServer = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
+        const storedDevice = typeof stored[DEVICE_KEY] === "string" ? stored[DEVICE_KEY] : "Main browser";
+        setServerUrl(storedServer);
+        setDeviceLabel(storedDevice);
+        if (!storedServer) return;
+
         const allowed = await browser.permissions.contains({ origins: [hostPattern(storedServer)] });
-        if (!allowed) return;
+        if (!allowed || cancelled) return;
         await browser.runtime.sendMessage({ type: "dockmark:configure-bridge", origin: storedServer });
+        if (cancelled) return;
         setConnected(true);
         await refreshSessions(storedServer);
       } catch {
-        setConnected(false);
+        if (!cancelled) setConnected(false);
+      } finally {
+        if (!cancelled) setInitializing(false);
       }
-    });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function refreshSessions(origin = serverUrl) {
@@ -131,19 +145,24 @@ function Popup() {
       const origin = normalizeServerUrl(serverUrl);
       const stored = await browser.storage.local.get(SERVER_KEY);
       const previousOrigin = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
+      const label = deviceLabel.trim() || "Main browser";
+
+      // Persist the requested origin before opening Chromium's permission prompt. Extension
+      // popups can be closed by that prompt; on reopen the bootstrap path can finish the
+      // connection automatically instead of requiring a second Connect click.
+      await browser.storage.local.set({ [SERVER_KEY]: origin, [DEVICE_KEY]: label });
+      setServerUrl(origin);
+      setDeviceLabel(label);
+
       const granted = await browser.permissions.request({ origins: [hostPattern(origin)] });
       if (!granted) throw new Error("Dockmark site access was not granted.");
 
-      const label = deviceLabel.trim() || "Main browser";
-      await browser.storage.local.set({ [SERVER_KEY]: origin, [DEVICE_KEY]: label });
       await browser.runtime.sendMessage({ type: "dockmark:configure-bridge", origin });
 
       if (previousOrigin && previousOrigin !== origin) {
         await browser.permissions.remove({ origins: [hostPattern(previousOrigin)] }).catch(() => false);
       }
 
-      setServerUrl(origin);
-      setDeviceLabel(label);
       setConnected(true);
       await refreshSessions(origin);
       setStatus("Connected to Dockmark. Browser bridge ready.");
@@ -155,7 +174,7 @@ function Popup() {
       const granted = await browser.permissions.request({ permissions: ["bookmarks"] });
       if (!granted) throw new Error("Native bookmark access was not granted.");
       setBookmarkAccess(true);
-      setStatus("Native bookmark access enabled. Dockmark import is read-only in this version.");
+      setStatus("Native bookmark access enabled. Dockmark can now review imports and mapping changes; native bookmarks remain read-only.");
     });
   }
 
@@ -215,18 +234,23 @@ function Popup() {
       </header>
 
       <section className="card connection-card">
-        <div className="section-heading"><strong>Cloud connection</strong><span className={connected ? "online" : "offline"}>{connected ? "Connected" : "Local only"}</span></div>
+        <div className="section-heading">
+          <strong>Cloud connection</strong>
+          <span className={connected ? "online" : "offline"}>{connected ? "Connected" : initializing ? "Checking" : "Local only"}</span>
+        </div>
         <input value={serverUrl} onChange={(event) => { setServerUrl(event.target.value); setConnected(false); }} placeholder="https://dockmark.example.com" inputMode="url" />
         <div className="inline-fields">
           <input value={deviceLabel} onChange={(event) => setDeviceLabel(event.target.value)} placeholder="Main MacBook" />
-          <button className="secondary" disabled={busy || !serverUrl.trim()} onClick={() => void connect()}>Connect</button>
+          <button className="secondary" disabled={initializing || busy || !serverUrl.trim()} onClick={() => void connect()}>
+            {initializing ? "Checking…" : connected ? "Reconnect" : "Connect"}
+          </button>
         </div>
       </section>
 
       <section className="card permission-card">
         <div className="section-heading"><strong>Native bookmarks</strong><span className={bookmarkAccess ? "online" : "offline"}>{bookmarkAccess ? "Enabled" : "Optional"}</span></div>
         <p>Used only to read your browser bookmark tree for reviewed import and local mapping. Dockmark does not modify native bookmarks in this version.</p>
-        <button className="secondary" disabled={busy} onClick={() => void (bookmarkAccess ? disableBookmarkAccess() : enableBookmarkAccess())}>
+        <button className="secondary" disabled={initializing || busy} onClick={() => void (bookmarkAccess ? disableBookmarkAccess() : enableBookmarkAccess())}>
           {bookmarkAccess ? "Disable bookmark access" : "Enable bookmark access"}
         </button>
       </section>
