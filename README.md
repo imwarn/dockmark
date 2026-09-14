@@ -46,7 +46,7 @@ npm run deploy
 
 ## Browser extension
 
-Dockmark's optional extension is built with WXT + React and currently targets Chromium first. Dockmark Web has an **Extension** page with install/profile selection, live handshake diagnostics, protocol/version information, capability flags and native-bookmark permission state.
+Dockmark's optional extension is built with WXT + React and currently targets Chromium first. Dockmark Web has an **Extension** page with install/profile selection, live handshake diagnostics, protocol/version information, capability flags, native-bookmark permission state and Browser/New Tab settings.
 
 ### Choose one browser profile
 
@@ -87,6 +87,26 @@ Local New Tab capabilities include:
 - background refresh without blocking first paint
 
 If the profile has never completed one online refresh, the extension still shows a local setup shell and explains how to connect Dockmark; it never falls back to a browser network error page.
+
+### Browser and New Tab settings
+
+Dockmark v0.6+ adds a local-first settings layer shared by the Web management UI and the New Tab launcher. The **Extension** page exposes the settings; edits are saved to Web `localStorage` immediately, and **Sync settings** persists the current policy to D1 through `/api/settings/browser`.
+
+The New Tab profile keeps its own last-known-good settings copy in `chrome.storage.local`, so startup behavior does not depend on the network. A successful cloud refresh updates both the launcher data snapshot and the settings snapshot.
+
+Current settings include:
+
+- bookmark conflict preference: `Ask every time`, `Prefer Browser` or `Prefer Dockmark`
+- New Tab default search engine
+- whether Open Tabs appear in New Tab search results
+- bookmark-card and Workspace-card display limits
+- automatic background refresh on New Tab startup
+
+The conflict preference is a **policy foundation**, not permission for silent writes. Browser ↔ Dockmark conflicts still use the reviewed/manual resolution flow; Dockmark does not automatically mutate browser bookmarks because a preference is selected.
+
+When **Background refresh** is disabled, opening a New Tab performs no automatic Dockmark cloud fetch. Cached data and live browser-tab capabilities remain available locally, while the explicit `↻` refresh action can still contact the configured Dockmark origin on demand.
+
+**Clear cache** removes only the local New Tab data snapshot. It does not remove the configured Dockmark origin, Browser/New Tab settings, native-bookmark mappings or granted browser permissions.
 
 ### Distribution channels
 
@@ -163,7 +183,7 @@ CI runs real headless Chromium instances for both profiles.
 
 The Standard smoke verifies the MV3 service worker, versioned capability handshake, optional native-bookmark permission semantics, open-tab enumeration/activation, pinned Session restore and—critically—that the Standard manifest does **not** override New Tab.
 
-The New Tab smoke loads the packaged New Tab variant, seeds a last-known-good snapshot while giving it no Dockmark host permission/network access, then verifies that cached bookmarks, Workspaces and search-engine commands still render and search locally. It also verifies the New Tab manifest override is isolated to that opt-in profile.
+The New Tab smoke loads the packaged New Tab variant, seeds a last-known-good snapshot while giving it no Dockmark host permission/network access, then verifies that cached bookmarks, Workspaces and search-engine commands still render and search locally. It also verifies local settings behavior including card limits, Open Tabs visibility, default-search override, manual-refresh mode and cache clearing, and confirms the New Tab manifest override is isolated to that opt-in profile.
 
 To run both locally:
 
@@ -187,6 +207,7 @@ After deploying the Web app, a useful live bridge check is:
 6. Restore a Session containing a pinned tab; its pinned state should be preserved.
 7. Enable **Native bookmarks**, map a small reviewed subset and exercise Browser → Dockmark and explicit Dockmark → Browser Review actions.
 8. With the New Tab profile, open a new tab online once to seed/refresh the local snapshot, then disconnect the network and confirm cached search/launch remains available.
+9. Change Browser/New Tab settings in the Web Extension page, sync them, and verify the New Tab profile follows the selected limits/search/refresh policy after its next successful settings refresh.
 
 ## Design principles
 
@@ -249,6 +270,22 @@ Extension development:
 ```bash
 npm run dev:extension
 ```
+
+## Pull request and merge workflow
+
+Dockmark intentionally keeps a human merge gate even when CI is fully green. GitHub Auto-merge is not enabled by default for normal feature PRs.
+
+The normal flow is:
+
+1. Implement work on a feature/fix/docs branch and open a PR against `main`.
+2. Wait for the required CI jobs to complete successfully. This includes Web typecheck/build/Cloudflare validation and, for browser-affecting changes, the real Chromium smoke/package jobs.
+3. Review the final diff and CI result after the latest commit has passed.
+4. Manually choose **Squash and merge**.
+5. Let the resulting `main` push drive downstream automation: Cloudflare Workers Builds handles production deployment, and an extension version change can trigger the matching GitHub Release/package workflow.
+
+A green CI run means the PR is eligible to merge; it does **not** mean GitHub will merge it automatically. Keeping the explicit Squash-and-merge step gives the project one final checkpoint for behavior, release scope and deployment intent.
+
+Direct feature commits to `main` should be avoided under normal development; reserve direct fixes for exceptional recovery/revert situations.
 
 ## D1 setup
 
