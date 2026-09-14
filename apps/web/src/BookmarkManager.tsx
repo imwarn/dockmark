@@ -62,10 +62,14 @@ function messageFrom(error: unknown) {
 
 function moveId(ids: string[], movingId: string, targetId: string) {
   if (movingId === targetId) return ids;
+  const sourceIndex = ids.indexOf(movingId);
+  const targetIndex = ids.indexOf(targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return ids;
   const next = ids.filter((id) => id !== movingId);
-  const targetIndex = next.indexOf(targetId);
-  if (targetIndex < 0) return ids;
-  next.splice(targetIndex, 0, movingId);
+  const targetIndexAfterRemoval = next.indexOf(targetId);
+  if (targetIndexAfterRemoval < 0) return ids;
+  const insertIndex = sourceIndex < targetIndex ? targetIndexAfterRemoval + 1 : targetIndexAfterRemoval;
+  next.splice(insertIndex, 0, movingId);
   return next;
 }
 
