@@ -8,6 +8,7 @@ export interface BridgeCapabilities {
   sessionRestore: boolean;
   sessionPinned: boolean;
   nativeBookmarks: boolean;
+  nativeBookmarkSync?: boolean;
   localHealth: boolean;
 }
 
@@ -192,8 +193,14 @@ export async function saveNativeBookmarkMappingsWithBridge(
   return request<{ saved: number }>("save-native-bookmark-mappings", { items }, 5000);
 }
 
+export async function removeNativeBookmarkMappingsWithBridge(browserBookmarkIds: string[]) {
+  return request<{ removed: number }>("remove-native-bookmark-mappings", { browserBookmarkIds }, 5000);
+}
+
 export function onBridgeEvent(listener: (event: string) => void) {
   installListener();
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }

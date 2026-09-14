@@ -13,6 +13,7 @@ const BRIDGE_CAPABILITIES = {
   sessionRestore: true,
   sessionPinned: true,
   nativeBookmarks: true,
+  nativeBookmarkSync: true,
   localHealth: false,
 } as const;
 
@@ -265,23 +266,8 @@ async function flattenNativeBookmarks() {
 
 async function nativeBookmarkSnapshot() {
   const bookmarks = await flattenNativeBookmarks();
-  const liveById = new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark]));
   const storedMappings = await loadNativeBookmarkMappings();
-  const mappings: NativeBookmarkMapping[] = [];
-  let pruned = false;
-
-  for (const [nativeId, mapping] of Object.entries(storedMappings)) {
-    const bookmark = liveById.get(nativeId);
-    if (!bookmark || bookmark.url !== mapping.url) {
-      delete storedMappings[nativeId];
-      pruned = true;
-      continue;
-    }
-    mappings.push(mapping);
-  }
-
-  if (pruned) await browser.storage.local.set({ [NATIVE_BOOKMARK_MAPPINGS_KEY]: storedMappings });
-  return { bookmarks, mappings };
+  return { bookmarks, mappings: Object.values(storedMappings) };
 }
 
 async function saveNativeBookmarkMappings(items: unknown[]) {
@@ -296,17 +282,32 @@ async function saveNativeBookmarkMappings(items: unknown[]) {
     const url = typeof record.url === "string" ? record.url : "";
     if (!browserBookmarkId || !dockmarkBookmarkId || !isHttpUrl(url)) continue;
 
+    const previous = mappings[browserBookmarkId];
     mappings[browserBookmarkId] = {
       browserBookmarkId,
       dockmarkBookmarkId,
       url,
-      mappedAt: new Date().toISOString(),
+      mappedAt: previous?.mappedAt ?? new Date().toISOString(),
     };
     saved += 1;
   }
 
   await browser.storage.local.set({ [NATIVE_BOOKMARK_MAPPINGS_KEY]: mappings });
   return { saved };
+}
+
+async function removeNativeBookmarkMappings(browserBookmarkIds: unknown[]) {
+  const mappings = await loadNativeBookmarkMappings();
+  let removed = 0;
+
+  for (const value of browserBookmarkIds.slice(0, 5000)) {
+    if (typeof value !== "string" || !value || !mappings[value]) continue;
+    delete mappings[value];
+    removed += 1;
+  }
+
+  if (removed) await browser.storage.local.set({ [NATIVE_BOOKMARK_MAPPINGS_KEY]: mappings });
+  return { removed };
 }
 
 async function assertTrustedBridgeSender(senderUrl: string | undefined) {
@@ -339,8 +340,32 @@ function scheduleTabsChanged() {
   }, 120);
 }
 
+let bookmarkBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleBookmarksChanged() {
+  if (bookmarkBroadcastTimer) clearTimeout(bookmarkBroadcastTimer);
+  bookmarkBroadcastTimer = setTimeout(() => {
+    bookmarkBroadcastTimer = undefined;
+    void broadcastBridgeEvent("bookmarks-changed");
+  }, 180);
+}
+
+let bookmarkListenersRegistered = false;
+function registerBookmarkListeners() {
+  if (bookmarkListenersRegistered) return;
+  browser.bookmarks.onCreated.addListener(scheduleBookmarksChanged);
+  browser.bookmarks.onRemoved.addListener(scheduleBookmarksChanged);
+  browser.bookmarks.onChanged.addListener(scheduleBookmarksChanged);
+  browser.bookmarks.onMoved.addListener(scheduleBookmarksChanged);
+  bookmarkListenersRegistered = true;
+}
+
+async function syncBookmarkListeners() {
+  if (await hasNativeBookmarkPermission()) registerBookmarkListeners();
+}
+
 export default defineBackground(() => {
   void syncBridgeRegistration();
+  void syncBookmarkListeners();
 
   browser.tabs.onCreated.addListener(scheduleTabsChanged);
   browser.tabs.onRemoved.addListener(scheduleTabsChanged);
@@ -350,7 +375,11 @@ export default defineBackground(() => {
       scheduleTabsChanged();
     }
   });
-  browser.permissions.onAdded.addListener(() => void broadcastBridgeEvent("capabilities-changed"));
+
+  browser.permissions.onAdded.addListener(() => {
+    void syncBookmarkListeners();
+    void broadcastBridgeEvent("capabilities-changed");
+  });
   browser.permissions.onRemoved.addListener(() => void broadcastBridgeEvent("capabilities-changed"));
 
   browser.runtime.onMessage.addListener(async (message, sender) => {
@@ -399,7 +428,16 @@ export default defineBackground(() => {
       if (message.action === "save-native-bookmark-mappings") {
         const items = (message.payload as { items?: unknown } | undefined)?.items;
         if (!Array.isArray(items)) throw new Error("Bookmark mappings must be an array.");
-        return saveNativeBookmarkMappings(items);
+        const result = await saveNativeBookmarkMappings(items);
+        void broadcastBridgeEvent("bookmarks-changed");
+        return result;
+      }
+      if (message.action === "remove-native-bookmark-mappings") {
+        const ids = (message.payload as { browserBookmarkIds?: unknown } | undefined)?.browserBookmarkIds;
+        if (!Array.isArray(ids)) throw new Error("browserBookmarkIds must be an array.");
+        const result = await removeNativeBookmarkMappings(ids);
+        void broadcastBridgeEvent("bookmarks-changed");
+        return result;
       }
       throw new Error(`Unknown Dockmark bridge action: ${message.action}`);
     }
