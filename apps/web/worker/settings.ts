@@ -1,10 +1,17 @@
 import {
+  DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_BROWSER_SETTINGS,
+  mergeAppearanceSettings,
   mergeBrowserSettings,
+  normalizeAppearancePreference,
+  normalizeAppearanceSettings,
   normalizeBrowserSettings,
+  type AppearancePreference,
+  type AppearanceSettings,
   type BookmarkConflictPreference,
   type BrowserNewTabSettings,
   type BrowserSettings,
+  type UpdateAppearanceSettingsInput,
   type UpdateBrowserSettingsInput,
 } from "@dockmark/core";
 
@@ -64,6 +71,12 @@ function parseConflictPreference(value: unknown): BookmarkConflictPreference {
   throw new SettingsHttpError(400, "invalid_field", "conflictPreference must be ask, browser or dockmark.");
 }
 
+function parseAppearancePreference(value: unknown): AppearancePreference {
+  const preference = normalizeAppearancePreference(value);
+  if (preference === value) return preference;
+  throw new SettingsHttpError(400, "invalid_field", "preference must be system, light or dark.");
+}
+
 function parseInteger(value: unknown, key: string, min: number, max: number) {
   if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
     throw new SettingsHttpError(400, "invalid_field", `${key} must be an integer between ${min} and ${max}.`);
@@ -92,54 +105,53 @@ function parseNewTab(value: unknown): Partial<BrowserNewTabSettings> {
     }
     output.showOpenTabs = body.showOpenTabs;
   }
-  if (hasOwn(body, "bookmarkLimit")) {
-    output.bookmarkLimit = parseInteger(body.bookmarkLimit, "newTab.bookmarkLimit", 0, 24);
-  }
-  if (hasOwn(body, "workspaceLimit")) {
-    output.workspaceLimit = parseInteger(body.workspaceLimit, "newTab.workspaceLimit", 0, 12);
-  }
+  if (hasOwn(body, "bookmarkLimit")) output.bookmarkLimit = parseInteger(body.bookmarkLimit, "newTab.bookmarkLimit", 0, 24);
+  if (hasOwn(body, "workspaceLimit")) output.workspaceLimit = parseInteger(body.workspaceLimit, "newTab.workspaceLimit", 0, 12);
   if (hasOwn(body, "autoRefresh")) {
     if (typeof body.autoRefresh !== "boolean") {
       throw new SettingsHttpError(400, "invalid_field", "newTab.autoRefresh must be a boolean.");
     }
     output.autoRefresh = body.autoRefresh;
   }
-
   return output;
 }
 
-async function loadBrowserSettings(db: SettingsDbLike): Promise<BrowserSettings> {
-  const row = await db
-    .prepare("SELECT value, updated_at FROM app_settings WHERE key = ?")
-    .bind("browser")
-    .first<SettingsRow>();
-  if (!row) return normalizeBrowserSettings(DEFAULT_BROWSER_SETTINGS);
-
+async function loadSetting<T>(db: SettingsDbLike, key: string, fallback: T, normalize: (value: unknown) => T): Promise<T> {
+  const row = await db.prepare("SELECT value, updated_at FROM app_settings WHERE key = ?").bind(key).first<SettingsRow>();
+  if (!row) return normalize(fallback);
   try {
-    return normalizeBrowserSettings({
-      ...JSON.parse(row.value) as Record<string, unknown>,
-      updatedAt: row.updated_at,
-    });
+    return normalize({ ...JSON.parse(row.value) as Record<string, unknown>, updatedAt: row.updated_at });
   } catch {
-    return normalizeBrowserSettings({ ...DEFAULT_BROWSER_SETTINGS, updatedAt: row.updated_at });
+    return normalize({ ...(fallback as Record<string, unknown>), updatedAt: row.updated_at });
   }
 }
 
-async function saveBrowserSettings(db: SettingsDbLike, settings: BrowserSettings) {
-  await db
-    .prepare(`INSERT INTO app_settings (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
-    .bind("browser", JSON.stringify(settings), settings.updatedAt)
+async function saveSetting(db: SettingsDbLike, key: string, value: { updatedAt: string | null }) {
+  await db.prepare(`INSERT INTO app_settings (key, value, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+    .bind(key, JSON.stringify(value), value.updatedAt)
     .run();
 }
 
-function parseUpdate(body: Record<string, unknown>): UpdateBrowserSettingsInput {
+async function loadBrowserSettings(db: SettingsDbLike): Promise<BrowserSettings> {
+  return loadSetting(db, "browser", DEFAULT_BROWSER_SETTINGS, normalizeBrowserSettings);
+}
+
+export async function loadAppearanceSettings(db: SettingsDbLike): Promise<AppearanceSettings> {
+  return loadSetting(db, "appearance", DEFAULT_APPEARANCE_SETTINGS, normalizeAppearanceSettings);
+}
+
+function parseBrowserUpdate(body: Record<string, unknown>): UpdateBrowserSettingsInput {
   const update: UpdateBrowserSettingsInput = {};
-  if (hasOwn(body, "conflictPreference")) {
-    update.conflictPreference = parseConflictPreference(body.conflictPreference);
-  }
+  if (hasOwn(body, "conflictPreference")) update.conflictPreference = parseConflictPreference(body.conflictPreference);
   if (hasOwn(body, "newTab")) update.newTab = parseNewTab(body.newTab);
+  return update;
+}
+
+function parseAppearanceUpdate(body: Record<string, unknown>): UpdateAppearanceSettingsInput {
+  const update: UpdateAppearanceSettingsInput = {};
+  if (hasOwn(body, "preference")) update.preference = parseAppearancePreference(body.preference);
   return update;
 }
 
@@ -148,19 +160,27 @@ export async function handleSettingsApi(
   db: SettingsDbLike,
   pathname: string,
 ): Promise<Response | null> {
-  if (pathname !== "/api/settings/browser") return null;
-
-  if (request.method === "GET") {
-    return json({ settings: await loadBrowserSettings(db) });
+  if (pathname === "/api/settings/browser") {
+    if (request.method === "GET") return json({ settings: await loadBrowserSettings(db) });
+    if (request.method === "PATCH") {
+      const current = await loadBrowserSettings(db);
+      const settings = mergeBrowserSettings(current, parseBrowserUpdate(await readBody(request)));
+      await saveSetting(db, "browser", settings);
+      return json({ settings });
+    }
+    throw new SettingsHttpError(405, "method_not_allowed", "Only GET and PATCH are supported for browser settings.");
   }
 
-  if (request.method === "PATCH") {
-    const current = await loadBrowserSettings(db);
-    const update = parseUpdate(await readBody(request));
-    const settings = mergeBrowserSettings(current, update);
-    await saveBrowserSettings(db, settings);
-    return json({ settings });
+  if (pathname === "/api/settings/appearance") {
+    if (request.method === "GET") return json({ settings: await loadAppearanceSettings(db) });
+    if (request.method === "PATCH") {
+      const current = await loadAppearanceSettings(db);
+      const settings = mergeAppearanceSettings(current, parseAppearanceUpdate(await readBody(request)));
+      await saveSetting(db, "appearance", settings);
+      return json({ settings });
+    }
+    throw new SettingsHttpError(405, "method_not_allowed", "Only GET and PATCH are supported for appearance settings.");
   }
 
-  throw new SettingsHttpError(405, "method_not_allowed", "Only GET and PATCH are supported for browser settings.");
+  return null;
 }

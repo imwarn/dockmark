@@ -1,8 +1,10 @@
 import type { Id } from "./models";
 
 export const BROWSER_SETTINGS_VERSION = 1;
+export const APPEARANCE_SETTINGS_VERSION = 1;
 
 export type BookmarkConflictPreference = "ask" | "browser" | "dockmark";
+export type AppearancePreference = "system" | "light" | "dark";
 
 export interface BrowserNewTabSettings {
   defaultSearchEngineId: Id | null;
@@ -24,6 +26,16 @@ export interface UpdateBrowserSettingsInput {
   newTab?: Partial<BrowserNewTabSettings>;
 }
 
+export interface AppearanceSettings {
+  version: typeof APPEARANCE_SETTINGS_VERSION;
+  preference: AppearancePreference;
+  updatedAt: string | null;
+}
+
+export interface UpdateAppearanceSettingsInput {
+  preference?: AppearancePreference;
+}
+
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
   version: BROWSER_SETTINGS_VERSION,
   conflictPreference: "ask",
@@ -37,6 +49,12 @@ export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
   updatedAt: null,
 };
 
+export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+  version: APPEARANCE_SETTINGS_VERSION,
+  preference: "system",
+  updatedAt: null,
+};
+
 function integerInRange(value: unknown, fallback: number, min: number, max: number) {
   if (typeof value !== "number" || !Number.isInteger(value)) return fallback;
   return Math.min(max, Math.max(min, value));
@@ -44,6 +62,10 @@ function integerInRange(value: unknown, fallback: number, min: number, max: numb
 
 function conflictPreference(value: unknown): BookmarkConflictPreference {
   return value === "browser" || value === "dockmark" || value === "ask" ? value : "ask";
+}
+
+export function normalizeAppearancePreference(value: unknown): AppearancePreference {
+  return value === "light" || value === "dark" || value === "system" ? value : "system";
 }
 
 export function normalizeBrowserSettings(value: unknown): BrowserSettings {
@@ -88,6 +110,18 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
   };
 }
 
+export function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return structuredClone(DEFAULT_APPEARANCE_SETTINGS);
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    version: APPEARANCE_SETTINGS_VERSION,
+    preference: normalizeAppearancePreference(record.preference),
+    updatedAt: typeof record.updatedAt === "string" && record.updatedAt ? record.updatedAt : null,
+  };
+}
+
 export function mergeBrowserSettings(
   current: BrowserSettings,
   input: UpdateBrowserSettingsInput,
@@ -100,6 +134,18 @@ export function mergeBrowserSettings(
       ...current.newTab,
       ...(input.newTab ?? {}),
     },
+    updatedAt,
+  });
+}
+
+export function mergeAppearanceSettings(
+  current: AppearanceSettings,
+  input: UpdateAppearanceSettingsInput,
+  updatedAt = new Date().toISOString(),
+): AppearanceSettings {
+  return normalizeAppearanceSettings({
+    ...current,
+    ...(input.preference === undefined ? {} : { preference: input.preference }),
     updatedAt,
   });
 }

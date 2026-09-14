@@ -36,6 +36,16 @@ function normalizedPathname(request: Request) {
   return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
 }
 
+async function settingsResponse(request: Request, env: Env, pathname: string) {
+  try {
+    return await handleSettingsApi(request, env.DB, pathname);
+  } catch (error) {
+    if (error instanceof SettingsHttpError) return problem(error.status, error.code, error.message);
+    console.error("Dockmark Settings API error", error);
+    return problem(500, "internal_error", "An unexpected server error occurred.");
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const pathname = normalizedPathname(request);
@@ -44,8 +54,11 @@ export default {
       const authResponse = await handleAuthApi(request, env, pathname);
       if (authResponse) return authResponse;
 
-      // Health remains intentionally public for deployment monitoring.
+      // Health and the selected appearance are intentionally public.
       if (pathname === "/api/health") return baseWorker.fetch(request, env);
+      if (pathname === "/api/settings/appearance" && request.method === "GET") {
+        return (await settingsResponse(request, env, pathname)) ?? problem(404, "not_found", "Settings route not found.");
+      }
 
       const principal = await authenticateRequest(request, env);
       if (pathname.startsWith("/api/public/bookmarks") && request.method !== "GET" && principal?.kind === "session") {
@@ -82,25 +95,14 @@ export default {
           const response = await handleReorderApi(request, env.DB, pathname);
           if (response) return response;
         } catch (error) {
-          if (error instanceof ReorderHttpError) {
-            return problem(error.status, error.code, error.message);
-          }
+          if (error instanceof ReorderHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Reorder API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
       }
 
-      if (pathname === "/api/settings/browser") {
-        try {
-          const response = await handleSettingsApi(request, env.DB, pathname);
-          if (response) return response;
-        } catch (error) {
-          if (error instanceof SettingsHttpError) {
-            return problem(error.status, error.code, error.message);
-          }
-          console.error("Dockmark Settings API error", error);
-          return problem(500, "internal_error", "An unexpected server error occurred.");
-        }
+      if (pathname === "/api/settings/browser" || pathname === "/api/settings/appearance") {
+        return (await settingsResponse(request, env, pathname)) ?? problem(404, "not_found", "Settings route not found.");
       }
 
       if (pathname === "/api/search-engines" || pathname.startsWith("/api/search-engines/")) {
@@ -108,9 +110,7 @@ export default {
           const response = await handleSearchEngineApi(request, env.DB, pathname);
           if (response) return response;
         } catch (error) {
-          if (error instanceof SearchEngineHttpError) {
-            return problem(error.status, error.code, error.message);
-          }
+          if (error instanceof SearchEngineHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Search Engine API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
@@ -121,9 +121,7 @@ export default {
           const response = await handleSessionApi(request, env.DB, pathname);
           if (response) return response;
         } catch (error) {
-          if (error instanceof SessionHttpError) {
-            return problem(error.status, error.code, error.message);
-          }
+          if (error instanceof SessionHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Session API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
