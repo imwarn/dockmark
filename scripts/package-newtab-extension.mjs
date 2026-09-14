@@ -21,11 +21,11 @@ await cp(sourceDir, variantDir, { recursive: true });
 const manifestPath = path.join(variantDir, "manifest.json");
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 manifest.name = "Dockmark New Tab";
-manifest.description = "Dockmark browser bridge with an opt-in new tab override that opens your configured Dockmark site.";
+manifest.description = "Dockmark browser bridge with a local-first, offline-capable Dockmark launcher on every new tab.";
 manifest.chrome_url_overrides = { newtab: "newtab.html" };
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-for (const required of ["newtab.html", "newtab.js"]) {
+for (const required of ["newtab.html", "newtab.js", "newtab.css"]) {
   await readFile(path.join(variantDir, required));
 }
 
