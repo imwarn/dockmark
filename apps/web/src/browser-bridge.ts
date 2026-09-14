@@ -151,8 +151,12 @@ async function request<T>(action: string, payload?: unknown, timeoutMs = 1200): 
   });
 }
 
+export async function getRawBridgeStatus(): Promise<BrowserBridgeStatus> {
+  return request<BrowserBridgeStatus>("status", undefined, 600);
+}
+
 export async function getBridgeStatus(): Promise<BrowserBridgeStatus> {
-  const status = await request<BrowserBridgeStatus>("status", undefined, 600);
+  const status = await getRawBridgeStatus();
   if (!status.connected || status.protocolVersion !== BRIDGE_PROTOCOL_VERSION) {
     throw new Error(
       `Dockmark browser bridge protocol ${status.protocolVersion ?? "unknown"} is incompatible with Web protocol ${BRIDGE_PROTOCOL_VERSION}.`,
