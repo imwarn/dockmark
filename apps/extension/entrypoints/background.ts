@@ -349,8 +349,23 @@ function scheduleBookmarksChanged() {
   }, 180);
 }
 
+let bookmarkListenersRegistered = false;
+function registerBookmarkListeners() {
+  if (bookmarkListenersRegistered) return;
+  browser.bookmarks.onCreated.addListener(scheduleBookmarksChanged);
+  browser.bookmarks.onRemoved.addListener(scheduleBookmarksChanged);
+  browser.bookmarks.onChanged.addListener(scheduleBookmarksChanged);
+  browser.bookmarks.onMoved.addListener(scheduleBookmarksChanged);
+  bookmarkListenersRegistered = true;
+}
+
+async function syncBookmarkListeners() {
+  if (await hasNativeBookmarkPermission()) registerBookmarkListeners();
+}
+
 export default defineBackground(() => {
   void syncBridgeRegistration();
+  void syncBookmarkListeners();
 
   browser.tabs.onCreated.addListener(scheduleTabsChanged);
   browser.tabs.onRemoved.addListener(scheduleTabsChanged);
@@ -361,12 +376,10 @@ export default defineBackground(() => {
     }
   });
 
-  browser.bookmarks.onCreated.addListener(scheduleBookmarksChanged);
-  browser.bookmarks.onRemoved.addListener(scheduleBookmarksChanged);
-  browser.bookmarks.onChanged.addListener(scheduleBookmarksChanged);
-  browser.bookmarks.onMoved.addListener(scheduleBookmarksChanged);
-
-  browser.permissions.onAdded.addListener(() => void broadcastBridgeEvent("capabilities-changed"));
+  browser.permissions.onAdded.addListener(() => {
+    void syncBookmarkListeners();
+    void broadcastBridgeEvent("capabilities-changed");
+  });
   browser.permissions.onRemoved.addListener(() => void broadcastBridgeEvent("capabilities-changed"));
 
   browser.runtime.onMessage.addListener(async (message, sender) => {
