@@ -56,7 +56,7 @@ try {
   await popup.waitForLoadState("domcontentloaded");
 
   const manifest = await popup.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "0.5.1");
+  assert.equal(manifest.version, "0.6.0");
   assert.ok(!manifest.permissions?.includes("bookmarks"), "Bookmarks should not be a required install-time permission.");
   assert.ok(manifest.optional_permissions?.includes("bookmarks"), "Bookmarks should be declared as an optional permission.");
   assert.equal(manifest.chrome_url_overrides, undefined, "The standard Dockmark build must not override the browser new tab page.");
@@ -66,7 +66,7 @@ try {
   );
   assert.equal(capabilities.connected, true);
   assert.equal(capabilities.protocolVersion, 1);
-  assert.equal(capabilities.extensionVersion, "0.5.1");
+  assert.equal(capabilities.extensionVersion, "0.6.0");
   assert.equal(capabilities.capabilities.openTabs, true);
   assert.equal(capabilities.capabilities.workspaceReuse, true);
   assert.equal(capabilities.capabilities.workspacePinned, true);
@@ -109,10 +109,6 @@ try {
   );
   assert.equal(restore.opened, 1);
 
-  // browser.tabs.create() may resolve just before a newly-created tab becomes visible to
-  // the next tabs.query() call in headless Chromium. Keep the behavioral assertion, but
-  // wait a short bounded interval for the browser tab registry to settle instead of
-  // treating that scheduling race as a product failure.
   const restoredTabs = await pollUntil(
     () => popup.evaluate(async () => chrome.runtime.sendMessage({ type: "dockmark:get-open-tabs" })),
     (currentTabs) => currentTabs.some((tab) => tab.url === restoredUrl && tab.pinned === true),
@@ -122,7 +118,7 @@ try {
   assert.equal(restored.pinned, true, "Session restore should preserve pinned state.");
 
   console.log(`✓ Dockmark Chromium extension loaded: ${extensionId}`);
-  console.log("✓ Capability handshake protocol 1 / extension 0.5.1");
+  console.log("✓ Capability handshake protocol 1 / extension 0.6.0");
   console.log("✓ Native bookmark import, mapping sync and explicit writeback capabilities advertised");
   console.log("✓ Native bookmark capability is optional and ungranted by default");
   console.log("✓ Standard build does not override the browser new tab page");

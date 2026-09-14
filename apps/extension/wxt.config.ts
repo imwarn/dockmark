@@ -4,7 +4,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: {
     name: "Dockmark",
-    version: "0.5.1",
+    version: "0.6.0",
     description: "Browser bridge for Dockmark tabs, sessions, reviewed bookmark sync and local-first new-tab variant.",
     permissions: ["storage", "tabs", "scripting"],
     optional_permissions: ["bookmarks"],

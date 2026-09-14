@@ -76,6 +76,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .empty-state { padding: 24px 4px; color: #657168; font-size: 12px; line-height: 1.6; }
 .footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; color: #5d6962; font-size: 10px; }
 .footer strong { color: #7d8b83; font-weight: 580; }
+.footer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.footer-button { padding: 0; border: 0; background: transparent; color: #7e9185; cursor: pointer; font-size: 10px; }
+.footer-button:hover { color: #b6c7bd; }
 .offline-banner { margin: 14px auto 0; width: min(760px, 100%); padding: 10px 12px; border: 1px solid #57482c; border-radius: 10px; background: rgba(74, 57, 23, .16); color: #b8a372; font-size: 11px; line-height: 1.5; text-align: left; }
 .offline-banner[hidden] { display: none; }
 .setup-card { width: min(620px, 100%); margin: 26px auto 0; padding: 22px; border: 1px solid #334038; border-radius: 16px; background: rgba(15, 21, 17, .9); text-align: left; }
@@ -89,4 +92,5 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .bookmark-grid { grid-template-columns: 1fr; }
   .brand-copy span { display: none; }
   .footer { align-items: flex-start; flex-direction: column; }
+  .footer-actions { justify-content: flex-start; flex-wrap: wrap; }
 }
