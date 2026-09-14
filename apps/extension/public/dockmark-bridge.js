@@ -1,4 +1,8 @@
 (() => {
+  // The configured Dockmark origin also serves a deliberately public page at `/`.
+  // Never expose privileged Browser Bridge actions there. Only the authenticated
+  // management surface under `/app` may install the page ↔ extension relay.
+  if (window.location.pathname !== "/app" && !window.location.pathname.startsWith("/app/")) return;
   if (window.__dockmarkBridgeInstalled) return;
   window.__dockmarkBridgeInstalled = true;
 

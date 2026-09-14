@@ -29,6 +29,13 @@ type SessionSummary = {
 
 const SERVER_KEY = "dockmarkServerUrl";
 const DEVICE_KEY = "dockmarkDeviceLabel";
+const TOKEN_KEY = "dockmarkDeviceToken";
+
+class DockmarkRequestError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
 
 function defaultSessionName() {
   return `Window · ${new Intl.DateTimeFormat(undefined, {
@@ -55,11 +62,19 @@ function apiUrl(origin: string, path: string) {
   return new URL(path, `${origin}/`).toString();
 }
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+async function requestJson<T>(url: string, init: RequestInit = {}, includeDeviceToken = true): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("accept", "application/json");
+  if (init.body) headers.set("content-type", "application/json");
+  if (includeDeviceToken) {
+    const stored = await browser.storage.local.get(TOKEN_KEY);
+    const token = typeof stored[TOKEN_KEY] === "string" ? stored[TOKEN_KEY] : "";
+    if (token) headers.set("authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(url, { ...init, headers, cache: "no-store" });
   const body = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
   if (!response.ok) {
-    throw new Error(body.error?.message ?? `Dockmark request failed (${response.status}).`);
+    throw new DockmarkRequestError(response.status, body.error?.message ?? `Dockmark request failed (${response.status}).`);
   }
   return body;
 }
@@ -68,9 +83,11 @@ function Popup() {
   const [tabs, setTabs] = useState<TabSummary[]>([]);
   const [serverUrl, setServerUrl] = useState("");
   const [deviceLabel, setDeviceLabel] = useState("Main browser");
+  const [pairCode, setPairCode] = useState("");
   const [sessionName, setSessionName] = useState(defaultSessionName);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [connected, setConnected] = useState(false);
+  const [paired, setPaired] = useState(false);
   const [bookmarkAccess, setBookmarkAccess] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -90,7 +107,7 @@ function Popup() {
         const [openTabs, hasBookmarks, stored] = await Promise.all([
           browser.runtime.sendMessage({ type: "dockmark:get-open-tabs" }),
           browser.permissions.contains({ permissions: ["bookmarks"] }),
-          browser.storage.local.get([SERVER_KEY, DEVICE_KEY]),
+          browser.storage.local.get([SERVER_KEY, DEVICE_KEY, TOKEN_KEY]),
         ]);
         if (cancelled) return;
 
@@ -99,6 +116,7 @@ function Popup() {
 
         const storedServer = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
         const storedDevice = typeof stored[DEVICE_KEY] === "string" ? stored[DEVICE_KEY] : "Main browser";
+        const storedToken = typeof stored[TOKEN_KEY] === "string" ? stored[TOKEN_KEY] : "";
         setServerUrl(storedServer);
         setDeviceLabel(storedDevice);
         if (!storedServer) return;
@@ -108,7 +126,23 @@ function Popup() {
         await browser.runtime.sendMessage({ type: "dockmark:configure-bridge", origin: storedServer });
         if (cancelled) return;
         setConnected(true);
-        await refreshSessions(storedServer);
+
+        if (storedToken) {
+          try {
+            await refreshSessions(storedServer);
+            if (!cancelled) setPaired(true);
+          } catch (caught) {
+            if (caught instanceof DockmarkRequestError && (caught.status === 401 || caught.status === 403)) {
+              await browser.storage.local.remove(TOKEN_KEY);
+              if (!cancelled) {
+                setPaired(false);
+                setSessions([]);
+              }
+            } else {
+              throw caught;
+            }
+          }
+        }
       } catch {
         if (!cancelled) setConnected(false);
       } finally {
@@ -143,10 +177,16 @@ function Popup() {
   async function connect() {
     await run(async () => {
       const origin = normalizeServerUrl(serverUrl);
-      const stored = await browser.storage.local.get(SERVER_KEY);
+      const stored = await browser.storage.local.get([SERVER_KEY, TOKEN_KEY]);
       const previousOrigin = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
+      const existingToken = typeof stored[TOKEN_KEY] === "string" ? stored[TOKEN_KEY] : "";
       const label = deviceLabel.trim() || "Main browser";
 
+      if (previousOrigin && previousOrigin !== origin) {
+        await browser.storage.local.remove(TOKEN_KEY);
+        setPaired(false);
+        setSessions([]);
+      }
       await browser.storage.local.set({ [SERVER_KEY]: origin, [DEVICE_KEY]: label });
       setServerUrl(origin);
       setDeviceLabel(label);
@@ -161,8 +201,54 @@ function Popup() {
       }
 
       setConnected(true);
-      await refreshSessions(origin);
-      setStatus("Connected to Dockmark. Browser bridge ready.");
+      if (previousOrigin === origin && existingToken) {
+        try {
+          await refreshSessions(origin);
+          setPaired(true);
+          setStatus("Connected and paired. Browser bridge and private cloud access are ready.");
+          return;
+        } catch (caught) {
+          if (caught instanceof DockmarkRequestError && (caught.status === 401 || caught.status === 403)) {
+            await browser.storage.local.remove(TOKEN_KEY);
+            setPaired(false);
+          } else {
+            throw caught;
+          }
+        }
+      }
+      setStatus("Site access connected. Create a pairing code in Dockmark Settings → Security, then enter it below for private cloud access.");
+    });
+  }
+
+  async function pairDevice() {
+    await run(async () => {
+      if (!connected) throw new Error("Connect this Dockmark origin first.");
+      const code = pairCode.trim();
+      if (!code) throw new Error("Enter the pairing code from Dockmark Settings → Security.");
+      const label = deviceLabel.trim() || "Main browser";
+      const result = await requestJson<{ token: string; device: { id: string; name: string } }>(
+        apiUrl(serverUrl, "/api/auth/pair/exchange"),
+        {
+          method: "POST",
+          body: JSON.stringify({ code, name: label }),
+        },
+        false,
+      );
+      await browser.storage.local.set({ [TOKEN_KEY]: result.token, [DEVICE_KEY]: label });
+      setDeviceLabel(label);
+      setPairCode("");
+      setPaired(true);
+      await refreshSessions();
+      setStatus(`Paired as “${result.device.name}”. Private cloud refresh and Session save are enabled.`);
+    });
+  }
+
+  async function unpairLocal() {
+    await run(async () => {
+      await browser.storage.local.remove(TOKEN_KEY);
+      setPaired(false);
+      setSessions([]);
+      setStatus("Removed this device token locally. To invalidate a copied token everywhere, revoke this device from Dockmark Settings → Security.");
     });
   }
 
@@ -186,13 +272,13 @@ function Popup() {
   async function saveWindow() {
     await run(async () => {
       if (!connected) throw new Error("Connect the extension to your Dockmark site first.");
+      if (!paired) throw new Error("Pair this extension before saving private cloud Sessions.");
       if (!savableTabs.length) throw new Error("This window has no HTTP/HTTPS tabs to save.");
       const name = sessionName.trim();
       if (!name) throw new Error("Give this session a name.");
 
       await requestJson<{ session: SessionSummary }>(apiUrl(serverUrl, "/api/sessions"), {
         method: "POST",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name,
           sourceDevice: deviceLabel.trim() || "Main browser",
@@ -232,10 +318,10 @@ function Popup() {
 
       <section className="card connection-card">
         <div className="section-heading">
-          <strong>Cloud connection</strong>
-          <span className={connected ? "online" : "offline"}>{connected ? "Connected" : initializing ? "Checking" : "Local only"}</span>
+          <strong>Dockmark site</strong>
+          <span className={connected ? "online" : "offline"}>{connected ? paired ? "Paired" : "Connected" : initializing ? "Checking" : "Local only"}</span>
         </div>
-        <input value={serverUrl} onChange={(event) => { setServerUrl(event.target.value); setConnected(false); }} placeholder="https://dockmark.example.com" inputMode="url" />
+        <input value={serverUrl} onChange={(event) => { setServerUrl(event.target.value); setConnected(false); setPaired(false); }} placeholder="https://dockmark.example.com" inputMode="url" />
         <div className="inline-fields">
           <input value={deviceLabel} onChange={(event) => setDeviceLabel(event.target.value)} placeholder="Main MacBook" />
           <button className="secondary" disabled={initializing || busy || !serverUrl.trim()} onClick={() => void connect()}>
@@ -243,6 +329,26 @@ function Popup() {
           </button>
         </div>
       </section>
+
+      {connected && (
+        <section className="card permission-card">
+          <div className="section-heading"><strong>Private cloud pairing</strong><span className={paired ? "online" : "offline"}>{paired ? "Authenticated" : "Required"}</span></div>
+          {paired ? (
+            <>
+              <p>This extension holds a revocable per-device token. It can read launcher data and save Sessions, but it cannot use its token to edit Dockmark bookmarks, settings or public-page selection.</p>
+              <button className="secondary" disabled={busy} onClick={() => void unpairLocal()}>Remove local device token</button>
+            </>
+          ) : (
+            <>
+              <p>Open <strong>Dockmark → Settings → Security</strong>, create a one-time pairing code, then enter it here. Pair codes expire after 10 minutes and work once.</p>
+              <div className="inline-fields">
+                <input value={pairCode} onChange={(event) => setPairCode(event.target.value.toUpperCase())} placeholder="ABCD-EFGH-JK" autoComplete="off" />
+                <button className="primary" disabled={busy || !pairCode.trim()} onClick={() => void pairDevice()}>Pair device</button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       <section className="card permission-card">
         <div className="section-heading"><strong>Native bookmarks</strong><span className={bookmarkAccess ? "online" : "offline"}>{bookmarkAccess ? "Enabled" : "Optional"}</span></div>
@@ -252,7 +358,7 @@ function Popup() {
         </button>
       </section>
 
-      {connected && (
+      {connected && paired && (
         <section className="card save-card">
           <div className="section-heading"><strong>Save current window</strong><span>{savableTabs.length} web tabs</span></div>
           <input value={sessionName} onChange={(event) => setSessionName(event.target.value)} maxLength={120} />
@@ -262,7 +368,7 @@ function Popup() {
 
       {(status || error) && <div className={`notice ${error ? "error" : "success"}`}>{error ?? status}</div>}
 
-      {connected && (
+      {connected && paired && (
         <section className="session-section">
           <div className="section-heading"><strong>Recent sessions</strong><span>{sessions.length}</span></div>
           <div className="session-list">
