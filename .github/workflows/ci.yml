@@ -81,7 +81,7 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@1.63.0
           npx playwright install --with-deps --no-shell chromium
 
-      - name: Chromium extension smoke test
+      - name: Standard Chromium extension smoke test
         run: npm run smoke:chromium
 
       - name: Package Chromium extension
@@ -89,6 +89,9 @@ jobs:
 
       - name: Package New Tab Chromium variant
         run: npm run package:extension:newtab
+
+      - name: New Tab local-first offline smoke test
+        run: npm run smoke:chromium:newtab
 
       - name: Validate Chromium packages
         run: |
@@ -101,6 +104,8 @@ jobs:
           unzip -Z1 "$NEWTAB" | grep -qx "manifest.json"
           unzip -Z1 "$NEWTAB" | grep -qx "newtab.html"
           unzip -Z1 "$NEWTAB" | grep -qx "newtab.js"
+          unzip -Z1 "$NEWTAB" | grep -qx "newtab.css"
+          unzip -p "$STANDARD" manifest.json | node -e 'let data=""; process.stdin.on("data", c => data += c); process.stdin.on("end", () => { const m=JSON.parse(data); if (m.chrome_url_overrides) process.exit(1); });'
           unzip -p "$NEWTAB" manifest.json | node -e 'let data=""; process.stdin.on("data", c => data += c); process.stdin.on("end", () => { const m=JSON.parse(data); if (m.chrome_url_overrides?.newtab !== "newtab.html") process.exit(1); if (m.name !== "Dockmark New Tab") process.exit(1); });'
 
       - name: Stage Chromium packages
