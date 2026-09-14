@@ -69,14 +69,16 @@ export function BrowserExtensionManager() {
   const updateAvailable = Boolean(
     status && compareExtensionVersions(status.extensionVersion, EXTENSION_RELEASE_VERSION) < 0,
   );
+  const nativeBookmarksGranted = Boolean(status?.permissions?.nativeBookmarks);
 
   const state = useMemo(() => {
     if (checking) return { label: "Checking", tone: "neutral" } as const;
     if (!status) return { label: "Not connected", tone: "warning" } as const;
     if (!protocolCompatible) return { label: "Update required", tone: "danger" } as const;
     if (updateAvailable) return { label: "Update available", tone: "warning" } as const;
+    if (!nativeBookmarksGranted) return { label: "Connected · bookmarks off", tone: "warning" } as const;
     return { label: "Connected", tone: "success" } as const;
-  }, [checking, protocolCompatible, status, updateAvailable]);
+  }, [checking, nativeBookmarksGranted, protocolCompatible, status, updateAvailable]);
 
   return (
     <section className="extension-page">
@@ -95,6 +97,12 @@ export function BrowserExtensionManager() {
           <p>
             Search and activate open tabs, reuse Workspace tabs, restore pinned Sessions and review native browser bookmark mappings before applying browser → Dockmark changes.
           </p>
+          {status && protocolCompatible && !nativeBookmarksGranted && (
+            <div className="extension-permission-callout">
+              <strong>Native bookmarks are not enabled.</strong>
+              <span>Open the Dockmark extension popup and choose <b>Enable bookmark access</b>. Reinstalling the unpacked extension resets this optional permission.</span>
+            </div>
+          )}
           <div className="extension-actions">
             {webStoreUrl ? (
               <button className="primary" type="button" onClick={() => external(webStoreUrl)}>Add to Chrome</button>
@@ -131,6 +139,7 @@ export function BrowserExtensionManager() {
             <li>Enable <strong>Developer mode</strong>, then choose <strong>Load unpacked</strong>.</li>
             <li>Select the extracted Dockmark extension folder containing <code>manifest.json</code>.</li>
             <li>Open the Dockmark extension popup, set this site as the server, then grant site access when prompted.</li>
+            <li>If you need browser bookmark import/sync, separately choose <strong>Enable bookmark access</strong> in the popup.</li>
           </ol>
         </article>
       )}
