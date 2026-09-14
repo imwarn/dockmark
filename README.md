@@ -24,17 +24,7 @@ Cloudflare currently documents limited monorepo support for Deploy Buttons. Dock
 
 ### Connect this existing GitHub repository
 
-For the most predictable long-running deployment of your own Dockmark checkout:
-
-1. In Cloudflare, create a D1 database named `dockmark`.
-2. Put its database ID into the root `wrangler.jsonc` in place of the all-zero placeholder.
-3. Go to **Workers & Pages → Create application → Import a repository** and select this repository.
-4. Use repository root `/` as the Root directory.
-5. Build command: `npm run build:web`
-6. Deploy command: `npm run deploy:built`
-7. Use `main` as the production branch.
-
-`npm run deploy:built` performs three production steps: prepares the root Wrangler redirect from the Vite build output, applies remote D1 migrations, then runs `wrangler deploy` from the repository root.
+For a long-running deployment of your own Dockmark checkout, connect the repository root `/` to Cloudflare Workers Builds and use `main` as the production branch. Dockmark detects the Workers Builds environment, prepares the Vite deployment redirect and resolves the account-local D1 database named `dockmark` before Cloudflare runs its platform-managed deploy/version-upload step. Production builds also apply pending D1 migrations before deployment.
 
 ### Deploy from the CLI
 
@@ -56,22 +46,42 @@ npm run deploy
 
 ## Browser extension
 
-Dockmark's optional extension is built with WXT + React and currently targets Chromium first.
+Dockmark's optional extension is built with WXT + React and currently targets Chromium first. Dockmark Web has an **Extension** page with install actions, live handshake diagnostics, protocol/version information, capability flags and native-bookmark permission state.
 
-### Load unpacked in Chromium
+### Distribution channels
+
+Dockmark keeps manual installation as a permanent distribution channel. During Early Access it is the primary path; after the Chrome Web Store listing becomes public, **Add to Chrome** becomes the recommended primary action while **Download Extension** remains visible for users who cannot or prefer not to access the Web Store.
+
+Current Chromium package:
+
+```text
+dockmark-chrome-v0.2.0.zip
+```
+
+The Web download button points to the corresponding GitHub Release asset. The ZIP is structured for unpacked installation: after extraction, select the folder that directly contains `manifest.json`.
+
+### Manual install in Chromium
+
+1. Download `dockmark-chrome-v0.2.0.zip` from the Dockmark Extension page or GitHub Release and unzip it.
+2. Open `chrome://extensions` (or the equivalent page in your Chromium browser).
+3. Enable **Developer mode** and choose **Load unpacked**.
+4. Select the extracted Dockmark folder containing `manifest.json`.
+5. Open the Dockmark extension popup, enter your deployed Dockmark origin, and choose **Connect**.
+
+The extension requests host permission only for the Dockmark origin you explicitly connect and dynamically registers the Web bridge there.
+
+For local development, build the unpacked extension directly:
 
 ```bash
 npm install
 npm run build:extension
 ```
 
-Then open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select:
+Then load:
 
 ```text
 apps/extension/.output/chrome-mv3
 ```
-
-Open the Dockmark extension popup, enter your deployed Dockmark origin (for example a `workers.dev` URL or your custom domain), and choose **Connect**. The extension requests host permission only for the Dockmark origin you explicitly connect and dynamically registers the Web bridge there.
 
 ### Import native browser bookmarks
 
@@ -95,7 +105,7 @@ This import path is deliberately **read-only in 0.2.0**: Dockmark does not creat
 npm run package:extension
 ```
 
-WXT writes both the unpacked Chromium build and release ZIP under `apps/extension/.output/`; for example `apps/extension/.output/chrome-mv3` and `apps/extension/.output/dockmarkextension-0.2.0-chrome.zip`. CI copies the ZIP into a visible staging directory before uploading it as the `dockmark-chromium-extension` GitHub Actions artifact. Tags matching `v*` likewise stage the ZIP and create a GitHub Release containing the packaged extension.
+WXT writes the unpacked Chromium build under `apps/extension/.output/chrome-mv3`; Dockmark normalizes the release archive name to `apps/extension/.output/dockmark-chrome-v<version>.zip`. CI uploads this ZIP as an Actions artifact, and tags matching the extension version (for example `v0.2.0`) create a GitHub Release with the same package.
 
 ### Chromium smoke test
 
@@ -128,6 +138,7 @@ The CI smoke test intentionally does **not** bypass Chromium's optional permissi
 - Command priority is `Open Tabs > Workspace > Session > Bookmark > Navigation > Search` when the extension is connected.
 - The Web/Extension bridge uses a versioned capability handshake so the two sides can evolve independently.
 - Browser-native bookmark access is optional and reviewed; native IDs/mappings stay local to the extension.
+- Manual extension download remains available even after a browser-store distribution channel is added.
 - Local/private URLs are never health-checked from Cloudflare.
 - `ignore` and `local-only` entries are excluded from bulk broken-link deletion.
 - AI changes are suggestions with preview/diff/apply, never silent mutations.
@@ -152,6 +163,8 @@ packages/
 scripts/
   chromium-extension-smoke.mjs
   prepare-cloudflare-deploy.mjs
+  prepare-workers-build.mjs
+  rename-extension-package.mjs
 docs/
   ARCHITECTURE.md
   API.md
