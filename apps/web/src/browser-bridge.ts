@@ -200,5 +200,7 @@ export async function removeNativeBookmarkMappingsWithBridge(browserBookmarkIds:
 export function onBridgeEvent(listener: (event: string) => void) {
   installListener();
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
