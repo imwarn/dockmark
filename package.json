@@ -30,7 +30,8 @@
     "deploy:source-dry-run": "wrangler deploy --config wrangler.jsonc --dry-run --outdir .wrangler/source-dry-run",
     "deploy:dry-run": "npm run prepare:cloudflare-deploy && wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "deploy": "npm run build:web && npm run deploy:built",
-    "smoke:chromium": "node scripts/chromium-extension-smoke.mjs"
+    "smoke:chromium": "node scripts/chromium-extension-smoke.mjs",
+    "smoke:chromium:newtab": "node scripts/chromium-newtab-smoke.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

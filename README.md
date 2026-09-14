@@ -2,7 +2,7 @@
 
 **A cloud-synced personal launcher for bookmarks, workspaces and browser tabs.**
 
-Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and configurable search live in one self-hosted launcher that works across browsers. The optional browser extension adds privileged capabilities such as live open-tab search, switching to an existing tab, Workspace reuse/pinning, pinned Session restore and reviewed browser-native bookmark import.
+Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and configurable search live in one self-hosted launcher that works across browsers. The optional Chromium extension adds privileged capabilities such as live open-tab search, switching to an existing tab, Workspace reuse/pinning, pinned Session restore and reviewed browser-native bookmark synchronization. Users can choose a Standard profile or an opt-in Dockmark New Tab profile with a local-first offline-capable launcher.
 
 > Status: active V1 development. The Web app, D1 data model, search/command palette and Chromium browser bridge are functional; packaging and browser validation are automated in CI.
 
@@ -46,31 +46,68 @@ npm run deploy
 
 ## Browser extension
 
-Dockmark's optional extension is built with WXT + React and currently targets Chromium first. Dockmark Web has an **Extension** page with install actions, live handshake diagnostics, protocol/version information, capability flags and native-bookmark permission state.
+Dockmark's optional extension is built with WXT + React and currently targets Chromium first. Dockmark Web has an **Extension** page with install/profile selection, live handshake diagnostics, protocol/version information, capability flags and native-bookmark permission state.
+
+### Choose one browser profile
+
+Dockmark ships two Chromium packages from the same codebase. They are alternatives: install **one**, not both.
+
+```text
+Dockmark New Tab                 Recommended
+- Complete Browser Bridge
+- Reviewed bookmark sync/writeback
+- Local-first Dockmark launcher on every new tab
+- Last-known-good offline cache
+
+dockmark-newtab-chrome-v<version>.zip
+
+Standard Dockmark Extension
+- Complete Browser Bridge
+- Reviewed bookmark sync/writeback
+- Keeps the browser's existing New Tab page unchanged
+
+dockmark-chrome-v<version>.zip
+```
+
+The New Tab package uses Chromium's static `chrome_url_overrides.newtab` manifest capability. The Standard package is explicitly validated in CI to contain no New Tab override.
+
+### Local-first Dockmark New Tab
+
+The New Tab profile does **not** redirect each new tab to the deployed Workers URL. `newtab.html`, its CSS and launcher logic live inside the extension and render immediately. The page reads a small `dockmarkNewTabCacheV1` snapshot from `chrome.storage.local`, then refreshes cloud data asynchronously when the configured Dockmark origin is reachable.
+
+The cached snapshot contains the data needed for launcher use: bookmarks, categories, Workspaces and search engines. Open tabs are read live from the browser. Offline or on a poor connection, the last-known-good snapshot remains searchable and launchable; cloud-only management stays in the Web app.
+
+Local New Tab capabilities include:
+
+- cached bookmark search/open
+- cached Workspace launch with `reuse`, `new-tab` and `pinned` behavior
+- live open-tab search and activation
+- cached custom/default search engines and bang/keyword search
+- explicit online/offline/cache-age status
+- background refresh without blocking first paint
+
+If the profile has never completed one online refresh, the extension still shows a local setup shell and explains how to connect Dockmark; it never falls back to a browser network error page.
 
 ### Distribution channels
 
-Dockmark keeps manual installation as a permanent distribution channel. During Early Access it is the primary path; after the Chrome Web Store listing becomes public, **Add to Chrome** becomes the recommended primary action while **Download Extension** remains visible for users who cannot or prefer not to access the Web Store.
+Dockmark keeps manual installation as a permanent distribution channel. During Early Access it is the primary path; after Chrome Web Store listings become public, store install actions can become primary while manual downloads remain visible for users who cannot or prefer not to access the Web Store.
 
-Current Chromium package:
-
-```text
-dockmark-chrome-v0.2.0.zip
-```
-
-The Web download button points to the corresponding GitHub Release asset. The ZIP is structured for unpacked installation: after extraction, select the folder that directly contains `manifest.json`.
+The Web **Extension** page presents both profiles as one Dockmark product choice. A user chooses either Standard or Dockmark New Tab and installs only that profile.
 
 ### Manual install in Chromium
 
-1. Download `dockmark-chrome-v0.2.0.zip` from the Dockmark Extension page or GitHub Release and unzip it.
+1. Download either `dockmark-newtab-chrome-v<version>.zip` or `dockmark-chrome-v<version>.zip` from the Dockmark Extension page/GitHub Release and unzip it.
 2. Open `chrome://extensions` (or the equivalent page in your Chromium browser).
 3. Enable **Developer mode** and choose **Load unpacked**.
 4. Select the extracted Dockmark folder containing `manifest.json`.
 5. Open the Dockmark extension popup, enter your deployed Dockmark origin, and choose **Connect**.
+6. If you need browser bookmark import/sync/writeback, separately choose **Enable bookmark access**.
 
 The extension requests host permission only for the Dockmark origin you explicitly connect and dynamically registers the Web bridge there.
 
-For local development, build the unpacked extension directly:
+When switching an existing unpacked installation between Standard and New Tab profiles, replace the files in the **same extension folder** and click **Reload** in `chrome://extensions`. Keeping the same unpacked path preserves the extension ID, local mappings, configured origin and local New Tab cache. Do not load both profiles side-by-side.
+
+For local development, build the unpacked Standard extension directly:
 
 ```bash
 npm install
@@ -83,35 +120,52 @@ Then load:
 apps/extension/.output/chrome-mv3
 ```
 
-### Import native browser bookmarks
+### Native browser bookmark sync
 
-Native bookmark access is optional. Dockmark Extension `0.2.0` does not request the Chromium `bookmarks` permission at install time.
+Native bookmark access is optional; Chromium's `bookmarks` permission is not requested at install time.
 
 1. Open the extension popup and choose **Enable bookmark access** under **Native bookmarks**.
 2. Open Dockmark Web and go to **Transfer**.
 3. Choose **Read browser bookmarks**.
-4. Review the detected folders, duplicates, existing Dockmark links and `local-only` entries.
-5. Select what to import/map and confirm.
+4. Review imports and Browser ↔ Dockmark mappings.
+5. Resolve incremental changes explicitly with Safe Apply or Review actions.
 
-Dockmark preserves the browser folder path as a Dockmark category path when creating a new cloud bookmark. Multiple native bookmarks with the same normalized URL map to one Dockmark bookmark, and an already-existing Dockmark URL is linked instead of duplicated.
+Dockmark keeps `browserBookmarkId ↔ dockmarkBookmarkId` mappings only in extension local storage. Browser-internal bookmark IDs are not uploaded to D1.
 
-The mapping `browserBookmarkId ↔ dockmarkBookmarkId` is stored only in the extension's local storage. Browser-internal bookmark IDs are not uploaded to D1. If the native bookmark is removed or its URL changes, the stale local mapping is pruned the next time the browser tree is read.
+Browser → Dockmark changes can be previewed and safely applied. Conflict Review supports **Use Browser**, **Keep Dockmark**, **Re-link** and **Unlink**. Dockmark → Browser writeback is deliberately narrower: the user must explicitly click **Write Dockmark → Browser** for one mapped item, and only the mapped browser bookmark's title/URL are updated. Dockmark does not background-write, create, delete or move native browser bookmarks.
 
-This import path is deliberately **read-only in 0.2.0**: Dockmark does not create, rename, move, edit or delete native browser bookmarks. Two-way synchronization is a separate future feature.
+### Create installable ZIPs
 
-### Create an installable ZIP
+Standard profile:
 
 ```bash
 npm run package:extension
 ```
 
-WXT writes the unpacked Chromium build under `apps/extension/.output/chrome-mv3`; Dockmark normalizes the release archive name to `apps/extension/.output/dockmark-chrome-v<version>.zip`. CI uploads this ZIP as an Actions artifact, and tags matching the extension version (for example `v0.2.0`) create a GitHub Release with the same package.
+New Tab profile:
 
-### Chromium smoke test
+```bash
+npm run package:extension:newtab
+```
 
-CI runs a real headless Chromium instance with the unpacked Manifest V3 extension loaded. It verifies the service worker, versioned capability handshake, optional native-bookmark permission semantics, open-tab enumeration/activation and pinned Session restore.
+WXT writes the unpacked Standard Chromium build under `apps/extension/.output/chrome-mv3`. The New Tab packaging step clones that build to `apps/extension/.output/chrome-mv3-newtab`, adds only the static New Tab manifest override and packages the local launcher assets. Release archives are normalized to:
 
-To run the same smoke test locally:
+```text
+apps/extension/.output/dockmark-chrome-v<version>.zip
+apps/extension/.output/dockmark-newtab-chrome-v<version>.zip
+```
+
+CI uploads both ZIPs as Actions artifacts, and the versioned Extension Release workflow publishes both assets to the matching GitHub Release.
+
+### Chromium smoke tests
+
+CI runs real headless Chromium instances for both profiles.
+
+The Standard smoke verifies the MV3 service worker, versioned capability handshake, optional native-bookmark permission semantics, open-tab enumeration/activation, pinned Session restore and—critically—that the Standard manifest does **not** override New Tab.
+
+The New Tab smoke loads the packaged New Tab variant, seeds a last-known-good snapshot while giving it no Dockmark host permission/network access, then verifies that cached bookmarks, Workspaces and search-engine commands still render and search locally. It also verifies the New Tab manifest override is isolated to that opt-in profile.
+
+To run both locally:
 
 ```bash
 npm install
@@ -119,26 +173,32 @@ npm run build:extension
 npm install --no-save playwright@1.63.0
 npx playwright install --with-deps --no-shell chromium
 npm run smoke:chromium
+npm run package:extension:newtab
+npm run smoke:chromium:newtab
 ```
 
-The CI smoke test intentionally does **not** bypass Chromium's optional permission prompts. After deploying the Web app, do this live bridge check once:
+After deploying the Web app, a useful live bridge check is:
 
-1. Load the unpacked extension and connect it to the deployed Dockmark origin.
+1. Load one Dockmark profile and connect it to the deployed Dockmark origin.
 2. Open two ordinary HTTP/HTTPS tabs outside the Dockmark origin.
 3. Open Dockmark and press `Ctrl+K` / `⌘K`; the tabs should appear above Workspaces.
 4. Select an Open Tab result; Dockmark should focus the existing tab instead of duplicating it.
 5. Open a Workspace containing a `reuse` item and a `pinned` item; the existing matching tab should be reused and the pinned item should become pinned.
 6. Restore a Session containing a pinned tab; its pinned state should be preserved.
-7. Enable **Native bookmarks**, read them from **Transfer**, import a small reviewed subset, refresh the native preview and confirm the imported entries show as mapped while the browser's own bookmark tree remains unchanged.
+7. Enable **Native bookmarks**, map a small reviewed subset and exercise Browser → Dockmark and explicit Dockmark → Browser Review actions.
+8. With the New Tab profile, open a new tab online once to seed/refresh the local snapshot, then disconnect the network and confirm cached search/launch remains available.
 
 ## Design principles
 
-- Web app is the primary product; the extension is an optional capability bridge.
+- Web app is the primary management product; the extension is an optional capability bridge/launcher.
+- Users choose exactly one Chromium profile: Standard or Dockmark New Tab.
+- The New Tab profile is local-first and uses cloud refresh as an enhancement, not a startup dependency.
 - Workspaces and Sessions are cloud-portable across browsers.
 - Command priority is `Open Tabs > Workspace > Session > Bookmark > Navigation > Search` when the extension is connected.
 - The Web/Extension bridge uses a versioned capability handshake so the two sides can evolve independently.
 - Browser-native bookmark access is optional and reviewed; native IDs/mappings stay local to the extension.
-- Manual extension download remains available even after a browser-store distribution channel is added.
+- Browser bookmark writes are explicit per-item actions, never background mutations.
+- Manual extension download remains available even after browser-store distribution channels are added.
 - Local/private URLs are never health-checked from Cloudflare.
 - `ignore` and `local-only` entries are excluded from bulk broken-link deletion.
 - AI changes are suggestions with preview/diff/apply, never silent mutations.
@@ -157,11 +217,13 @@ The CI smoke test intentionally does **not** bypass Chromium's optional permissi
 ```text
 apps/
   web/          React SPA + Cloudflare Worker + D1 migrations
-  extension/    optional browser bridge (WXT)
+  extension/    optional browser bridge + local-first New Tab variant (WXT)
 packages/
   core/         shared domain models, URL policy, search and command ranking
 scripts/
   chromium-extension-smoke.mjs
+  chromium-newtab-smoke.mjs
+  package-newtab-extension.mjs
   prepare-cloudflare-deploy.mjs
   prepare-workers-build.mjs
   rename-extension-package.mjs
