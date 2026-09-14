@@ -35,11 +35,18 @@ export function buildNativeMappingRows(
   const nativeById = new Map(nativeBookmarks.map((bookmark) => [bookmark.id, bookmark]));
   const cloudById = new Map(cloudBookmarks.map((bookmark) => [bookmark.id, bookmark]));
 
-  return mappings.map((mapping) => {
+  return mappings.map((mapping): NativeMappingRow => {
     const native = nativeById.get(mapping.browserBookmarkId);
     const cloud = cloudById.get(mapping.dockmarkBookmarkId);
 
-    if (!native) return { mapping, cloud, state: "native-missing", safeToApply: true };
+    if (!native) {
+      return {
+        mapping,
+        ...(cloud ? { cloud } : {}),
+        state: "native-missing",
+        safeToApply: true,
+      };
+    }
     if (!cloud) return { mapping, native, state: "cloud-missing", safeToApply: true };
 
     const nativeUrl = normalized(native.url);
