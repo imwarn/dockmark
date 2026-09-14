@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  DEFAULT_BROWSER_SETTINGS,
   normalizeBookmarkUrl,
+  normalizeBrowserSettings,
   type Bookmark,
+  type BookmarkConflictPreference,
   type Category,
 } from "@dockmark/core";
 import { createBookmark, createCategory, updateBookmark } from "./api";
@@ -38,6 +41,23 @@ interface NativeImportCandidate extends ImportCandidate {
   folderPath: string[];
   existingBookmarkId?: string;
   mappedDockmarkBookmarkId?: string | undefined;
+}
+
+const LOCAL_SETTINGS_KEY = "dockmarkBrowserSettingsV1";
+
+function readConflictPreference(): BookmarkConflictPreference {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_SETTINGS_KEY);
+    return normalizeBrowserSettings(raw ? JSON.parse(raw) : DEFAULT_BROWSER_SETTINGS).conflictPreference;
+  } catch {
+    return DEFAULT_BROWSER_SETTINGS.conflictPreference;
+  }
+}
+
+function conflictPreferenceLabel(preference: BookmarkConflictPreference) {
+  if (preference === "browser") return "Prefer Browser";
+  if (preference === "dockmark") return "Prefer Dockmark";
+  return "Ask every time";
 }
 
 function categoryKey(value: string) {
@@ -104,6 +124,8 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
   const [syncCapable, setSyncCapable] = useState(false);
   const [writebackCapable, setWritebackCapable] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [policyApplying, setPolicyApplying] = useState(false);
+  const [conflictPreference, setConflictPreference] = useState<BookmarkConflictPreference>(() => readConflictPreference());
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [relinkTargets, setRelinkTargets] = useState<Record<string, string>>({});
@@ -113,6 +135,14 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
       setMessage("Browser bookmark state changed. Refresh the snapshot to preview the latest mapping differences.");
     }
   }), [busy, loaded]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === LOCAL_SETTINGS_KEY) setConflictPreference(readConflictPreference());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const categoryNames = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
@@ -145,6 +175,13 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     [bookmarks, snapshot],
   );
 
+  const preferredReviewRows = useMemo(
+    () => conflictPreference === "ask"
+      ? []
+      : mappingRows.filter((row) => row.state === "cloud-changed" && row.native && row.cloud),
+    [conflictPreference, mappingRows],
+  );
+
   const mappingStats = useMemo(() => ({
     total: mappingRows.length,
     synced: mappingRows.filter((row) => row.state === "synced").length,
@@ -157,6 +194,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     setBusy(true);
     setError(null);
     setMessage(null);
+    setConflictPreference(readConflictPreference());
     try {
       const bridge = await getBridgeStatus();
       if (!bridge.capabilities.nativeBookmarks) {
@@ -467,6 +505,34 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     }
   }
 
+  async function applyPreferredReviewChanges() {
+    if (conflictPreference === "ask" || !preferredReviewRows.length) return;
+    setPolicyApplying(true);
+    setError(null);
+    setMessage(null);
+    try {
+      for (const row of preferredReviewRows) {
+        if (conflictPreference === "browser") {
+          await useBrowser(row);
+        } else if (writebackCapable) {
+          await writeDockmarkToBrowser(row);
+        } else {
+          await keepDockmark(row);
+        }
+      }
+      setMessage(
+        `Applied ${conflictPreferenceLabel(conflictPreference)} to ${preferredReviewRows.length} one-sided Dockmark change${preferredReviewRows.length === 1 ? "" : "s"}. ` +
+        (conflictPreference === "dockmark" && writebackCapable
+          ? "Each affected browser bookmark was explicitly written by this action; folders were not moved."
+          : "No background browser writes were enabled."),
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not apply the preferred review policy.");
+    } finally {
+      setPolicyApplying(false);
+    }
+  }
+
   async function applySafeMappingChanges() {
     if (!snapshot || !syncCapable) return;
     const safeRows = mappingRows.filter((row) => row.safeToApply);
@@ -599,7 +665,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
           <span className="native-readonly">NO AUTO BROWSER WRITES</span>
         </div>
         <div className="native-import-actions">
-          <button className="secondary" type="button" disabled={busy} onClick={() => void loadNativeBookmarks()}>
+          <button className="secondary" type="button" disabled={busy || policyApplying} onClick={() => void loadNativeBookmarks()}>
             {busy && !loaded ? "Reading…" : loaded ? "Refresh browser snapshot" : "Read browser bookmarks"}
           </button>
           <span>Automatic sync never edits browser bookmarks. Extension 0.4+ can write title + URL only after an explicit Review action.</span>
@@ -623,9 +689,17 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
       {loaded && syncCapable && mappingRows.length > 0 && (
         <section className="mapping-preview">
           <div className="preview-heading">
-            <div><p className="eyebrow">MAPPING HEALTH</p><h2>Native ↔ Dockmark mappings</h2></div>
+            <div>
+              <p className="eyebrow">MAPPING HEALTH · {conflictPreferenceLabel(conflictPreference).toUpperCase()}</p>
+              <h2>Native ↔ Dockmark mappings</h2>
+            </div>
             <div className="preview-actions">
-              <button className="primary" type="button" onClick={() => void applySafeMappingChanges()} disabled={busy || !mappingStats.safe}>
+              {conflictPreference !== "ask" && (
+                <button className="secondary" type="button" onClick={() => void applyPreferredReviewChanges()} disabled={busy || policyApplying || !preferredReviewRows.length}>
+                  {policyApplying ? "Applying policy…" : `Apply preferred ${preferredReviewRows.length}`}
+                </button>
+              )}
+              <button className="primary" type="button" onClick={() => void applySafeMappingChanges()} disabled={busy || policyApplying || !mappingStats.safe}>
                 {busy ? "Applying…" : `Apply safe changes ${mappingStats.safe}`}
               </button>
             </div>
@@ -637,10 +711,22 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
             <span><strong>{mappingStats.conflicts}</strong>Review</span>
             <span><strong>{mappingStats.missing}</strong>Missing side</span>
           </div>
+          {conflictPreference !== "ask" && (
+            <p className="mapping-note">
+              {conflictPreferenceLabel(conflictPreference)} recommends a source for Review rows. “Apply preferred” is still an explicit action and only batches one-sided DOCKMARK CHANGED rows; true REVIEW conflicts remain individual decisions.
+            </p>
+          )}
           <div className="mapping-list">
             {mappingRows.slice(0, 500).map((row) => {
               const needsReview = row.state === "cloud-changed" || row.state === "conflict";
               const selectedTarget = relinkTargets[row.mapping.browserBookmarkId] ?? "";
+              const recommendedAction = !needsReview || conflictPreference === "ask"
+                ? null
+                : conflictPreference === "browser"
+                  ? "browser"
+                  : writebackCapable
+                    ? "writeback"
+                    : "keep";
               return (
                 <div className={`mapping-row ${needsReview ? "mapping-row-review" : ""} mapping-${row.state}`} key={row.mapping.browserBookmarkId}>
                   <div className="mapping-row-main">
@@ -651,13 +737,16 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
                     </span>
                     <span className={`mapping-status mapping-status-${row.state}`}>{nativeMappingStateLabel(row.state)}</span>
                     {!needsReview && (
-                      <button className="text-action muted-action" type="button" disabled={busy} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
+                      <button className="text-action muted-action" type="button" disabled={busy || policyApplying} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
                     )}
                   </div>
 
                   {needsReview && row.native && row.cloud && (
                     <div className="mapping-review-panel">
                       <p>{nativeMappingReviewDescription(row.state)}</p>
+                      {recommendedAction && (
+                        <small className="mapping-review-note">Policy recommendation: {recommendedAction === "browser" ? "Use Browser" : recommendedAction === "writeback" ? "Write Dockmark → Browser" : "Keep Dockmark"}. This is guidance only until you click an action.</small>
+                      )}
                       <div className="mapping-review-sides">
                         <div>
                           <span>Browser</span>
@@ -673,16 +762,16 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
                         </div>
                       </div>
                       <div className="mapping-review-actions">
-                        <button className="secondary" type="button" disabled={busy} onClick={() => void useBrowser(row)}>Use Browser</button>
-                        <button className="secondary" type="button" disabled={busy} onClick={() => void keepDockmark(row)}>Keep Dockmark</button>
+                        <button className={recommendedAction === "browser" ? "primary" : "secondary"} type="button" disabled={busy || policyApplying} onClick={() => void useBrowser(row)}>Use Browser</button>
+                        <button className={recommendedAction === "keep" ? "primary" : "secondary"} type="button" disabled={busy || policyApplying} onClick={() => void keepDockmark(row)}>Keep Dockmark</button>
                         {writebackCapable && (
-                          <button className="secondary" type="button" disabled={busy} onClick={() => void writeDockmarkToBrowser(row)}>Write Dockmark → Browser</button>
+                          <button className={recommendedAction === "writeback" ? "primary" : "secondary"} type="button" disabled={busy || policyApplying} onClick={() => void writeDockmarkToBrowser(row)}>Write Dockmark → Browser</button>
                         )}
                         <div className="mapping-relink-control">
                           <select
                             aria-label="Re-link browser bookmark to Dockmark bookmark"
                             value={selectedTarget}
-                            disabled={busy}
+                            disabled={busy || policyApplying}
                             onChange={(event) => setRelinkTargets((current) => ({ ...current, [row.mapping.browserBookmarkId]: event.target.value }))}
                           >
                             <option value="">Choose Dockmark bookmark…</option>
@@ -690,9 +779,9 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
                               <option value={bookmark.id} key={bookmark.id}>{bookmark.title} — {bookmark.url}</option>
                             ))}
                           </select>
-                          <button className="secondary" type="button" disabled={busy || !selectedTarget} onClick={() => void relinkMapping(row)}>Re-link</button>
+                          <button className="secondary" type="button" disabled={busy || policyApplying || !selectedTarget} onClick={() => void relinkMapping(row)}>Re-link</button>
                         </div>
-                        <button className="text-action muted-action" type="button" disabled={busy} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
+                        <button className="text-action muted-action" type="button" disabled={busy || policyApplying} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
                       </div>
                       <small className="mapping-review-note">Use Browser may update Dockmark title, URL and category. Keep Dockmark accepts the current difference as intentional. Write Dockmark → Browser explicitly changes only the mapped browser bookmark title + URL; it never moves the browser folder. Re-link only changes the local mapping.</small>
                     </div>
@@ -701,7 +790,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
               );
             })}
           </div>
-          <p className="mapping-note">Safe Apply remains browser → Dockmark only. Browser deletions unlink the mapping but keep the Dockmark bookmark. Browser writes happen only through the explicit Write Dockmark → Browser Review action in Extension 0.4+.</p>
+          <p className="mapping-note">Safe Apply remains browser → Dockmark only. Browser deletions unlink the mapping but keep the Dockmark bookmark. Preferred policy actions still require a click; no background browser mutation is enabled.</p>
         </section>
       )}
 
@@ -712,7 +801,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
             <div className="preview-actions">
               <button className="text-action" type="button" onClick={() => selectAll(true)}>Select unmapped</button>
               <button className="text-action muted-action" type="button" onClick={() => selectAll(false)}>Clear</button>
-              <button className="primary" type="button" onClick={() => void importSelected()} disabled={busy || !stats.selected}>
+              <button className="primary" type="button" onClick={() => void importSelected()} disabled={busy || policyApplying || !stats.selected}>
                 {busy ? "Importing…" : `Import / map ${stats.selected}`}
               </button>
             </div>
@@ -736,7 +825,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
                 <input
                   type="checkbox"
                   checked={item.selected}
-                  disabled={item.status === "invalid" || Boolean(item.mappedDockmarkBookmarkId) || busy}
+                  disabled={item.status === "invalid" || Boolean(item.mappedDockmarkBookmarkId) || busy || policyApplying}
                   onChange={() => toggle(item.browserBookmarkId)}
                 />
                 <span className="import-copy">
