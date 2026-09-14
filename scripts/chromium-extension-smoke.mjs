@@ -20,6 +20,21 @@ const address = server.address();
 if (!address || typeof address === "string") throw new Error("Could not start smoke target server.");
 const origin = `http://127.0.0.1:${address.port}`;
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollUntil(read, predicate, { timeoutMs = 4000, intervalMs = 100 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastValue;
+  do {
+    lastValue = await read();
+    if (predicate(lastValue)) return lastValue;
+    await sleep(intervalMs);
+  } while (Date.now() < deadline);
+  return lastValue;
+}
+
 let context;
 try {
   context = await chromium.launchPersistentContext(userDataDir, {
@@ -84,20 +99,27 @@ try {
   );
   assert.equal(afterActivate.find((tab) => tab.id === firstTab.id)?.active, true);
 
+  const restoredUrl = `${origin}/restored`;
   const restore = await popup.evaluate(async (url) =>
     chrome.runtime.sendMessage({
       type: "dockmark:restore-session",
       items: [{ url, pinned: true }],
     }),
-    `${origin}/restored`,
+    restoredUrl,
   );
   assert.equal(restore.opened, 1);
 
-  const restoredTabs = await popup.evaluate(async () =>
-    chrome.runtime.sendMessage({ type: "dockmark:get-open-tabs" }),
+  // browser.tabs.create() may resolve just before a newly-created tab becomes visible to
+  // the next tabs.query() call in headless Chromium. Keep the behavioral assertion, but
+  // wait a short bounded interval for the browser tab registry to settle instead of
+  // treating that scheduling race as a product failure.
+  const restoredTabs = await pollUntil(
+    () => popup.evaluate(async () => chrome.runtime.sendMessage({ type: "dockmark:get-open-tabs" })),
+    (currentTabs) => currentTabs.some((tab) => tab.url === restoredUrl && tab.pinned === true),
   );
-  const restored = restoredTabs.find((tab) => tab.url === `${origin}/restored`);
-  assert.equal(restored?.pinned, true, "Session restore should preserve pinned state.");
+  const restored = restoredTabs.find((tab) => tab.url === restoredUrl);
+  assert.ok(restored, "Session restore should expose the restored tab within the polling window.");
+  assert.equal(restored.pinned, true, "Session restore should preserve pinned state.");
 
   console.log(`✓ Dockmark Chromium extension loaded: ${extensionId}`);
   console.log("✓ Capability handshake protocol 1 / extension 0.5.0");
