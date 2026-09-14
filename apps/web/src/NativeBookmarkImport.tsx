@@ -29,7 +29,7 @@ interface NativeImportCandidate extends ImportCandidate {
   browserBookmarkId: string;
   folderPath: string[];
   existingBookmarkId?: string;
-  mappedDockmarkBookmarkId?: string;
+  mappedDockmarkBookmarkId?: string | undefined;
 }
 
 function categoryKey(value: string) {
@@ -502,7 +502,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
 
           <div className="import-list">
             {items.slice(0, 500).map((item) => (
-              <label className={`import-row ${item.mappedDockmarkBookmarkId ? "status-mapped" : `status-${item.status}`}`} key={item.browserBookmarkId}>
+              <label className={`import-row ${item.mappedDockmarkBookmarkId ? "status-mapped" : `status-${item.status}`} key={item.browserBookmarkId}>
                 <input
                   type="checkbox"
                   checked={item.selected}
