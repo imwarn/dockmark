@@ -16,7 +16,14 @@ import {
   type NativeBrowserBookmark,
 } from "./browser-bridge";
 import { buildImportPreview, type ImportCandidate, type ParsedBookmark } from "./bookmark-transfer";
-import { buildNativeMappingRows, nativeMappingStateLabel } from "./native-bookmark-sync";
+import {
+  acceptNativeMappingBaseline,
+  buildNativeMappingRows,
+  nativeMappingReviewDescription,
+  nativeMappingStateLabel,
+  removeNativeMappingBaseline,
+  type NativeMappingRow,
+} from "./native-bookmark-sync";
 
 interface Props {
   bookmarks: Bookmark[];
@@ -97,12 +104,23 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [relinkTargets, setRelinkTargets] = useState<Record<string, string>>({});
 
   useEffect(() => onBridgeEvent((event) => {
     if (event === "bookmarks-changed" && loaded && !busy) {
       setMessage("Browser bookmark state changed. Refresh the snapshot to preview the latest mapping differences.");
     }
   }), [busy, loaded]);
+
+  const categoryNames = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+
+  const relinkOptions = useMemo(
+    () => [...bookmarks].sort((left, right) => left.title.localeCompare(right.title)),
+    [bookmarks],
+  );
 
   const stats = useMemo(() => {
     const selected = items.filter((item) => item.selected && item.status !== "invalid" && !item.mappedDockmarkBookmarkId);
@@ -275,6 +293,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     setError(null);
     try {
       await removeNativeBookmarkMappingsWithBridge([browserBookmarkId]);
+      removeNativeMappingBaseline(browserBookmarkId);
       setSnapshot((current) => current ? {
         ...current,
         mappings: current.mappings.filter((mapping) => mapping.browserBookmarkId !== browserBookmarkId),
@@ -287,6 +306,129 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
       setMessage("Mapping unlinked. Neither the browser bookmark nor the Dockmark bookmark was deleted.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not unlink mapping.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refreshMappingSnapshot() {
+    const nextSnapshot = await getNativeBookmarksWithBridge();
+    setSnapshot(nextSnapshot);
+    setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks));
+  }
+
+  async function keepDockmark(row: NativeMappingRow) {
+    if (!row.native || !row.cloud) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const mapping: NativeBookmarkMapping = {
+        ...row.mapping,
+        url: row.native.url,
+      };
+      await saveNativeBookmarkMappingsWithBridge([mapping]);
+      acceptNativeMappingBaseline(mapping, row.native, row.cloud);
+      await refreshMappingSnapshot();
+      setMessage("Kept the Dockmark version and accepted the current Browser ↔ Dockmark difference as the new mapping baseline. No browser data was changed.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not keep the Dockmark version.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function relinkMapping(row: NativeMappingRow) {
+    if (!row.native) return;
+    const targetId = relinkTargets[row.mapping.browserBookmarkId];
+    const target = bookmarks.find((bookmark) => bookmark.id === targetId);
+    if (!target) return;
+
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const mapping: NativeBookmarkMapping = {
+        ...row.mapping,
+        dockmarkBookmarkId: target.id,
+        url: row.native.url,
+      };
+      await saveNativeBookmarkMappingsWithBridge([mapping]);
+      acceptNativeMappingBaseline(mapping, row.native, target);
+      setRelinkTargets((current) => {
+        const next = { ...current };
+        delete next[row.mapping.browserBookmarkId];
+        return next;
+      });
+      await refreshMappingSnapshot();
+      setMessage(`Re-linked the browser bookmark to “${target.title}”. Neither bookmark was modified.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not re-link this mapping.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function useBrowser(row: NativeMappingRow) {
+    if (!snapshot || !row.native || !row.cloud) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const native = row.native;
+      const normalizedNativeUrl = normalizeBookmarkUrl(native.url);
+      const cloudByUrl = existingByUrl(bookmarks);
+      const categoryMap = new Map(categories.map((category) => [categoryKey(category.name), category.id]));
+      const categoryName = folderCategory(native.folderPath);
+      let categoryId: string | null = null;
+      if (categoryName) {
+        const key = categoryKey(categoryName);
+        categoryId = categoryMap.get(key) ?? null;
+        if (!categoryId) {
+          const category = await createCategory({ name: categoryName });
+          categoryId = category.id;
+        }
+      }
+
+      const targetCounts = new Map<string, number>();
+      for (const mapping of snapshot.mappings) {
+        targetCounts.set(mapping.dockmarkBookmarkId, (targetCounts.get(mapping.dockmarkBookmarkId) ?? 0) + 1);
+      }
+
+      const existingAtBrowserUrl = cloudByUrl.get(normalizedNativeUrl);
+      let target: Bookmark;
+      if (existingAtBrowserUrl && existingAtBrowserUrl.id !== row.cloud.id) {
+        target = await updateBookmark(existingAtBrowserUrl.id, {
+          title: (native.title || native.url).slice(0, 200),
+          categoryId,
+        });
+      } else if ((targetCounts.get(row.cloud.id) ?? 0) <= 1 || existingAtBrowserUrl?.id === row.cloud.id) {
+        target = await updateBookmark(row.cloud.id, {
+          title: (native.title || native.url).slice(0, 200),
+          url: native.url,
+          categoryId,
+        });
+      } else {
+        target = await createBookmark({
+          title: (native.title || native.url).slice(0, 200),
+          url: native.url,
+          categoryId,
+        });
+      }
+
+      const mapping: NativeBookmarkMapping = {
+        ...row.mapping,
+        dockmarkBookmarkId: target.id,
+        url: native.url,
+      };
+      await saveNativeBookmarkMappingsWithBridge([mapping]);
+      acceptNativeMappingBaseline(mapping, native, target);
+      await onChanged();
+      await refreshMappingSnapshot();
+      setMessage(`Resolved review using Browser as the source. Dockmark now follows “${native.title || native.url}”; the native browser bookmark was not modified.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not resolve this mapping using the browser version.");
     } finally {
       setBusy(false);
     }
@@ -342,6 +484,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
       for (const row of safeRows) {
         if (row.state === "native-missing") {
           toRemove.push(row.mapping.browserBookmarkId);
+          removeNativeMappingBaseline(row.mapping.browserBookmarkId);
           unlinked += 1;
           continue;
         }
@@ -462,19 +605,67 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
             <span><strong>{mappingStats.missing}</strong>Missing side</span>
           </div>
           <div className="mapping-list">
-            {mappingRows.slice(0, 500).map((row) => (
-              <div className={`mapping-row mapping-${row.state}`} key={row.mapping.browserBookmarkId}>
-                <span className="mapping-copy">
-                  <strong>{row.native?.title ?? row.cloud?.title ?? row.mapping.url}</strong>
-                  <small>Browser · {row.native?.url ?? "bookmark removed"}</small>
-                  <small>Dockmark · {row.cloud?.url ?? "bookmark missing"}</small>
-                </span>
-                <span className={`mapping-status mapping-status-${row.state}`}>{nativeMappingStateLabel(row.state)}</span>
-                <button className="text-action muted-action" type="button" disabled={busy} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
-              </div>
-            ))}
+            {mappingRows.slice(0, 500).map((row) => {
+              const needsReview = row.state === "cloud-changed" || row.state === "conflict";
+              const selectedTarget = relinkTargets[row.mapping.browserBookmarkId] ?? "";
+              return (
+                <div className={`mapping-row ${needsReview ? "mapping-row-review" : ""} mapping-${row.state}`} key={row.mapping.browserBookmarkId}>
+                  <div className="mapping-row-main">
+                    <span className="mapping-copy">
+                      <strong>{row.native?.title ?? row.cloud?.title ?? row.mapping.url}</strong>
+                      <small>Browser · {row.native?.url ?? "bookmark removed"}</small>
+                      <small>Dockmark · {row.cloud?.url ?? "bookmark missing"}</small>
+                    </span>
+                    <span className={`mapping-status mapping-status-${row.state}`}>{nativeMappingStateLabel(row.state)}</span>
+                    {!needsReview && (
+                      <button className="text-action muted-action" type="button" disabled={busy} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
+                    )}
+                  </div>
+
+                  {needsReview && row.native && row.cloud && (
+                    <div className="mapping-review-panel">
+                      <p>{nativeMappingReviewDescription(row.state)}</p>
+                      <div className="mapping-review-sides">
+                        <div>
+                          <span>Browser</span>
+                          <strong>{row.native.title || row.native.url}</strong>
+                          <small>{row.native.url}</small>
+                          <small>{folderCategory(row.native.folderPath) ?? "Uncategorized"}</small>
+                        </div>
+                        <div>
+                          <span>Dockmark</span>
+                          <strong>{row.cloud.title}</strong>
+                          <small>{row.cloud.url}</small>
+                          <small>{row.cloud.categoryId ? categoryNames.get(row.cloud.categoryId) ?? "Unknown category" : "Uncategorized"}</small>
+                        </div>
+                      </div>
+                      <div className="mapping-review-actions">
+                        <button className="secondary" type="button" disabled={busy} onClick={() => void useBrowser(row)}>Use Browser</button>
+                        <button className="secondary" type="button" disabled={busy} onClick={() => void keepDockmark(row)}>Keep Dockmark</button>
+                        <div className="mapping-relink-control">
+                          <select
+                            aria-label="Re-link browser bookmark to Dockmark bookmark"
+                            value={selectedTarget}
+                            disabled={busy}
+                            onChange={(event) => setRelinkTargets((current) => ({ ...current, [row.mapping.browserBookmarkId]: event.target.value }))}
+                          >
+                            <option value="">Choose Dockmark bookmark…</option>
+                            {relinkOptions.filter((bookmark) => bookmark.id !== row.cloud?.id).map((bookmark) => (
+                              <option value={bookmark.id} key={bookmark.id}>{bookmark.title} — {bookmark.url}</option>
+                            ))}
+                          </select>
+                          <button className="secondary" type="button" disabled={busy || !selectedTarget} onClick={() => void relinkMapping(row)}>Re-link</button>
+                        </div>
+                        <button className="text-action muted-action" type="button" disabled={busy} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
+                      </div>
+                      <small className="mapping-review-note">Use Browser may update Dockmark title, URL and category. Keep Dockmark accepts the current difference as intentional. Re-link only changes the local mapping.</small>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <p className="mapping-note">Safe Apply is browser → Dockmark only. Browser deletions unlink the mapping but keep the Dockmark bookmark. Dockmark-side edits and true divergence are left for manual review.</p>
+          <p className="mapping-note">Safe Apply is browser → Dockmark only. Browser deletions unlink the mapping but keep the Dockmark bookmark. Review items require an explicit decision; native browser bookmarks remain read-only.</p>
         </section>
       )}
 
