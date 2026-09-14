@@ -25,7 +25,7 @@ manifest.description = "Dockmark browser bridge with a local-first, offline-capa
 manifest.chrome_url_overrides = { newtab: "newtab.html" };
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-for (const required of ["newtab.html", "newtab.js", "newtab.css"]) {
+for (const required of ["newtab.html", "newtab.js", "newtab-auth.js", "newtab.css"]) {
   await readFile(path.join(variantDir, required));
 }
 
