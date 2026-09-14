@@ -58,6 +58,16 @@ function isHttpUrl(value) {
   }
 }
 
+function tabMatchKey(value) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    return url.href;
+  } catch {
+    return value;
+  }
+}
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -388,12 +398,43 @@ async function openWorkspace(workspace) {
     }));
   if (!items.length) return;
 
-  try {
-    const current = await chrome.tabs.getCurrent();
-    await chrome.runtime.sendMessage({ type: "dockmark:open-workspace", items });
-    if (current?.id != null) await chrome.tabs.remove(current.id).catch(() => undefined);
-  } catch {
-    for (const item of items) await chrome.tabs.create({ url: item.url, active: false, pinned: item.openMode === "pinned" });
+  const current = await chrome.tabs.getCurrent().catch(() => null);
+  const tabs = await chrome.tabs.query({});
+  const byUrl = new Map();
+  for (const tab of tabs) {
+    if (tab.id == null || !isHttpUrl(tab.url)) continue;
+    const key = tabMatchKey(tab.url);
+    if (!byUrl.has(key)) byUrl.set(key, tab);
+  }
+
+  let firstTabId = null;
+  for (const item of items) {
+    const key = tabMatchKey(item.url);
+    const reusable = item.openMode === "new-tab" ? null : byUrl.get(key);
+    if (reusable?.id != null) {
+      if (item.openMode === "pinned" && !reusable.pinned) {
+        await chrome.tabs.update(reusable.id, { pinned: true });
+      }
+      firstTabId ??= reusable.id;
+      continue;
+    }
+
+    const created = await chrome.tabs.create({
+      url: item.url,
+      active: false,
+      pinned: item.openMode === "pinned",
+    });
+    if (created.id == null) continue;
+    firstTabId ??= created.id;
+    byUrl.set(key, created);
+  }
+
+  if (firstTabId != null) {
+    const first = await chrome.tabs.update(firstTabId, { active: true });
+    if (first?.windowId != null) await chrome.windows.update(first.windowId, { focused: true });
+  }
+  if (current?.id != null && current.id !== firstTabId) {
+    await chrome.tabs.remove(current.id).catch(() => undefined);
   }
 }
 
