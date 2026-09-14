@@ -14,6 +14,7 @@ import {
   NEW_TAB_EXTENSION_DOWNLOAD_URL,
   compareExtensionVersions,
 } from "./extension-distribution";
+import { BrowserSettingsManager } from "./BrowserSettingsManager";
 import "./extension.css";
 
 const capabilityLabels: Array<[keyof BrowserBridgeStatus["capabilities"], string]> = [
@@ -183,6 +184,8 @@ export function BrowserExtensionManager() {
           </ol>
         </article>
       )}
+
+      <BrowserSettingsManager />
 
       <div className="extension-diagnostics-grid">
         <article className="form-card extension-diagnostic-card">
