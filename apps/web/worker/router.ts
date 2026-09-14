@@ -47,16 +47,16 @@ export default {
       if (pathname === "/api/health") return baseWorker.fetch(request, env);
 
       const principal = await authenticateRequest(request, env);
+      if (pathname.startsWith("/api/public/bookmarks") && request.method !== "GET" && principal?.kind === "session") {
+        requireSameOrigin(request);
+      }
       const publicResponse = await handlePublicBookmarkApi(
         request,
         env.DB,
         pathname,
         principal?.kind === "session",
       );
-      if (publicResponse) {
-        if (request.method !== "GET" && principal?.kind === "session") requireSameOrigin(request);
-        return publicResponse;
-      }
+      if (publicResponse) return publicResponse;
 
       if (!pathname.startsWith("/api/")) return baseWorker.fetch(request, env);
       if (!authConfigured(env)) {
