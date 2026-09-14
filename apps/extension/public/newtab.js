@@ -347,6 +347,11 @@ function buildResults(rawQuery) {
   return results.sort((a, b) => b.score - a.score).slice(0, 10);
 }
 
+function syncActiveResultStyles() {
+  const rows = elements.results.querySelectorAll(".result-row");
+  rows.forEach((row, index) => row.classList.toggle("active", index === activeResult));
+}
+
 function renderSearchResults() {
   const query = elements.search.value;
   visibleResults = buildResults(query);
@@ -369,7 +374,10 @@ function renderSearchResults() {
     kind.className = "result-kind";
     kind.textContent = result.kind;
     row.append(copy, kind);
-    row.addEventListener("mouseenter", () => { activeResult = index; renderSearchResults(); });
+    row.addEventListener("mouseenter", () => {
+      activeResult = index;
+      syncActiveResultStyles();
+    });
     row.addEventListener("click", () => void executeResult(result));
     elements.results.append(row);
   });
