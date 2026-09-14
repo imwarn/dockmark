@@ -13,17 +13,18 @@
 .export-actions { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 24px; }
 .transfer-feedback { margin-top: 14px; }
 .success-banner { padding: 12px 14px; border: 1px solid #31513d; border-radius: 11px; background: #102018; color: #9dceb0; font-size: 13px; }
-.import-preview { margin-top: 26px; border: 1px solid #252d29; border-radius: 18px; background: rgba(15,20,18,.78); overflow: hidden; }
+.import-preview, .mapping-preview { margin-top: 26px; border: 1px solid #252d29; border-radius: 18px; background: rgba(15,20,18,.78); overflow: hidden; }
 .native-import-preview { margin-bottom: 18px; }
+.mapping-preview { margin-bottom: 18px; }
 .preview-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 18px; border-bottom: 1px solid #242c28; }
 .preview-heading h2 { margin: 6px 0 0; font-size: 17px; }
 .preview-actions { display: flex; align-items: center; gap: 10px; }
-.import-stats { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid #242c28; }
+.import-stats, .mapping-stats { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid #242c28; }
 .import-stats.native-stats { grid-template-columns: repeat(6, 1fr); }
-.import-stats span { display: grid; gap: 2px; padding: 13px 16px; color: #6f7a74; border-right: 1px solid #242c28; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-.import-stats span:last-child { border-right: 0; }
-.import-stats strong { color: #c7d2cc; font-size: 17px; font-weight: 580; letter-spacing: -.02em; }
-.import-list { max-height: 520px; overflow: auto; padding: 6px; }
+.import-stats span, .mapping-stats span { display: grid; gap: 2px; padding: 13px 16px; color: #6f7a74; border-right: 1px solid #242c28; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.import-stats span:last-child, .mapping-stats span:last-child { border-right: 0; }
+.import-stats strong, .mapping-stats strong { color: #c7d2cc; font-size: 17px; font-weight: 580; letter-spacing: -.02em; }
+.import-list, .mapping-list { max-height: 520px; overflow: auto; padding: 6px; }
 .import-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 10px; border-radius: 11px; }
 .import-row:hover { background: #151b18; }
 .import-row > input { accent-color: #8fbc9f; }
@@ -39,12 +40,26 @@
 .status-invalid .import-status { color: #c28c88; border-color: #553532; }
 .policy-local-only { color: #b5b77d; border-color: #45472e; }
 .preview-limit { margin: 0; padding: 12px 16px; color: #6f7b74; border-top: 1px solid #242c28; font-size: 11px; }
+.mapping-row { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 10px 12px; border-radius: 11px; }
+.mapping-row:hover { background: #151b18; }
+.mapping-copy { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.mapping-copy strong, .mapping-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-copy strong { font-size: 13px; font-weight: 580; }
+.mapping-copy small { color: #707c75; font-size: 11px; }
+.mapping-status { flex: 0 0 auto; padding: 4px 7px; border: 1px solid #303a35; border-radius: 999px; color: #839087; font-size: 9px; letter-spacing: .06em; white-space: nowrap; }
+.mapping-status-synced { color: #8db99c; border-color: #31513d; }
+.mapping-status-native-changed, .mapping-status-mapping-stale { color: #c5b87d; border-color: #4b452b; }
+.mapping-status-native-missing, .mapping-status-cloud-missing { color: #c6a071; border-color: #4e3d29; }
+.mapping-status-cloud-changed, .mapping-status-conflict { color: #ca8f8b; border-color: #553532; }
+.mapping-note { margin: 0; padding: 12px 16px; color: #748078; border-top: 1px solid #242c28; font-size: 11px; line-height: 1.55; }
 
 @media (max-width: 800px) {
   .transfer-page { padding-top: 42px; }
   .transfer-grid { grid-template-columns: 1fr; }
   .preview-heading { align-items: start; flex-direction: column; }
   .preview-actions { width: 100%; flex-wrap: wrap; }
-  .import-stats, .import-stats.native-stats { grid-template-columns: repeat(2, 1fr); }
-  .import-stats span { border-bottom: 1px solid #242c28; }
+  .import-stats, .import-stats.native-stats, .mapping-stats { grid-template-columns: repeat(2, 1fr); }
+  .import-stats span, .mapping-stats span { border-bottom: 1px solid #242c28; }
+  .mapping-row { align-items: flex-start; flex-wrap: wrap; }
+  .mapping-copy { width: 100%; flex-basis: 100%; }
 }
