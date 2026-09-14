@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type DragEvent, type FormEvent } from "react";
 import type { Bookmark, Category, CreateBookmarkInput, HealthPolicy, HealthStatus } from "@dockmark/core";
 import {
   checkBookmarkHealth,
@@ -9,6 +9,7 @@ import {
   updateBookmark,
   updateCategory,
 } from "./api";
+import { reorderBookmarks, reorderCategories } from "./reorder-api";
 import "./health.css";
 
 interface Props {
@@ -25,6 +26,12 @@ interface BookmarkDraft {
   url: string;
   categoryId: string;
   healthPolicy: DraftPolicy;
+}
+
+interface BookmarkGroup {
+  categoryId: string | null;
+  name: string;
+  bookmarks: Bookmark[];
 }
 
 const emptyDraft: BookmarkDraft = {
@@ -51,6 +58,32 @@ const healthLabels: Record<HealthStatus, string> = {
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function moveId(ids: string[], movingId: string, targetId: string) {
+  if (movingId === targetId) return ids;
+  const sourceIndex = ids.indexOf(movingId);
+  const targetIndex = ids.indexOf(targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return ids;
+  const next = ids.filter((id) => id !== movingId);
+  const targetIndexAfterRemoval = next.indexOf(targetId);
+  if (targetIndexAfterRemoval < 0) return ids;
+  const insertIndex = sourceIndex < targetIndex ? targetIndexAfterRemoval + 1 : targetIndexAfterRemoval;
+  next.splice(insertIndex, 0, movingId);
+  return next;
+}
+
+function moveByOffset(ids: string[], id: string, offset: -1 | 1) {
+  const index = ids.indexOf(id);
+  const target = index + offset;
+  if (index < 0 || target < 0 || target >= ids.length) return ids;
+  const moving = ids[index];
+  const displaced = ids[target];
+  if (moving === undefined || displaced === undefined) return ids;
+  const next = [...ids];
+  next[index] = displaced;
+  next[target] = moving;
+  return next;
 }
 
 function HealthBadge({ bookmark }: { bookmark: Bookmark }) {
@@ -117,15 +150,36 @@ export function BookmarkManager({ bookmarks, categories, loading, onChanged }: P
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
   const [bulkChecking, setBulkChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
+  const [draggedBookmark, setDraggedBookmark] = useState<{ id: string; categoryId: string | null } | null>(null);
 
   const eligibleForAutomaticCheck = useMemo(
     () => bookmarks.filter((bookmark) => bookmark.healthPolicy === "normal"),
     [bookmarks],
   );
+
+  const bookmarkGroups = useMemo<BookmarkGroup[]>(() => {
+    const groups: BookmarkGroup[] = categories.map((category) => ({
+      categoryId: category.id,
+      name: category.name,
+      bookmarks: bookmarks
+        .filter((bookmark) => bookmark.categoryId === category.id)
+        .sort((a, b) => a.position - b.position || a.title.localeCompare(b.title)),
+    }));
+    groups.push({
+      categoryId: null,
+      name: "Uncategorized",
+      bookmarks: bookmarks
+        .filter((bookmark) => !bookmark.categoryId)
+        .sort((a, b) => a.position - b.position || a.title.localeCompare(b.title)),
+    });
+    return groups.filter((group) => group.bookmarks.length > 0);
+  }, [bookmarks, categories]);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -138,6 +192,38 @@ export function BookmarkManager({ bookmarks, categories, loading, onChanged }: P
       setError(messageFrom(caught));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function persistCategoryOrder(ids: string[]) {
+    setReordering(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await reorderCategories(ids);
+      await onChanged();
+      setNotice("Category order saved.");
+    } catch (caught) {
+      setError(messageFrom(caught));
+      await onChanged();
+    } finally {
+      setReordering(false);
+    }
+  }
+
+  async function persistBookmarkOrder(categoryId: string | null, ids: string[]) {
+    setReordering(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await reorderBookmarks(categoryId, ids);
+      await onChanged();
+      setNotice("Bookmark order saved.");
+    } catch (caught) {
+      setError(messageFrom(caught));
+      await onChanged();
+    } finally {
+      setReordering(false);
     }
   }
 
@@ -251,6 +337,22 @@ export function BookmarkManager({ bookmarks, categories, loading, onChanged }: P
     });
   }
 
+  function categoryDrop(event: DragEvent<HTMLDivElement>, targetId: string) {
+    event.preventDefault();
+    if (!draggedCategoryId || draggedCategoryId === targetId || reordering) return;
+    const ids = moveId(categories.map((category) => category.id), draggedCategoryId, targetId);
+    setDraggedCategoryId(null);
+    void persistCategoryOrder(ids);
+  }
+
+  function bookmarkDrop(event: DragEvent<HTMLElement>, categoryId: string | null, targetId: string, ids: string[]) {
+    event.preventDefault();
+    if (!draggedBookmark || draggedBookmark.categoryId !== categoryId || draggedBookmark.id === targetId || reordering) return;
+    const next = moveId(ids, draggedBookmark.id, targetId);
+    setDraggedBookmark(null);
+    void persistBookmarkOrder(categoryId, next);
+  }
+
   return (
     <section className="management">
       <div className="management-heading">
@@ -278,8 +380,16 @@ export function BookmarkManager({ bookmarks, categories, loading, onChanged }: P
               <button className="secondary" disabled={busy || !newCategory.trim()}>Add</button>
             </form>
             <div className="category-list">
-              {categories.map((category) => (
-                <div className="category-row" key={category.id}>
+              {categories.map((category, index) => (
+                <div
+                  className={`category-row reorder-row${draggedCategoryId === category.id ? " is-dragging" : ""}`}
+                  key={category.id}
+                  draggable={editingCategoryId !== category.id && !reordering}
+                  onDragStart={() => setDraggedCategoryId(category.id)}
+                  onDragEnd={() => setDraggedCategoryId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => categoryDrop(event, category.id)}
+                >
                   {editingCategoryId === category.id ? (
                     <form className="category-edit" onSubmit={(event) => submitCategoryEdit(event, category.id)}>
                       <input autoFocus value={editingCategoryName} onChange={(event) => setEditingCategoryName(event.target.value)} aria-label={`Rename ${category.name}`} />
@@ -288,8 +398,11 @@ export function BookmarkManager({ bookmarks, categories, loading, onChanged }: P
                     </form>
                   ) : (
                     <>
+                      <span className="drag-handle" aria-hidden="true">⋮⋮</span>
                       <span>{category.icon ?? "#"}</span><strong>{category.name}</strong>
                       <div className="row-actions">
+                        <button className="text-action reorder-action" type="button" disabled={reordering || index === 0} aria-label={`Move ${category.name} up`} onClick={() => void persistCategoryOrder(moveByOffset(categories.map((item) => item.id), category.id, -1))}>↑</button>
+                        <button className="text-action reorder-action" type="button" disabled={reordering || index === categories.length - 1} aria-label={`Move ${category.name} down`} onClick={() => void persistCategoryOrder(moveByOffset(categories.map((item) => item.id), category.id, 1))}>↓</button>
                         <button className="text-action" type="button" onClick={() => { setEditingCategoryId(category.id); setEditingCategoryName(category.name); }}>Rename</button>
                         <button className="text-action danger-text" type="button" onClick={() => { if (window.confirm(`Delete category “${category.name}”? Its bookmarks will become uncategorized.`)) void run(() => deleteCategory(category.id)); }}>Delete</button>
                       </div>
@@ -311,41 +424,65 @@ export function BookmarkManager({ bookmarks, categories, loading, onChanged }: P
             <BookmarkFields draft={draft} categories={categories} onChange={setDraft} allowAuto />
           </form>
 
-          <div className="bookmark-list">
-            {bookmarks.map((bookmark) => (
-              <article className="bookmark-card" key={bookmark.id}>
-                {editingId === bookmark.id ? (
-                  <form onSubmit={(event) => submitEdit(event, bookmark.id)}>
-                    <BookmarkFields draft={editDraft} categories={categories} onChange={setEditDraft} allowAuto={false} />
-                    <div className="edit-actions">
-                      <button className="primary" disabled={busy}>Save changes</button>
-                      <button className="secondary" type="button" onClick={() => setEditingId(null)}>Cancel</button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <div className="bookmark-icon">{bookmark.title.slice(0, 1).toUpperCase()}</div>
-                    <div className="bookmark-details">
-                      <div className="bookmark-title-line">
-                        <a href={bookmark.url} target="_blank" rel="noreferrer"><strong>{bookmark.title}</strong></a>
-                        <HealthBadge bookmark={bookmark} />
-                      </div>
-                      <small>{bookmark.url}</small>
-                      <span className="bookmark-category">{categories.find((category) => category.id === bookmark.categoryId)?.name ?? "Uncategorized"}</span>
-                    </div>
-                    <div className="bookmark-actions">
-                      {(bookmark.healthPolicy === "normal" || bookmark.healthPolicy === "manual") && (
-                        <button className="secondary health-check-button" type="button" disabled={checkingIds.has(bookmark.id)} onClick={() => void checkOne(bookmark)}>
-                          {checkingIds.has(bookmark.id) ? "Checking…" : "Check"}
-                        </button>
-                      )}
-                      <button className="secondary" type="button" onClick={() => beginEdit(bookmark)}>Edit</button>
-                      <button className="danger-button" type="button" onClick={() => { if (window.confirm(`Delete “${bookmark.title}”?`)) void run(() => deleteBookmark(bookmark.id)); }}>Delete</button>
-                    </div>
-                  </>
-                )}
-              </article>
-            ))}
+          <div className="bookmark-list grouped-bookmark-list">
+            {bookmarkGroups.map((group) => {
+              const ids = group.bookmarks.map((bookmark) => bookmark.id);
+              return (
+                <section className="bookmark-group" key={group.categoryId ?? "uncategorized"}>
+                  <div className="bookmark-group-heading">
+                    <strong>{group.name}</strong>
+                    <span>{group.bookmarks.length}</span>
+                  </div>
+                  <div className="bookmark-group-items">
+                    {group.bookmarks.map((bookmark, index) => (
+                      <article
+                        className={`bookmark-card reorder-row${draggedBookmark?.id === bookmark.id ? " is-dragging" : ""}`}
+                        key={bookmark.id}
+                        draggable={editingId !== bookmark.id && !reordering}
+                        onDragStart={() => setDraggedBookmark({ id: bookmark.id, categoryId: group.categoryId })}
+                        onDragEnd={() => setDraggedBookmark(null)}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => bookmarkDrop(event, group.categoryId, bookmark.id, ids)}
+                      >
+                        {editingId === bookmark.id ? (
+                          <form onSubmit={(event) => submitEdit(event, bookmark.id)}>
+                            <BookmarkFields draft={editDraft} categories={categories} onChange={setEditDraft} allowAuto={false} />
+                            <div className="edit-actions">
+                              <button className="primary" disabled={busy}>Save changes</button>
+                              <button className="secondary" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <span className="drag-handle bookmark-drag-handle" aria-hidden="true">⋮⋮</span>
+                            <div className="bookmark-icon">{bookmark.title.slice(0, 1).toUpperCase()}</div>
+                            <div className="bookmark-details">
+                              <div className="bookmark-title-line">
+                                <a href={bookmark.url} target="_blank" rel="noreferrer"><strong>{bookmark.title}</strong></a>
+                                <HealthBadge bookmark={bookmark} />
+                              </div>
+                              <small>{bookmark.url}</small>
+                              <span className="bookmark-category">{group.name}</span>
+                            </div>
+                            <div className="bookmark-actions">
+                              <button className="secondary reorder-button" type="button" disabled={reordering || index === 0} aria-label={`Move ${bookmark.title} up`} onClick={() => void persistBookmarkOrder(group.categoryId, moveByOffset(ids, bookmark.id, -1))}>↑</button>
+                              <button className="secondary reorder-button" type="button" disabled={reordering || index === group.bookmarks.length - 1} aria-label={`Move ${bookmark.title} down`} onClick={() => void persistBookmarkOrder(group.categoryId, moveByOffset(ids, bookmark.id, 1))}>↓</button>
+                              {(bookmark.healthPolicy === "normal" || bookmark.healthPolicy === "manual") && (
+                                <button className="secondary health-check-button" type="button" disabled={checkingIds.has(bookmark.id)} onClick={() => void checkOne(bookmark)}>
+                                  {checkingIds.has(bookmark.id) ? "Checking…" : "Check"}
+                                </button>
+                              )}
+                              <button className="secondary" type="button" onClick={() => beginEdit(bookmark)}>Edit</button>
+                              <button className="danger-button" type="button" onClick={() => { if (window.confirm(`Delete “${bookmark.title}”?`)) void run(() => deleteBookmark(bookmark.id)); }}>Delete</button>
+                            </div>
+                          </>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
 
             {!loading && !bookmarks.length && (
               <div className="empty-state"><strong>No bookmarks yet.</strong><span>Add the first URL above or import a browser bookmark file.</span></div>

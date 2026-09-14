@@ -1,0 +1,17 @@
+.reorder-row { transition: border-color .16s ease, background .16s ease, opacity .16s ease; }
+.reorder-row[draggable="true"] { cursor: grab; }
+.reorder-row[draggable="true"]:active { cursor: grabbing; }
+.reorder-row.is-dragging { opacity: .45; border-color: #5f806c; background: rgba(35, 50, 42, .72); }
+.drag-handle { flex: 0 0 auto; color: #58655e; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -3px; user-select: none; }
+.bookmark-drag-handle { align-self: stretch; display: grid; place-items: center; padding-right: 2px; }
+.reorder-action:disabled { opacity: .28; cursor: default; }
+.grouped-bookmark-list { gap: 16px; }
+.bookmark-group { display: grid; gap: 7px; }
+.bookmark-group-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; color: #91a098; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.bookmark-group-heading > span { color: #5f6b65; }
+.bookmark-group-items { display: grid; gap: 8px; }
+.reorder-button { min-width: 34px; padding: 0 8px; }
+@media (max-width: 720px) {
+  .bookmark-drag-handle { display: none; }
+  .reorder-button { min-width: 36px; }
+}

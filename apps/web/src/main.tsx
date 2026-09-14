@@ -7,6 +7,7 @@ import "./workspaces.css";
 import "./session.css";
 import "./search-engines.css";
 import "./bridge.css";
+import "./reorder.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root");

@@ -11,6 +11,7 @@ import {
   handlePublicBookmarkApi,
   PublicBookmarkHttpError,
 } from "./public-bookmarks";
+import { handleReorderApi, ReorderHttpError } from "./reorder";
 import { handleSearchEngineApi, SearchEngineHttpError } from "./search-engines";
 import { handleSessionApi, SessionHttpError } from "./sessions";
 import { handleSettingsApi, SettingsHttpError } from "./settings";
@@ -74,6 +75,19 @@ export default {
         requireSameOrigin(request);
       } else if (!deviceCanAccess(request, pathname)) {
         return problem(403, "device_scope_denied", "This paired extension token is not allowed to perform that operation.");
+      }
+
+      if (pathname === "/api/categories/reorder" || pathname === "/api/bookmarks/reorder") {
+        try {
+          const response = await handleReorderApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof ReorderHttpError) {
+            return problem(error.status, error.code, error.message);
+          }
+          console.error("Dockmark Reorder API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
       }
 
       if (pathname === "/api/settings/browser") {
