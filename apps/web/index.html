@@ -3,8 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0f1412" />
+    <meta name="theme-color" content="#0a0f0c" />
     <meta name="description" content="Dockmark — a cloud-synced personal launcher for bookmarks, workspaces and browser tabs." />
+    <script>
+      (() => {
+        try {
+          const stored = localStorage.getItem("dockmarkAppearanceV1");
+          const preference = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+          const theme = preference === "system"
+            ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+            : preference;
+          document.documentElement.dataset.appearance = preference;
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", theme === "light" ? "#f4f7f5" : "#0a0f0c");
+        } catch {
+          document.documentElement.dataset.appearance = "system";
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
     <title>Dockmark</title>
   </head>
   <body>
