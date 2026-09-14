@@ -1,0 +1,80 @@
+.private-utility-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 46px;
+  padding: 0 max(20px, calc((100vw - 1100px) / 2));
+  border-bottom: 1px solid #202723;
+  background: rgba(9, 13, 11, .92);
+  backdrop-filter: blur(16px);
+}
+.private-utility-brand { display: inline-flex; align-items: center; gap: 8px; color: #9eaaa4; font-size: 12px; }
+.private-utility-brand span { color: #b9dfc6; font-weight: 800; }
+.private-utility-bar nav { display: flex; gap: 5px; }
+.private-utility-bar nav button {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  color: #7e8a84;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+}
+.private-utility-bar nav button:hover,
+.private-utility-bar nav button.active { color: #edf3ef; background: #151b18; }
+
+.auth-shell { position: relative; display: grid; place-items: center; min-height: 100vh; padding: 32px 18px; }
+.auth-brand { position: absolute; top: 28px; left: 32px; display: inline-flex; align-items: center; gap: 10px; }
+.auth-brand span { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid #39433e; border-radius: 10px; background: #151b18; color: #b8e0c5; }
+.auth-card { width: min(470px, 100%); padding: 28px; border: 1px solid #28312c; border-radius: 22px; background: rgba(13, 18, 16, .9); box-shadow: 0 28px 100px rgba(0,0,0,.32); }
+.auth-card h1 { margin: 12px 0 12px; font-size: clamp(34px, 6vw, 48px); }
+.auth-card > p { color: #849089; line-height: 1.65; }
+.auth-card form { display: grid; gap: 14px; margin: 24px 0 18px; }
+.auth-card label { display: grid; gap: 7px; color: #849089; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.auth-card input { width: 100%; height: 46px; padding: 0 13px; border: 1px solid #34403a; border-radius: 11px; outline: 0; color: #f2f7f4; background: #0b100e; }
+.auth-card input:focus { border-color: #729f82; box-shadow: 0 0 0 3px rgba(114,159,130,.1); }
+.auth-card .primary { min-height: 42px; }
+.auth-setup-card code,
+.auth-setup-steps code { padding: 9px 11px; border: 1px solid #303934; border-radius: 9px; color: #b8d6c1; background: #0b100e; font-size: 12px; }
+.auth-setup-steps { display: grid; gap: 10px; margin: 22px 0; }
+.auth-setup-steps span { color: #77827c; font-size: 12px; line-height: 1.55; }
+.auth-loading { color: #8e9a94; }
+
+.settings-page { padding-top: 58px; }
+.settings-page-heading p:last-child { max-width: 680px; color: #7f8b84; line-height: 1.65; }
+.security-section,
+.public-settings-section { display: grid; gap: 16px; margin-bottom: 46px; }
+.settings-page .browser-settings-section { margin-bottom: 46px; }
+.pair-code-panel { display: grid; gap: 12px; }
+.pair-code-panel > code { width: max-content; padding: 12px 14px; border: 1px solid #486152; border-radius: 11px; background: #0b100e; color: #d5eadb; font: 700 20px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+.pair-code-panel > span { color: #77827c; font-size: 11px; }
+.security-device-list { display: grid; gap: 8px; }
+.security-device { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid #262f2a; border-radius: 12px; background: #111613; }
+.security-device > span { display: grid; gap: 4px; min-width: 0; }
+.security-device strong { font-size: 13px; }
+.security-device small { color: #77827c; font-size: 11px; }
+.security-device-revoked { opacity: .55; }
+.revoked-devices { margin-top: 12px; color: #77827c; font-size: 12px; }
+.revoked-devices summary { margin-bottom: 8px; cursor: pointer; }
+
+.public-bookmark-picker { display: grid; gap: 6px; max-height: 520px; overflow: auto; }
+.public-bookmark-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 11px; align-items: center; padding: 11px 12px; border: 1px solid #252d29; border-radius: 11px; background: #101512; cursor: pointer; }
+.public-bookmark-row > span { display: grid; gap: 3px; min-width: 0; }
+.public-bookmark-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.public-bookmark-row small { overflow: hidden; color: #6f7a74; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.public-bookmark-row em { color: #66736b; font-size: 9px; font-style: normal; letter-spacing: .08em; }
+.public-bookmark-row:has(input:checked) { border-color: #476050; background: #121a15; }
+.public-bookmark-row:has(input:checked) em { color: #99c5a7; }
+
+@media (max-width: 720px) {
+  .private-utility-bar { padding: 0 12px; }
+  .private-utility-brand { font-size: 0; }
+  .private-utility-brand span { font-size: 12px; }
+  .auth-brand { top: 20px; left: 20px; }
+  .auth-card { padding: 22px; }
+  .security-device { align-items: flex-start; flex-direction: column; }
+}
