@@ -1,0 +1,43 @@
+.extension-page { padding: 66px 0 20px; }
+.extension-state { flex: 0 0 auto; padding: 8px 11px; border: 1px solid #2b342f; border-radius: 999px; background: #111613; font-size: 12px; }
+.extension-state-neutral { color: #8b9790; }
+.extension-state-success { border-color: #31543c; color: #9fd0ae; }
+.extension-state-warning { border-color: #584b2c; color: #d6bd78; }
+.extension-state-danger { border-color: #5a3734; color: #d8a09c; }
+.extension-hero-card { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 30px; align-items: center; padding: 28px; border: 1px solid #2a342f; border-radius: 22px; background: radial-gradient(circle at 90% 20%, rgba(128,181,146,.13), transparent 16rem), rgba(15,20,18,.82); }
+.extension-hero-copy { max-width: 700px; }
+.extension-version { color: #84b394; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; }
+.extension-hero-copy h2 { margin: 10px 0 9px; font-size: clamp(24px, 4vw, 36px); letter-spacing: -.035em; }
+.extension-hero-copy > p { max-width: 650px; margin: 0; color: #8a958f; line-height: 1.65; }
+.extension-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
+.extension-channel-note { margin-top: 15px !important; color: #68746d !important; font-size: 12px; }
+.extension-mark { display: grid; place-items: center; width: 118px; height: 118px; justify-self: end; border: 1px solid #3a4b42; border-radius: 31px; background: #18211c; color: #bce2c7; font-size: 44px; font-weight: 680; letter-spacing: -.08em; box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 18px 55px rgba(0,0,0,.22); }
+.extension-guide { margin-top: 16px; }
+.extension-guide ol { display: grid; gap: 10px; margin: 4px 0 0; padding-left: 22px; color: #9ba69f; font-size: 13px; line-height: 1.55; }
+.extension-guide code { padding: 2px 5px; border: 1px solid #2d3732; border-radius: 5px; background: #0e1311; color: #c8d4cd; }
+.extension-diagnostics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+.extension-diagnostic-card { min-width: 0; }
+.diagnostic-list { display: grid; gap: 0; margin: 0; }
+.diagnostic-list > div, .capability-list > div { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 42px; border-top: 1px solid #202723; }
+.diagnostic-list > div:first-child, .capability-list > div:first-child { border-top: 0; }
+.diagnostic-list dt, .capability-list span { color: #7f8a84; font-size: 12px; }
+.diagnostic-list dd { min-width: 0; margin: 0; overflow: hidden; color: #bec9c2; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.capability-list strong { font-size: 11px; font-weight: 620; }
+.capability-on { color: #8ec39f; }
+.capability-off { color: #65706a; }
+.extension-diagnostic-note { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid #202723; color: #8e9993; font-size: 12px; line-height: 1.5; }
+.extension-nudge { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: min(820px, 100%); margin: 12px auto 0; padding: 14px 16px; border: 1px solid #2b3a32; border-radius: 14px; background: rgba(19,27,23,.72); color: inherit; cursor: pointer; text-align: left; }
+.extension-nudge:hover { border-color: #486253; background: rgba(23,33,28,.9); }
+.extension-nudge-copy { display: grid; gap: 3px; }
+.extension-nudge-copy strong { font-size: 13px; }
+.extension-nudge-copy span { color: #748078; font-size: 12px; }
+.extension-nudge-action { color: #a9d0b5; font-size: 12px; white-space: nowrap; }
+.native-extension-link { margin-left: auto; }
+
+@media (max-width: 760px) {
+  .extension-page { padding-top: 42px; }
+  .extension-hero-card { grid-template-columns: 1fr; }
+  .extension-mark { display: none; }
+  .extension-diagnostics-grid { grid-template-columns: 1fr; }
+  .extension-nudge { align-items: flex-start; }
+}
