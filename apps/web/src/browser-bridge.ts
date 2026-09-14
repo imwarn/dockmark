@@ -152,8 +152,24 @@ async function request<T>(action: string, payload?: unknown, timeoutMs = 1200): 
   });
 }
 
+function wait(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
+
 export async function getRawBridgeStatus(): Promise<BrowserBridgeStatus> {
-  return request<BrowserBridgeStatus>("status", undefined, 600);
+  try {
+    return await request<BrowserBridgeStatus>("status", undefined, 900);
+  } catch (firstError) {
+    // A freshly installed/reconnected extension may be registering and injecting the
+    // configured-origin bridge into an already-open Dockmark tab. Give that reinjection
+    // one short retry before reporting the extension as disconnected.
+    await wait(180);
+    try {
+      return await request<BrowserBridgeStatus>("status", undefined, 1500);
+    } catch {
+      throw firstError;
+    }
+  }
 }
 
 export async function getBridgeStatus(): Promise<BrowserBridgeStatus> {
