@@ -18,6 +18,7 @@
     "build:web": "npm run build -w @dockmark/web && node scripts/prepare-workers-build.mjs",
     "build:extension": "npm run build -w @dockmark/extension",
     "package:extension": "npm run zip -w @dockmark/extension",
+    "package:extension:newtab": "npm run zip:newtab -w @dockmark/extension",
     "typecheck": "npm run typecheck -ws --if-present",
     "db:migrate:local": "npm run db:migrate:local -w @dockmark/web",
     "db:migrate:remote": "npm run db:migrate:remote -w @dockmark/web",
