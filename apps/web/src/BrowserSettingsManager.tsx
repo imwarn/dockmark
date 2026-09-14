@@ -165,7 +165,7 @@ export function BrowserSettingsManager() {
           <div className="card-heading">
             <div>
               <h3>Bookmark conflict preference</h3>
-              <p>This remains a reviewed action in the current release; the preference is the policy foundation for later automatic sync.</p>
+              <p>This guides reviewed conflict resolution. Prefer Browser / Prefer Dockmark highlights the matching action and can batch one-sided Dockmark changes after you explicitly confirm.</p>
             </div>
           </div>
           <div className="settings-segmented" role="group" aria-label="Bookmark conflict preference">
@@ -184,7 +184,7 @@ export function BrowserSettingsManager() {
               </button>
             ))}
           </div>
-          <p className="settings-footnote">No browser or Dockmark bookmark is changed automatically by this setting yet.</p>
+          <p className="settings-footnote">This policy never enables background bookmark writes. True two-sided REVIEW conflicts still require an individual decision.</p>
         </article>
 
         <article className="form-card settings-card">
