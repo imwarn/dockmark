@@ -1,7 +1,22 @@
 const SERVER_KEY = "dockmarkServerUrl";
 const CACHE_KEY = "dockmarkNewTabCacheV1";
+const SETTINGS_KEY = "dockmarkBrowserSettingsV1";
 const CACHE_VERSION = 1;
+const SETTINGS_VERSION = 1;
 const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=%s";
+
+const DEFAULT_SETTINGS = {
+  version: SETTINGS_VERSION,
+  conflictPreference: "ask",
+  newTab: {
+    defaultSearchEngineId: null,
+    showOpenTabs: true,
+    bookmarkLimit: 12,
+    workspaceLimit: 8,
+    autoRefresh: true,
+  },
+  updatedAt: null,
+};
 
 const elements = {
   connection: document.getElementById("connection-state"),
@@ -16,10 +31,13 @@ const elements = {
   bookmarkCount: document.getElementById("bookmark-count"),
   workspaceCount: document.getElementById("workspace-count"),
   syncStatus: document.getElementById("sync-status"),
+  settingsStatus: document.getElementById("settings-status"),
+  clearCache: document.getElementById("clear-cache"),
 };
 
 let origin = null;
 let snapshot = emptySnapshot();
+let settings = normalizeSettings(DEFAULT_SETTINGS);
 let openTabs = [];
 let activeResult = 0;
 let visibleResults = [];
@@ -34,6 +52,42 @@ function emptySnapshot() {
     categories: [],
     workspaces: [],
     searchEngines: [],
+  };
+}
+
+function normalizeSettings(value) {
+  const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const rawNewTab = input.newTab && typeof input.newTab === "object" && !Array.isArray(input.newTab)
+    ? input.newTab
+    : {};
+  const conflictPreference = input.conflictPreference === "browser" || input.conflictPreference === "dockmark"
+    ? input.conflictPreference
+    : "ask";
+  const defaultSearchEngineId = typeof rawNewTab.defaultSearchEngineId === "string" && rawNewTab.defaultSearchEngineId.trim()
+    ? rawNewTab.defaultSearchEngineId.trim()
+    : null;
+  const bookmarkLimit = Number.isInteger(rawNewTab.bookmarkLimit)
+    ? Math.min(24, Math.max(0, rawNewTab.bookmarkLimit))
+    : DEFAULT_SETTINGS.newTab.bookmarkLimit;
+  const workspaceLimit = Number.isInteger(rawNewTab.workspaceLimit)
+    ? Math.min(12, Math.max(0, rawNewTab.workspaceLimit))
+    : DEFAULT_SETTINGS.newTab.workspaceLimit;
+
+  return {
+    version: SETTINGS_VERSION,
+    conflictPreference,
+    newTab: {
+      defaultSearchEngineId,
+      showOpenTabs: typeof rawNewTab.showOpenTabs === "boolean"
+        ? rawNewTab.showOpenTabs
+        : DEFAULT_SETTINGS.newTab.showOpenTabs,
+      bookmarkLimit,
+      workspaceLimit,
+      autoRefresh: typeof rawNewTab.autoRefresh === "boolean"
+        ? rawNewTab.autoRefresh
+        : DEFAULT_SETTINGS.newTab.autoRefresh,
+    },
+    updatedAt: typeof input.updatedAt === "string" && input.updatedAt ? input.updatedAt : null,
   };
 }
 
@@ -126,55 +180,76 @@ function renderEmpty(container, message) {
   container.append(empty);
 }
 
+function settingsSummary() {
+  const tabs = settings.newTab.showOpenTabs ? "tabs on" : "tabs off";
+  const refresh = settings.newTab.autoRefresh ? "auto refresh" : "manual refresh";
+  return `${settings.newTab.bookmarkLimit} bookmarks · ${settings.newTab.workspaceLimit} workspaces · ${tabs} · ${refresh}`;
+}
+
 function renderSnapshot() {
   const bookmarks = [...snapshot.bookmarks]
     .filter((bookmark) => isHttpUrl(bookmark?.url))
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   const workspaces = [...snapshot.workspaces]
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const bookmarkLimit = settings.newTab.bookmarkLimit;
+  const workspaceLimit = settings.newTab.workspaceLimit;
 
-  elements.bookmarkCount.textContent = `${bookmarks.length} cached`;
-  elements.workspaceCount.textContent = `${workspaces.length} cached`;
+  elements.bookmarkCount.textContent = bookmarkLimit < bookmarks.length
+    ? `${bookmarks.length} cached · ${bookmarkLimit} shown`
+    : `${bookmarks.length} cached`;
+  elements.workspaceCount.textContent = workspaceLimit < workspaces.length
+    ? `${workspaces.length} cached · ${workspaceLimit} shown`
+    : `${workspaces.length} cached`;
   elements.syncStatus.textContent = snapshot.syncedAt
     ? `Local snapshot synced ${timeAgo(snapshot.syncedAt)}.`
     : "No local snapshot yet.";
+  elements.settingsStatus.textContent = settingsSummary();
 
   elements.bookmarks.replaceChildren();
-  for (const bookmark of bookmarks.slice(0, 12)) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "bookmark-card";
-    const title = document.createElement("strong");
-    title.textContent = bookmark.title || bookmark.url;
-    const meta = document.createElement("small");
-    meta.textContent = `${categoryName(bookmark.categoryId)} · ${displayHost(bookmark.url)}`;
-    button.append(title, meta);
-    button.addEventListener("click", () => void navigateCurrent(bookmark.url));
-    elements.bookmarks.append(button);
+  if (bookmarkLimit === 0) {
+    renderEmpty(elements.bookmarks, "Bookmark cards are hidden by New Tab settings. They remain available in command search.");
+  } else {
+    for (const bookmark of bookmarks.slice(0, bookmarkLimit)) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "bookmark-card";
+      const title = document.createElement("strong");
+      title.textContent = bookmark.title || bookmark.url;
+      const meta = document.createElement("small");
+      meta.textContent = `${categoryName(bookmark.categoryId)} · ${displayHost(bookmark.url)}`;
+      button.append(title, meta);
+      button.addEventListener("click", () => void navigateCurrent(bookmark.url));
+      elements.bookmarks.append(button);
+    }
+    if (!bookmarks.length) renderEmpty(elements.bookmarks, "No cached bookmarks yet. Connect once while online to seed this launcher.");
   }
-  if (!bookmarks.length) renderEmpty(elements.bookmarks, "No cached bookmarks yet. Connect once while online to seed this launcher.");
 
   elements.workspaces.replaceChildren();
-  for (const workspace of workspaces.slice(0, 8)) {
-    const items = asArray(workspace.items).filter((item) => isHttpUrl(item?.url));
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "workspace-card";
-    button.disabled = !items.length;
-    const title = document.createElement("strong");
-    title.textContent = workspace.name || "Workspace";
-    const meta = document.createElement("div");
-    meta.className = "workspace-meta";
-    const count = document.createElement("span");
-    count.textContent = `${items.length} tab${items.length === 1 ? "" : "s"}`;
-    const action = document.createElement("span");
-    action.textContent = items.length ? "Open →" : "Empty";
-    meta.append(count, action);
-    button.append(title, meta);
-    button.addEventListener("click", () => void openWorkspace(workspace));
-    elements.workspaces.append(button);
+  if (workspaceLimit === 0) {
+    renderEmpty(elements.workspaces, "Workspace cards are hidden by New Tab settings. They remain available in command search.");
+  } else {
+    for (const workspace of workspaces.slice(0, workspaceLimit)) {
+      const items = asArray(workspace.items).filter((item) => isHttpUrl(item?.url));
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "workspace-card";
+      button.disabled = !items.length;
+      const title = document.createElement("strong");
+      title.textContent = workspace.name || "Workspace";
+      const meta = document.createElement("div");
+      meta.className = "workspace-meta";
+      const count = document.createElement("span");
+      count.textContent = `${items.length} tab${items.length === 1 ? "" : "s"}`;
+      const action = document.createElement("span");
+      action.textContent = items.length ? "Open →" : "Empty";
+      meta.append(count, action);
+      button.append(title, meta);
+      button.addEventListener("click", () => void openWorkspace(workspace));
+      elements.workspaces.append(button);
+    }
+    if (!workspaces.length) renderEmpty(elements.workspaces, "No cached Workspaces yet.");
   }
-  if (!workspaces.length) renderEmpty(elements.workspaces, "No cached Workspaces yet.");
 
   renderSearchResults();
 }
@@ -209,13 +284,15 @@ async function refreshCloud({ quiet = false } = {}) {
       throw new Error("Dockmark site access is not granted. Open the extension popup and reconnect this origin.");
     }
 
-    const [bookmarkPayload, categoryPayload, workspacePayload, enginePayload] = await Promise.all([
+    const [bookmarkPayload, categoryPayload, workspacePayload, enginePayload, settingsPayload] = await Promise.all([
       requestJson("/api/bookmarks"),
       requestJson("/api/categories"),
       requestJson("/api/workspaces"),
       requestJson("/api/search-engines"),
+      requestJson("/api/settings/browser"),
     ]);
 
+    settings = normalizeSettings(settingsPayload.settings);
     snapshot = {
       version: CACHE_VERSION,
       origin,
@@ -225,7 +302,11 @@ async function refreshCloud({ quiet = false } = {}) {
       workspaces: asArray(workspacePayload.workspaces),
       searchEngines: asArray(enginePayload.engines),
     };
-    await chrome.storage.local.set({ [CACHE_KEY]: snapshot });
+    await chrome.storage.local.set({
+      [CACHE_KEY]: snapshot,
+      [SETTINGS_KEY]: settings,
+    });
+    await loadOpenTabs();
     setConnection("Online · synced", "online");
     setOfflineMessage("");
     elements.setup.hidden = true;
@@ -247,6 +328,10 @@ async function refreshCloud({ quiet = false } = {}) {
 }
 
 async function loadOpenTabs() {
+  if (!settings.newTab.showOpenTabs) {
+    openTabs = [];
+    return;
+  }
   try {
     const tabs = await chrome.tabs.query({});
     openTabs = tabs.flatMap((tab) => {
@@ -304,6 +389,15 @@ function searchEngineCommand(rawQuery) {
   return null;
 }
 
+function preferredSearchEngine() {
+  const configuredId = settings.newTab.defaultSearchEngineId;
+  if (configuredId) {
+    const configured = snapshot.searchEngines.find((engine) => engine?.id === configuredId);
+    if (configured) return configured;
+  }
+  return snapshot.searchEngines.find((engine) => engine?.isDefault) || snapshot.searchEngines[0];
+}
+
 function buildResults(rawQuery) {
   const query = rawQuery.trim();
   if (!query) return [];
@@ -335,7 +429,7 @@ function buildResults(rawQuery) {
     if (score >= 0) results.push({ kind: "bookmark", title: bookmark.title || bookmark.url, subtitle: bookmark.url, url: bookmark.url, score });
   }
 
-  const defaultEngine = snapshot.searchEngines.find((engine) => engine?.isDefault) || snapshot.searchEngines[0];
+  const defaultEngine = preferredSearchEngine();
   results.push({
     kind: "search",
     title: `Search ${defaultEngine?.name || "the web"}`,
@@ -453,9 +547,26 @@ async function executeResult(result) {
   if (result.url) return navigateCurrent(result.url);
 }
 
+async function clearLocalSnapshot() {
+  await chrome.storage.local.remove(CACHE_KEY);
+  snapshot = emptySnapshot();
+  elements.search.value = "";
+  visibleResults = [];
+  activeResult = 0;
+  renderSnapshot();
+  setConnection(origin ? "Cache cleared" : "Not connected", origin ? "offline" : "");
+  setOfflineMessage(
+    origin
+      ? "Local snapshot cleared. Use Refresh to seed it again. Server connection, settings and bookmark mappings were kept."
+      : "Local snapshot cleared. Settings and bookmark mappings were kept.",
+  );
+  elements.setup.hidden = Boolean(origin);
+}
+
 async function bootstrap() {
-  const stored = await chrome.storage.local.get([SERVER_KEY, CACHE_KEY]);
+  const stored = await chrome.storage.local.get([SERVER_KEY, CACHE_KEY, SETTINGS_KEY]);
   origin = validOrigin(stored[SERVER_KEY]);
+  settings = normalizeSettings(stored[SETTINGS_KEY]);
   if (cacheIsUsable(stored[CACHE_KEY], origin)) snapshot = stored[CACHE_KEY];
 
   await loadOpenTabs();
@@ -465,6 +576,12 @@ async function bootstrap() {
     setConnection(snapshot.syncedAt ? "Cached · not connected" : "Not connected", snapshot.syncedAt ? "offline" : "");
     setOfflineMessage(snapshot.syncedAt ? "No Dockmark origin is configured. Using the last local snapshot." : "");
     elements.setup.hidden = Boolean(snapshot.syncedAt);
+    return;
+  }
+
+  if (snapshot.syncedAt && !settings.newTab.autoRefresh) {
+    setConnection("Cached · manual refresh");
+    elements.setup.hidden = true;
     return;
   }
 
@@ -501,6 +618,7 @@ elements.search.addEventListener("keydown", (event) => {
 });
 
 elements.refresh.addEventListener("click", () => void refreshCloud());
+elements.clearCache.addEventListener("click", () => void clearLocalSnapshot());
 elements.manage.addEventListener("click", () => {
   if (origin) void navigateCurrent(origin);
   else {
@@ -515,5 +633,7 @@ chrome.tabs.onUpdated?.addListener((_tabId, changeInfo) => {
   if (changeInfo.url !== undefined || changeInfo.title !== undefined) void loadOpenTabs().then(renderSearchResults);
 });
 
-window.addEventListener("online", () => void refreshCloud({ quiet: true }));
+window.addEventListener("online", () => {
+  if (settings.newTab.autoRefresh) void refreshCloud({ quiet: true });
+});
 void bootstrap();
