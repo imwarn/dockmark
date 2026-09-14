@@ -18,6 +18,7 @@ interface Props {
   bookmarks: Bookmark[];
   categories: Category[];
   onChanged: () => Promise<void>;
+  onOpenExtension: () => void;
 }
 
 interface NativeImportCandidate extends ImportCandidate {
@@ -102,7 +103,7 @@ function buildNativePreview(
   });
 }
 
-export function NativeBookmarkImport({ bookmarks, categories, onChanged }: Props) {
+export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenExtension }: Props) {
   const [items, setItems] = useState<NativeImportCandidate[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -295,10 +296,15 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged }: Props
             {busy && !loaded ? "Reading…" : loaded ? "Refresh browser bookmarks" : "Read browser bookmarks"}
           </button>
           <span>The extension never edits or deletes native bookmarks in this version.</span>
+          <button className="text-action native-extension-link" type="button" onClick={onOpenExtension}>Extension / install →</button>
         </div>
       </article>
 
-      {error && <div className="error-banner transfer-feedback" role="alert">{error}</div>}
+      {error && (
+        <div className="error-banner transfer-feedback" role="alert">
+          {error} <button className="text-action" type="button" onClick={onOpenExtension}>Open extension diagnostics →</button>
+        </div>
+      )}
       {message && <div className="success-banner transfer-feedback" role="status">{message}</div>}
 
       {loaded && items.length > 0 && (

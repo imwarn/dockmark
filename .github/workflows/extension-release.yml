@@ -25,16 +25,29 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Validate release version
+        run: |
+          VERSION=$(node -p "require('./apps/extension/package.json').version")
+          test "$GITHUB_REF_NAME" = "v${VERSION}"
+
       - name: Typecheck extension
         run: npm run typecheck -w @dockmark/extension
 
       - name: Package Chromium extension
         run: npm run package:extension
 
+      - name: Validate Chromium package
+        run: |
+          VERSION=$(node -p "require('./apps/extension/package.json').version")
+          PACKAGE="apps/extension/.output/dockmark-chrome-v${VERSION}.zip"
+          test -f "$PACKAGE"
+          unzip -Z1 "$PACKAGE" | grep -qx "manifest.json"
+
       - name: Stage Chromium package
         run: |
+          VERSION=$(node -p "require('./apps/extension/package.json').version")
           mkdir -p artifacts
-          cp apps/extension/.output/*.zip artifacts/
+          cp "apps/extension/.output/dockmark-chrome-v${VERSION}.zip" artifacts/
 
       - name: Create GitHub Release
         env:

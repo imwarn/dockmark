@@ -16,6 +16,7 @@ interface Props {
   bookmarks: Bookmark[];
   categories: Category[];
   onChanged: () => Promise<void>;
+  onOpenExtension: () => void;
 }
 
 function dateStamp() {
@@ -26,7 +27,7 @@ function categoryKey(value: string) {
   return value.trim().toLocaleLowerCase();
 }
 
-export function TransferManager({ bookmarks, categories, onChanged }: Props) {
+export function TransferManager({ bookmarks, categories, onChanged, onOpenExtension }: Props) {
   const [items, setItems] = useState<ImportCandidate[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -155,7 +156,7 @@ export function TransferManager({ bookmarks, categories, onChanged }: Props) {
         <span className="library-count">{bookmarks.length} stored</span>
       </div>
 
-      <NativeBookmarkImport bookmarks={bookmarks} categories={categories} onChanged={onChanged} />
+      <NativeBookmarkImport bookmarks={bookmarks} categories={categories} onChanged={onChanged} onOpenExtension={onOpenExtension} />
 
       <div className="transfer-grid">
         <article className="form-card transfer-card">

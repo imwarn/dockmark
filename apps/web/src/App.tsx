@@ -28,6 +28,7 @@ import {
   listWorkspaces,
 } from "./api";
 import { BookmarkManager } from "./BookmarkManager";
+import { BrowserExtensionManager } from "./BrowserExtensionManager";
 import { SearchEngineManager } from "./SearchEngineManager";
 import { SessionManager } from "./SessionManager";
 import { TransferManager } from "./TransferManager";
@@ -42,7 +43,7 @@ const sourceLabel: Record<CommandResult["source"], string> = {
   search: "Search",
 };
 
-type View = "launcher" | "workspaces" | "sessions" | "bookmarks" | "search" | "transfer";
+type View = "launcher" | "workspaces" | "sessions" | "bookmarks" | "search" | "transfer" | "extension";
 
 function openUrls(urls: string[]) {
   for (const url of urls) {
@@ -206,8 +207,15 @@ export function App() {
       url: bookmark.url,
       score: 30,
     }));
+    const navigationResults: CommandResult[] = [{
+      id: "navigation:extension",
+      source: "navigation",
+      title: bridgeConnected ? "Browser extension" : "Install browser extension",
+      subtitle: bridgeConnected ? "Diagnostics, version and capabilities" : "Enable open tabs, Session restore and native bookmark import",
+      score: 20,
+    }];
 
-    const localCandidates = [...tabResults, ...workspaceResults, ...sessionResults, ...bookmarkResults];
+    const localCandidates = [...tabResults, ...workspaceResults, ...sessionResults, ...bookmarkResults, ...navigationResults];
     const filtered = normalized
       ? localCandidates.filter((item) =>
           `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
@@ -227,7 +235,7 @@ export function App() {
     }
 
     return localResults;
-  }, [bookmarks, defaultEngine, openTabs, query, searchEngines, sessions, workspaces]);
+  }, [bookmarks, bridgeConnected, defaultEngine, openTabs, query, searchEngines, sessions, workspaces]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -245,6 +253,11 @@ export function App() {
         setQuery(`!${engine.keyword} `);
         requestAnimationFrame(() => commandInputRef.current?.focus());
       }
+      return;
+    }
+
+    if (item.source === "navigation" && item.id === "navigation:extension") {
+      setView("extension");
       return;
     }
 
@@ -366,6 +379,7 @@ export function App() {
           <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" onClick={() => setView("bookmarks")}>Bookmarks</button>
           <button className={`ghost ${view === "search" ? "active" : ""}`} type="button" onClick={() => setView("search")}>Search</button>
           <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" onClick={() => setView("transfer")}>Transfer</button>
+          <button className={`ghost ${view === "extension" ? "active" : ""}`} type="button" onClick={() => setView("extension")}>Extension</button>
         </nav>
       </header>
 
@@ -391,7 +405,9 @@ export function App() {
       ) : view === "search" ? (
         <SearchEngineManager engines={searchEngines} loading={loading} onChanged={refresh} />
       ) : view === "transfer" ? (
-        <TransferManager bookmarks={bookmarks} categories={categories} onChanged={refresh} />
+        <TransferManager bookmarks={bookmarks} categories={categories} onChanged={refresh} onOpenExtension={() => setView("extension")} />
+      ) : view === "extension" ? (
+        <BrowserExtensionManager />
       ) : (
         <>
           <section className="hero">
@@ -441,7 +457,7 @@ export function App() {
                     onMouseEnter={() => setSelectedIndex(index)}
                     onClick={() => void executeResult(item)}
                   >
-                    <span className="favicon">{item.source === "tab" ? "↗" : item.source === "session" ? "↺" : item.source === "search" ? "⌕" : item.title.slice(0, 1)}</span>
+                    <span className="favicon">{item.source === "tab" ? "↗" : item.source === "session" ? "↺" : item.source === "search" ? "⌕" : item.source === "navigation" ? "＋" : item.title.slice(0, 1)}</span>
                     <span className="result-copy">
                       <strong>{item.title}</strong>
                       <small>{item.subtitle}</small>
@@ -457,6 +473,16 @@ export function App() {
               <span><kbd>Shift</kbd>+<kbd>Enter</kbd> new tab <kbd>Esc</kbd> clear</span>
             </div>
           </section>
+
+          {!bridgeConnected && (
+            <button className="extension-nudge" type="button" onClick={() => setView("extension")}>
+              <span className="extension-nudge-copy">
+                <strong>Unlock browser integration</strong>
+                <span>Install Dockmark Extension for open tabs, pinned Session restore and native bookmark import.</span>
+              </span>
+              <span className="extension-nudge-action">Install / diagnostics →</span>
+            </button>
+          )}
 
           <section className="feature-grid">
             <article><span>01</span><h2>Open tabs</h2><p>With the browser bridge connected, jump to an existing tab before creating another copy.</p></article>
