@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +9,15 @@ import { chromium } from "playwright";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const extensionPath = path.join(root, "apps/extension/.output/chrome-mv3-newtab");
 const userDataDir = await mkdtemp(path.join(tmpdir(), "dockmark-newtab-chromium-"));
+
+const targetServer = createServer((_request, response) => {
+  response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  response.end("<!doctype html><title>Dockmark clicked target</title><h1>Dockmark clicked target</h1>");
+});
+await new Promise((resolve) => targetServer.listen(0, "127.0.0.1", resolve));
+const targetAddress = targetServer.address();
+if (!targetAddress || typeof targetAddress === "string") throw new Error("Could not start New Tab click target server.");
+const clickedTargetUrl = `http://127.0.0.1:${targetAddress.port}/clicked`;
 
 let context;
 try {
@@ -30,12 +40,12 @@ try {
   await page.waitForLoadState("domcontentloaded");
 
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "0.5.0");
+  assert.equal(manifest.version, "0.5.1");
   assert.equal(manifest.name, "Dockmark New Tab");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
 
   const offlineOrigin = "https://offline.dockmark.invalid";
-  await page.evaluate(async ({ offlineOrigin }) => {
+  await page.evaluate(async ({ offlineOrigin, clickedTargetUrl }) => {
     await chrome.storage.local.set({
       dockmarkServerUrl: offlineOrigin,
       dockmarkNewTabCacheV1: {
@@ -46,7 +56,7 @@ try {
           {
             id: "bookmark-1",
             title: "Cached Example",
-            url: "https://example.com/",
+            url: clickedTargetUrl,
             healthPolicy: "normal",
             healthStatus: "unknown",
             position: 0,
@@ -67,7 +77,7 @@ try {
                 id: "workspace-item-1",
                 workspaceId: "workspace-1",
                 title: "Example",
-                url: "https://example.com/",
+                url: clickedTargetUrl,
                 openMode: "reuse",
                 healthPolicy: "normal",
                 position: 0,
@@ -89,7 +99,7 @@ try {
         ],
       },
     });
-  }, { offlineOrigin });
+  }, { offlineOrigin, clickedTargetUrl });
 
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
@@ -105,11 +115,21 @@ try {
   await page.locator("#search").fill("e offline query");
   await page.getByText("Search Example Search", { exact: true }).waitFor();
 
+  // Exercise the real mouse path that previously regressed: hover must update selection
+  // without rebuilding the result DOM before the click event can fire.
+  await page.locator("#search").fill("Cached Example");
+  const bookmarkResult = page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).first();
+  await bookmarkResult.hover();
+  await bookmarkResult.click();
+  await page.waitForURL(clickedTargetUrl);
+
   console.log(`✓ Dockmark New Tab variant loaded: ${extensionId}`);
   console.log("✓ New Tab manifest override is isolated to the opt-in variant");
   console.log("✓ Cached bookmarks and Workspaces render without Dockmark host permission/network");
   console.log("✓ Offline command search uses cached Dockmark data and search-engine bangs");
+  console.log("✓ Hovered command results remain clickable and navigate the active New Tab");
 } finally {
   await context?.close();
+  await new Promise((resolve) => targetServer.close(resolve));
   await rm(userDataDir, { recursive: true, force: true });
 }
