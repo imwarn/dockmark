@@ -87,6 +87,23 @@ function currentBaseline(
   };
 }
 
+export function acceptNativeMappingBaseline(
+  mapping: NativeBookmarkMapping,
+  native: NativeBrowserBookmark,
+  cloud: Bookmark,
+) {
+  const baselines = loadBaselines();
+  baselines[mapping.browserBookmarkId] = currentBaseline(mapping, native, cloud);
+  persistBaselines(baselines);
+}
+
+export function removeNativeMappingBaseline(browserBookmarkId: string) {
+  const baselines = loadBaselines();
+  if (!(browserBookmarkId in baselines)) return;
+  delete baselines[browserBookmarkId];
+  persistBaselines(baselines);
+}
+
 export function buildNativeMappingRows(
   nativeBookmarks: NativeBrowserBookmark[],
   mappings: NativeBookmarkMapping[],
@@ -166,8 +183,8 @@ export function buildNativeMappingRows(
     const nativeFolderChanged = !samePath(native.folderPath, baseline.browserFolderPath);
     const cloudCategoryChanged = (cloud.categoryId ?? null) !== baseline.dockmarkCategoryId;
 
-    // Folder/category changes are detected but kept out of Safe Apply until the category
-    // conflict policy is explicit. This prevents a folder move from silently recategorizing cloud data.
+    // Folder/category changes are detected but kept out of Safe Apply until the user
+    // explicitly resolves the review. This prevents a folder move from silently recategorizing cloud data.
     if (nativeFolderChanged || cloudCategoryChanged) {
       if (!nativeUrlChanged && !cloudUrlChanged && !nativeTitleChanged && !cloudTitleChanged) {
         return {
@@ -226,5 +243,16 @@ export function nativeMappingStateLabel(state: NativeMappingState) {
     case "mapping-stale": return "MAPPING STALE";
     case "cloud-changed": return "DOCKMARK CHANGED";
     case "conflict": return "REVIEW";
+  }
+}
+
+export function nativeMappingReviewDescription(state: NativeMappingState) {
+  switch (state) {
+    case "cloud-changed":
+      return "Dockmark changed after this mapping baseline. Keep the Dockmark version, replace it with the browser version, or re-link the browser bookmark.";
+    case "conflict":
+      return "Both sides changed, or the browser folder and Dockmark category diverged. Choose which state should become authoritative for this mapping.";
+    default:
+      return "This mapping does not require manual conflict review.";
   }
 }
