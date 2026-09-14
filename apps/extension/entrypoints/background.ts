@@ -14,6 +14,7 @@ const BRIDGE_CAPABILITIES = {
   sessionPinned: true,
   nativeBookmarks: true,
   nativeBookmarkSync: true,
+  nativeBookmarkWriteback: true,
   localHealth: false,
 } as const;
 
@@ -310,6 +311,39 @@ async function removeNativeBookmarkMappings(browserBookmarkIds: unknown[]) {
   return { removed };
 }
 
+async function writeMappedNativeBookmark(payload: unknown) {
+  if (!(await hasNativeBookmarkPermission())) {
+    throw new Error("Native bookmark access is not enabled.");
+  }
+  if (!payload || typeof payload !== "object") throw new Error("Bookmark writeback payload is required.");
+
+  const record = payload as Record<string, unknown>;
+  const browserBookmarkId = typeof record.browserBookmarkId === "string" ? record.browserBookmarkId : "";
+  const dockmarkBookmarkId = typeof record.dockmarkBookmarkId === "string" ? record.dockmarkBookmarkId : "";
+  const title = typeof record.title === "string" ? record.title.trim().slice(0, 200) : "";
+  const url = typeof record.url === "string" ? record.url : "";
+  if (!browserBookmarkId || !dockmarkBookmarkId || !title || !isHttpUrl(url)) {
+    throw new Error("A mapped browser bookmark id, Dockmark bookmark id, title and HTTP/HTTPS URL are required.");
+  }
+
+  const mappings = await loadNativeBookmarkMappings();
+  const mapping = mappings[browserBookmarkId];
+  if (!mapping || mapping.dockmarkBookmarkId !== dockmarkBookmarkId) {
+    throw new Error("Dockmark can only write back to the browser bookmark currently linked by this mapping.");
+  }
+
+  const existing = await browser.bookmarks.get(browserBookmarkId);
+  const bookmark = existing[0];
+  if (!bookmark?.url) throw new Error("The mapped browser bookmark no longer exists or is not a bookmark.");
+
+  const updated = await browser.bookmarks.update(browserBookmarkId, { title, url });
+  return {
+    id: updated.id,
+    title: updated.title?.trim() || url,
+    url: updated.url ?? url,
+  };
+}
+
 async function assertTrustedBridgeSender(senderUrl: string | undefined) {
   const origin = await configuredOrigin();
   if (!origin || urlOrigin(senderUrl) !== origin) {
@@ -436,6 +470,11 @@ export default defineBackground(() => {
         const ids = (message.payload as { browserBookmarkIds?: unknown } | undefined)?.browserBookmarkIds;
         if (!Array.isArray(ids)) throw new Error("browserBookmarkIds must be an array.");
         const result = await removeNativeBookmarkMappings(ids);
+        void broadcastBridgeEvent("bookmarks-changed");
+        return result;
+      }
+      if (message.action === "write-native-bookmark") {
+        const result = await writeMappedNativeBookmark(message.payload);
         void broadcastBridgeEvent("bookmarks-changed");
         return result;
       }
