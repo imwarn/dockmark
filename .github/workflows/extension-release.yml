@@ -25,6 +25,11 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Validate release version
+        run: |
+          VERSION=$(node -p "require('./apps/extension/package.json').version")
+          test "$GITHUB_REF_NAME" = "v${VERSION}"
+
       - name: Typecheck extension
         run: npm run typecheck -w @dockmark/extension
 
