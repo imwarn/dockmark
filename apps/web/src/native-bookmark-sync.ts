@@ -145,12 +145,9 @@ export function buildNativeMappingRows(
         return { mapping, native, cloud, state: "conflict", safeToApply: false };
       }
 
-      // A legacy mapping cannot tell which side changed its title before this baseline existed.
-      // Surface that ambiguity rather than silently overwriting either side.
-      if (native.title !== cloud.title) {
-        return { mapping, native, cloud, state: "conflict", safeToApply: false };
-      }
-
+      // A metadata baseline records each side independently; the titles and folder/category
+      // do not need to be identical when a mapping is first observed. Establishing this
+      // baseline never modifies either side, it only makes subsequent drift detectable.
       baseline = currentBaseline(mapping, native, cloud);
       baselines[mapping.browserBookmarkId] = baseline;
       baselinesChanged = true;
