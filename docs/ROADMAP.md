@@ -13,15 +13,17 @@
 ## V1 — usable personal launcher
 
 - [x] bookmark CRUD and categories
-- [ ] drag/reorder bookmarks and categories
+- [x] drag/reorder bookmarks and categories
 - [x] Netscape `bookmarks.html` import plus Dockmark/simple JSON import
 - [x] JSON and browser-compatible HTML export
 - [x] configurable search engines and bang shortcuts
 - [x] Workspaces: create/edit/delete, bookmark/custom items, ordering and open-all
 - [x] Sessions: cloud CRUD, URL-list capture, Web restore and pinned-state snapshots
 - [x] command palette with keyboard navigation and executable results
-- [ ] appearance/theme preferences
-- [ ] local-first settings with D1 persistence
+- [x] appearance/theme preferences: System / Light / Dark with local-first startup and D1 persistence
+- [x] local-first settings with D1 persistence
+- [x] private Web sessions, extension device pairing and revocation
+- [x] curated public homepage with explicit publish/unpublish controls
 
 ## V1.5 — health and metadata
 
@@ -35,7 +37,7 @@
 ## V2 — browser bridge
 
 - [x] reviewed browser-native bookmark import with URL de-duplication and extension-local mapping
-- [ ] optional two-way browser bookmark synchronization
+- [ ] optional two-way browser bookmark synchronization (current model intentionally uses reviewed Browser→Dockmark plus explicit per-item Dockmark→Browser writeback; no silent background mutation)
 - [x] save current browser window as a cloud Session
 - [x] restore a Session from the extension with pinned state preserved
 - [x] inject live open tabs into the Web Command Palette
