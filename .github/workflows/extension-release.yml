@@ -10,6 +10,7 @@ on:
       - "apps/extension/**"
       - "apps/web/src/extension-distribution.ts"
       - "scripts/rename-extension-package.mjs"
+      - "scripts/package-newtab-extension.mjs"
       - ".github/workflows/extension-release.yml"
 
 permissions:
@@ -65,22 +66,33 @@ jobs:
         if: steps.release.outputs.exists != 'true'
         run: npm run package:extension
 
-      - name: Validate Chromium package
+      - name: Package New Tab Chromium variant
+        if: steps.release.outputs.exists != 'true'
+        run: npm run package:extension:newtab
+
+      - name: Validate Chromium packages
         if: steps.release.outputs.exists != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          PACKAGE="apps/extension/.output/dockmark-chrome-v${VERSION}.zip"
-          test -f "$PACKAGE"
-          unzip -Z1 "$PACKAGE" | grep -qx "manifest.json"
+          STANDARD="apps/extension/.output/dockmark-chrome-v${VERSION}.zip"
+          NEWTAB="apps/extension/.output/dockmark-newtab-chrome-v${VERSION}.zip"
+          test -f "$STANDARD"
+          test -f "$NEWTAB"
+          unzip -Z1 "$STANDARD" | grep -qx "manifest.json"
+          unzip -Z1 "$NEWTAB" | grep -qx "manifest.json"
+          unzip -Z1 "$NEWTAB" | grep -qx "newtab.html"
+          unzip -Z1 "$NEWTAB" | grep -qx "newtab.js"
+          unzip -p "$NEWTAB" manifest.json | node -e 'let data=""; process.stdin.on("data", c => data += c); process.stdin.on("end", () => { const m=JSON.parse(data); if (m.chrome_url_overrides?.newtab !== "newtab.html") process.exit(1); if (m.name !== "Dockmark New Tab") process.exit(1); });'
 
-      - name: Stage Chromium package
+      - name: Stage Chromium packages
         if: steps.release.outputs.exists != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir -p artifacts
           cp "apps/extension/.output/dockmark-chrome-v${VERSION}.zip" artifacts/
+          cp "apps/extension/.output/dockmark-newtab-chrome-v${VERSION}.zip" artifacts/
 
       - name: Create GitHub Release
         if: steps.release.outputs.exists != 'true'

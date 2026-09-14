@@ -147,9 +147,6 @@ function Popup() {
       const previousOrigin = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
       const label = deviceLabel.trim() || "Main browser";
 
-      // Persist the requested origin before opening Chromium's permission prompt. Extension
-      // popups can be closed by that prompt; on reopen the bootstrap path can finish the
-      // connection automatically instead of requiring a second Connect click.
       await browser.storage.local.set({ [SERVER_KEY]: origin, [DEVICE_KEY]: label });
       setServerUrl(origin);
       setDeviceLabel(label);
@@ -174,7 +171,7 @@ function Popup() {
       const granted = await browser.permissions.request({ permissions: ["bookmarks"] });
       if (!granted) throw new Error("Native bookmark access was not granted.");
       setBookmarkAccess(true);
-      setStatus("Native bookmark access enabled. Dockmark can now review imports and mapping changes; native bookmarks remain read-only.");
+      setStatus("Native bookmark access enabled. Dockmark can review imports and mapping changes, and can update a mapped bookmark title/URL only after an explicit Web review action.");
     });
   }
 
@@ -249,7 +246,7 @@ function Popup() {
 
       <section className="card permission-card">
         <div className="section-heading"><strong>Native bookmarks</strong><span className={bookmarkAccess ? "online" : "offline"}>{bookmarkAccess ? "Enabled" : "Optional"}</span></div>
-        <p>Used only to read your browser bookmark tree for reviewed import and local mapping. Dockmark does not modify native bookmarks in this version.</p>
+        <p>Used to read your browser bookmark tree for reviewed import/mapping and, only when you explicitly choose <strong>Write Dockmark → Browser</strong> in the Web review UI, update that mapped bookmark's title and URL. Dockmark never writes browser bookmarks in the background.</p>
         <button className="secondary" disabled={initializing || busy} onClick={() => void (bookmarkAccess ? disableBookmarkAccess() : enableBookmarkAccess())}>
           {bookmarkAccess ? "Disable bookmark access" : "Enable bookmark access"}
         </button>

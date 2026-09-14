@@ -11,6 +11,7 @@ import {
   onBridgeEvent,
   removeNativeBookmarkMappingsWithBridge,
   saveNativeBookmarkMappingsWithBridge,
+  writeNativeBookmarkWithBridge,
   type NativeBookmarkMapping,
   type NativeBookmarkSnapshot,
   type NativeBrowserBookmark,
@@ -101,6 +102,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
   const [snapshot, setSnapshot] = useState<NativeBookmarkSnapshot | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [syncCapable, setSyncCapable] = useState(false);
+  const [writebackCapable, setWritebackCapable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -166,6 +168,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
 
       const nextSnapshot = await getNativeBookmarksWithBridge();
       setSyncCapable(Boolean(bridge.capabilities.nativeBookmarkSync));
+      setWritebackCapable(Boolean(bridge.capabilities.nativeBookmarkWriteback));
       setSnapshot(nextSnapshot);
       setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks));
       setLoaded(true);
@@ -315,6 +318,7 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     const nextSnapshot = await getNativeBookmarksWithBridge();
     setSnapshot(nextSnapshot);
     setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks));
+    return nextSnapshot;
   }
 
   async function keepDockmark(row: NativeMappingRow) {
@@ -333,6 +337,35 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
       setMessage("Kept the Dockmark version and accepted the current Browser ↔ Dockmark difference as the new mapping baseline. No browser data was changed.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not keep the Dockmark version.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function writeDockmarkToBrowser(row: NativeMappingRow) {
+    if (!writebackCapable || !row.native || !row.cloud) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await writeNativeBookmarkWithBridge({
+        browserBookmarkId: row.mapping.browserBookmarkId,
+        dockmarkBookmarkId: row.cloud.id,
+        title: row.cloud.title,
+        url: row.cloud.url,
+      });
+
+      const mapping: NativeBookmarkMapping = {
+        ...row.mapping,
+        url: row.cloud.url,
+      };
+      await saveNativeBookmarkMappingsWithBridge([mapping]);
+      const nextSnapshot = await refreshMappingSnapshot();
+      const nextNative = nextSnapshot.bookmarks.find((bookmark) => bookmark.id === row.mapping.browserBookmarkId);
+      if (nextNative) acceptNativeMappingBaseline(mapping, nextNative, row.cloud);
+      setMessage(`Wrote Dockmark title and URL to the mapped browser bookmark “${row.cloud.title}”. The browser folder was not moved, and no other browser bookmarks were changed.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not write this Dockmark bookmark back to the browser.");
     } finally {
       setBusy(false);
     }
@@ -563,13 +596,13 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
             <h2>Browser bookmarks</h2>
             <p>Read the connected browser directly, review imports, and maintain the local native↔Dockmark mapping.</p>
           </div>
-          <span className="native-readonly">BROWSER READ-ONLY</span>
+          <span className="native-readonly">NO AUTO BROWSER WRITES</span>
         </div>
         <div className="native-import-actions">
           <button className="secondary" type="button" disabled={busy} onClick={() => void loadNativeBookmarks()}>
             {busy && !loaded ? "Reading…" : loaded ? "Refresh browser snapshot" : "Read browser bookmarks"}
           </button>
-          <span>Incremental sync never creates, edits, moves or deletes native browser bookmarks.</span>
+          <span>Automatic sync never edits browser bookmarks. Extension 0.4+ can write title + URL only after an explicit Review action.</span>
           <button className="text-action native-extension-link" type="button" onClick={onOpenExtension}>Extension / install →</button>
         </div>
       </article>
@@ -642,6 +675,9 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
                       <div className="mapping-review-actions">
                         <button className="secondary" type="button" disabled={busy} onClick={() => void useBrowser(row)}>Use Browser</button>
                         <button className="secondary" type="button" disabled={busy} onClick={() => void keepDockmark(row)}>Keep Dockmark</button>
+                        {writebackCapable && (
+                          <button className="secondary" type="button" disabled={busy} onClick={() => void writeDockmarkToBrowser(row)}>Write Dockmark → Browser</button>
+                        )}
                         <div className="mapping-relink-control">
                           <select
                             aria-label="Re-link browser bookmark to Dockmark bookmark"
@@ -658,14 +694,14 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
                         </div>
                         <button className="text-action muted-action" type="button" disabled={busy} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
                       </div>
-                      <small className="mapping-review-note">Use Browser may update Dockmark title, URL and category. Keep Dockmark accepts the current difference as intentional. Re-link only changes the local mapping.</small>
+                      <small className="mapping-review-note">Use Browser may update Dockmark title, URL and category. Keep Dockmark accepts the current difference as intentional. Write Dockmark → Browser explicitly changes only the mapped browser bookmark title + URL; it never moves the browser folder. Re-link only changes the local mapping.</small>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-          <p className="mapping-note">Safe Apply is browser → Dockmark only. Browser deletions unlink the mapping but keep the Dockmark bookmark. Review items require an explicit decision; native browser bookmarks remain read-only.</p>
+          <p className="mapping-note">Safe Apply remains browser → Dockmark only. Browser deletions unlink the mapping but keep the Dockmark bookmark. Browser writes happen only through the explicit Write Dockmark → Browser Review action in Extension 0.4+.</p>
         </section>
       )}
 

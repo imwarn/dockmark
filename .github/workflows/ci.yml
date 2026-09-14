@@ -87,20 +87,30 @@ jobs:
       - name: Package Chromium extension
         run: npm run package:extension
 
-      - name: Validate Chromium package
+      - name: Package New Tab Chromium variant
+        run: npm run package:extension:newtab
+
+      - name: Validate Chromium packages
         run: |
           VERSION=$(node -p "require('./apps/extension/package.json').version")
-          PACKAGE="apps/extension/.output/dockmark-chrome-v${VERSION}.zip"
-          test -f "$PACKAGE"
-          unzip -Z1 "$PACKAGE" | grep -qx "manifest.json"
+          STANDARD="apps/extension/.output/dockmark-chrome-v${VERSION}.zip"
+          NEWTAB="apps/extension/.output/dockmark-newtab-chrome-v${VERSION}.zip"
+          test -f "$STANDARD"
+          test -f "$NEWTAB"
+          unzip -Z1 "$STANDARD" | grep -qx "manifest.json"
+          unzip -Z1 "$NEWTAB" | grep -qx "manifest.json"
+          unzip -Z1 "$NEWTAB" | grep -qx "newtab.html"
+          unzip -Z1 "$NEWTAB" | grep -qx "newtab.js"
+          unzip -p "$NEWTAB" manifest.json | node -e 'let data=""; process.stdin.on("data", c => data += c); process.stdin.on("end", () => { const m=JSON.parse(data); if (m.chrome_url_overrides?.newtab !== "newtab.html") process.exit(1); if (m.name !== "Dockmark New Tab") process.exit(1); });'
 
-      - name: Stage Chromium package
+      - name: Stage Chromium packages
         run: |
           VERSION=$(node -p "require('./apps/extension/package.json').version")
           mkdir -p artifacts
           cp "apps/extension/.output/dockmark-chrome-v${VERSION}.zip" artifacts/
+          cp "apps/extension/.output/dockmark-newtab-chrome-v${VERSION}.zip" artifacts/
 
-      - name: Upload Chromium package
+      - name: Upload Chromium packages
         uses: actions/upload-artifact@v4
         with:
           name: dockmark-chromium-extension

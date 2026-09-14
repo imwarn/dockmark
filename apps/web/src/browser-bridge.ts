@@ -9,6 +9,7 @@ export interface BridgeCapabilities {
   sessionPinned: boolean;
   nativeBookmarks: boolean;
   nativeBookmarkSync?: boolean;
+  nativeBookmarkWriteback?: boolean;
   localHealth: boolean;
 }
 
@@ -160,9 +161,6 @@ export async function getRawBridgeStatus(): Promise<BrowserBridgeStatus> {
   try {
     return await request<BrowserBridgeStatus>("status", undefined, 900);
   } catch (firstError) {
-    // A freshly installed/reconnected extension may be registering and injecting the
-    // configured-origin bridge into an already-open Dockmark tab. Give that reinjection
-    // one short retry before reporting the extension as disconnected.
     await wait(180);
     try {
       return await request<BrowserBridgeStatus>("status", undefined, 1500);
@@ -211,6 +209,15 @@ export async function saveNativeBookmarkMappingsWithBridge(
 
 export async function removeNativeBookmarkMappingsWithBridge(browserBookmarkIds: string[]) {
   return request<{ removed: number }>("remove-native-bookmark-mappings", { browserBookmarkIds }, 5000);
+}
+
+export async function writeNativeBookmarkWithBridge(input: {
+  browserBookmarkId: string;
+  dockmarkBookmarkId: string;
+  title: string;
+  url: string;
+}) {
+  return request<{ id: string; title: string; url: string }>("write-native-bookmark", input, 5000);
 }
 
 export function onBridgeEvent(listener: (event: string) => void) {
