@@ -48,9 +48,12 @@ try {
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
   const iconHref = await page.locator('link[rel="icon"]').getAttribute("href");
   assert.equal(iconHref, "newtab-icon.svg");
-  const iconResponse = await page.request.get(`chrome-extension://${extensionId}/newtab-icon.svg`);
-  assert.equal(iconResponse.status(), 200);
-  assert.match(await iconResponse.text(), /prefers-color-scheme: dark/);
+  const iconText = await page.evaluate(async () => {
+    const response = await fetch("newtab-icon.svg");
+    if (!response.ok) throw new Error(`New Tab icon request failed (${response.status}).`);
+    return response.text();
+  });
+  assert.match(iconText, /prefers-color-scheme: dark/);
 
   const offlineOrigin = "https://offline.dockmark.invalid";
   await page.evaluate(async ({ offlineOrigin, clickedTargetUrl }) => {
