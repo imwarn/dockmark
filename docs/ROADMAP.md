@@ -24,6 +24,8 @@
 - [x] local-first settings with D1 persistence
 - [x] private Web sessions, extension device pairing and revocation
 - [x] curated public homepage with explicit publish/unpublish controls
+- [x] bookmark-library search across title, URL, description, category and tags, including `#tag` filters
+- [x] first-class manual bookmark description/tag editing with tag browsing and per-tag counts
 
 ## V1.5 — health and metadata
 
@@ -69,10 +71,10 @@
 
 - [x] OpenAI-compatible Chat Completions endpoint/model configuration in the Web UI
 - [x] API key stored as the self-hosted `DOCKMARK_AI_API_KEY` Worker secret; never persisted to browser localStorage or D1
-- [x] Worker-side provider proxy with public-HTTPS endpoint validation, redirect blocking, timeout and response-size limits
+- [x] Worker-side provider proxy with public-HTTPS endpoint validation, same-origin redirect review, timeout and response-size limits
 - [x] classification into existing categories, tags, title cleanup and descriptions as suggestions
 - [x] preview/diff/apply workflow for reviewed bulk AI edits (20 bookmarks/request)
 - [x] never allow AI to override URL or HealthPolicy safety exclusions; only `normal` bookmarks enter the provider request/write surface
 - [x] preserve tags in Dockmark JSON export/import
-- [ ] optional richer tag browsing/search surfaces outside the AI review workflow
+- [x] richer tag browsing/search surfaces outside the AI review workflow
 - [ ] optional provider adapters for Responses-style APIs, custom authentication or other non-Chat-Completions protocols

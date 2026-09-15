@@ -1,0 +1,133 @@
+.bookmark-sidebar { display: grid; gap: 14px; }
+
+.bookmark-field-grid .field-span-2 { grid-column: 1 / -1; }
+.bookmark-field-grid textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 78px;
+  padding: 10px 11px;
+  resize: vertical;
+  border: 1px solid var(--dm-border-strong);
+  border-radius: 10px;
+  outline: 0;
+  color: var(--dm-text);
+  background: var(--dm-bg-soft);
+  font: inherit;
+  line-height: 1.45;
+}
+.bookmark-field-grid textarea:focus {
+  border-color: var(--dm-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dm-accent) 12%, transparent);
+}
+.field-help {
+  color: var(--dm-text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.4;
+  text-transform: none;
+}
+
+.tag-browser-card { display: grid; gap: 12px; }
+.tag-browser-card .card-heading { margin-bottom: 0; }
+.tag-browser-list { display: flex; flex-wrap: wrap; gap: 7px; max-height: 260px; overflow: auto; scrollbar-gutter: stable; }
+.tag-filter-chip,
+.active-tag-filter,
+.bookmark-tags button {
+  border: 1px solid var(--dm-border);
+  border-radius: 999px;
+  background: var(--dm-bg-soft);
+  color: var(--dm-text-soft);
+  cursor: pointer;
+}
+.tag-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+.tag-filter-chip strong { color: var(--dm-text-muted); font-size: 10px; }
+.tag-filter-chip:hover,
+.tag-filter-chip.active,
+.bookmark-tags button:hover {
+  border-color: var(--dm-accent);
+  background: var(--dm-accent-bg);
+  color: var(--dm-accent-strong);
+}
+.active-tag-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border-color: var(--dm-accent);
+  background: var(--dm-accent-bg);
+  color: var(--dm-accent-strong);
+  font-size: 11px;
+}
+.active-tag-filter strong { font-size: 15px; font-weight: 500; }
+
+.bookmark-search-card { display: grid; gap: 10px; }
+.bookmark-search-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bookmark-search-heading > div { display: flex; align-items: baseline; gap: 9px; }
+.bookmark-search-heading strong { font-size: 13px; }
+.bookmark-search-heading span { color: var(--dm-text-muted); font-size: 11px; }
+.bookmark-search-input {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--dm-border-strong);
+  border-radius: 11px;
+  background: var(--dm-bg-soft);
+}
+.bookmark-search-input:focus-within {
+  border-color: var(--dm-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dm-accent) 10%, transparent);
+}
+.bookmark-search-input > span { color: var(--dm-text-muted); font-size: 18px; }
+.bookmark-search-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--dm-text);
+  font: inherit;
+}
+.bookmark-search-input input::placeholder { color: var(--dm-text-muted); }
+.bookmark-search-help { margin: 0; color: var(--dm-text-muted); font-size: 10px; line-height: 1.5; }
+.bookmark-search-help code { color: var(--dm-text-soft); }
+
+.bookmark-description {
+  display: -webkit-box;
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--dm-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.bookmark-meta-line { display: flex; align-items: center; gap: 9px; min-width: 0; flex-wrap: wrap; }
+.bookmark-tags { display: flex; gap: 5px; min-width: 0; flex-wrap: wrap; }
+.bookmark-tags button {
+  min-height: 21px;
+  padding: 0 7px;
+  font-size: 9px;
+}
+
+@media (max-width: 860px) {
+  .bookmark-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .bookmark-sidebar { grid-template-columns: 1fr; }
+  .bookmark-search-heading { align-items: flex-start; }
+  .bookmark-search-heading > div { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .bookmark-field-grid .field-span-2 { grid-column: auto; }
+}
