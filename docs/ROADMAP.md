@@ -56,6 +56,8 @@
 - [x] Firefox Manifest V3 build/package validation in CI
 - [x] Firefox release ZIP + reproducible sources ZIP packaging
 - [x] Firefox deployed-origin runtime validation (`docs/FIREFOX_VALIDATION.md`)
+- [x] New Tab local snapshot search across bookmark title, URL, description, category and `#tag` terms
+- [x] one-click New Tab local snapshot reset that leaves cloud data, pairing, browser settings and bookmark mappings untouched; test-phase caches are reseeded rather than migrated
 - [ ] signed Firefox distribution / AMO channel after runtime validation
 
 ## Deployment

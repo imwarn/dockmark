@@ -43,7 +43,7 @@ try {
   await page.waitForLoadState("domcontentloaded");
 
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "1.0.1");
+  assert.equal(manifest.version, "1.1.0");
   assert.equal(manifest.name, "Dockmark New Tab");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
 
@@ -71,8 +71,11 @@ try {
         bookmarks: [
           {
             id: "bookmark-1",
+            categoryId: "category-1",
             title: "Cached Example",
             url: clickedTargetUrl,
+            description: "Private documentation portal for the developer toolkit.",
+            tags: ["docs", "dev"],
             healthPolicy: "normal",
             healthStatus: "unknown",
             position: 0,
@@ -83,6 +86,8 @@ try {
             id: "bookmark-2",
             title: "Second Cached Bookmark",
             url: "https://example.org/second",
+            description: "Reference archive for later reading.",
+            tags: ["reading"],
             healthPolicy: "normal",
             healthStatus: "unknown",
             position: 1,
@@ -90,7 +95,15 @@ try {
             updatedAt: now,
           },
         ],
-        categories: [],
+        categories: [
+          {
+            id: "category-1",
+            name: "Developer",
+            position: 0,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
         workspaces: [
           {
             id: "workspace-1",
@@ -165,6 +178,20 @@ try {
   const resultKinds = await page.locator("#command-results .result-kind").allInnerTexts();
   assert.ok(!resultKinds.some((kind) => kind.toLowerCase() === "tab"), "Open-tab results should be hidden when showOpenTabs is disabled.");
 
+  await page.locator("#search").fill("documentation");
+  await page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).first().waitFor();
+
+  await page.locator("#search").fill("Developer");
+  await page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).first().waitFor();
+
+  await page.locator("#search").fill("#docs");
+  const tagResult = page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).first();
+  await tagResult.waitFor();
+  assert.match(await tagResult.innerText(), /#docs/);
+
+  await page.locator("#search").fill("documentation #dev");
+  await page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).first().waitFor();
+
   await page.locator("#search").fill("offline query");
   await page.getByText("Search Secondary Search", { exact: true }).waitFor();
 
@@ -187,6 +214,7 @@ try {
   await cachePage.goto(`chrome-extension://${extensionId}/newtab.html`);
   await cachePage.waitForLoadState("domcontentloaded");
   await cachePage.getByText("Cached Example", { exact: true }).waitFor();
+  assert.equal(await cachePage.locator("#clear-cache").innerText(), "Clear local snapshot");
   await cachePage.locator("#clear-cache").click();
   await cachePage.waitForFunction(() => document.querySelector("#sync-status")?.textContent?.includes("No local snapshot yet"));
   const storageAfterClear = await cachePage.evaluate(async () => chrome.storage.local.get([
@@ -201,9 +229,10 @@ try {
   console.log(`✓ Dockmark New Tab variant loaded: ${extensionId}`);
   console.log("✓ New Tab manifest override is isolated to the opt-in variant");
   console.log("✓ Cached bookmarks and Workspaces render without Dockmark host permission/network");
+  console.log("✓ Offline search matches bookmark description, category, tags and combined #tag terms");
   console.log("✓ Local-first settings control card limits, open tabs, default search and auto refresh");
   console.log("✓ Manual refresh remains available when automatic refresh is disabled");
-  console.log("✓ Cache clearing preserves server connection and browser settings");
+  console.log("✓ Clearing the local snapshot preserves server connection and browser settings");
   console.log("✓ Hovered command results remain clickable and navigate the active New Tab");
 } finally {
   await context?.close();
