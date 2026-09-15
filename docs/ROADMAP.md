@@ -90,5 +90,5 @@
 - [x] Web Inbox filing flow: keep uncategorized or move to an existing category, then clear Inbox state explicitly
 - [x] paired device scope remains append-only for Quick Capture; it cannot edit/delete existing Dockmark bookmarks
 - [x] reviewed multi-tab capture from current-window tabs: read-only preflight, explicit selection, final duplicate recheck, then append selected new URLs to Inbox
-- [ ] optional metadata suggestion refresh for newly captured public URLs, still behind explicit review
+- [x] optional metadata suggestion refresh for newly captured public URLs: title, description, canonical URL and favicon remain separate until individually selected during Inbox review; local-only stays server-disabled
 - [ ] saved filters / Smart Collections built from category, tags, domain, health and Inbox state
