@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { browser } from "wxt/browser";
+import { ReviewedCapture } from "./ReviewedCapture";
 import "./style.css";
 
 type TabSummary = {
@@ -406,7 +407,7 @@ function Popup() {
           <div className="section-heading"><strong>Private cloud pairing</strong><span className={paired ? "online" : "offline"}>{paired ? "Authenticated" : "Required"}</span></div>
           {paired ? (
             <>
-              <p>This extension holds a revocable per-device token. It can read launcher data, save Sessions and append the current tab to Inbox. It cannot edit or delete existing Dockmark bookmarks, settings or public-page selection.</p>
+              <p>This extension holds a revocable per-device token. It can read launcher data, save Sessions and append reviewed captures to Inbox. It cannot edit or delete existing Dockmark bookmarks, settings or public-page selection.</p>
               <button className="secondary" disabled={busy} onClick={() => void unpairLocal()}>Remove local device token</button>
             </>
           ) : (
@@ -453,6 +454,8 @@ function Popup() {
           )}
         </section>
       )}
+
+      {connected && paired && <ReviewedCapture serverUrl={serverUrl} tabs={savableTabs} />}
 
       {connected && paired && (
         <section className="card save-card">
