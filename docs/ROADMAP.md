@@ -50,10 +50,10 @@
 - [x] real Playwright Chromium smoke test for MV3 worker, capabilities, optional permissions, tabs and pinned restore
 - [x] CI artifact for installable Chromium ZIP
 - [x] tag-driven GitHub Release packaging
-- [ ] deployed-origin manual bridge + native bookmark permission smoke check
+- [x] deployed-origin manual bridge + native bookmark permission smoke check
 - [x] Firefox Manifest V3 build/package validation in CI
 - [x] Firefox release ZIP + reproducible sources ZIP packaging
-- [ ] Firefox deployed-origin runtime validation (`docs/FIREFOX_VALIDATION.md`)
+- [x] Firefox deployed-origin runtime validation (`docs/FIREFOX_VALIDATION.md`)
 - [ ] signed Firefox distribution / AMO channel after runtime validation
 
 ## Deployment
@@ -67,8 +67,10 @@
 
 ## V3 — AI-assisted organization
 
-- [ ] OpenAI-compatible provider configuration
-- [ ] API keys stored locally by default
-- [ ] classification, tags, title cleanup and descriptions as suggestions
-- [ ] preview/diff/apply workflow for bulk AI edits
-- [ ] never allow AI to override HealthPolicy safety exclusions
+- [x] OpenAI-compatible provider configuration (browser-local endpoint/model/key; direct provider request)
+- [x] API keys stored locally by default and never persisted to D1
+- [x] classification into existing categories, tags, title cleanup and descriptions as suggestions
+- [x] preview/diff/apply workflow for reviewed bulk AI edits (20 bookmarks/request)
+- [x] never allow AI to override URL or HealthPolicy safety exclusions; only `normal` bookmarks enter the v1.1 AI request surface
+- [ ] optional richer tag browsing/search surfaces outside the AI review workflow
+- [ ] optional provider adapters/proxy mode for providers that do not allow browser CORS
