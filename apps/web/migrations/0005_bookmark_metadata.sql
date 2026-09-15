@@ -12,3 +12,10 @@ CREATE TABLE bookmark_metadata (
 );
 
 CREATE INDEX bookmark_metadata_fetched_idx ON bookmark_metadata(fetched_at DESC);
+
+CREATE TRIGGER bookmark_metadata_clear_on_url_update
+AFTER UPDATE OF url ON bookmarks
+WHEN OLD.url <> NEW.url
+BEGIN
+  DELETE FROM bookmark_metadata WHERE bookmark_id = NEW.id;
+END;
