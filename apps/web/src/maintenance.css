@@ -1,6 +1,7 @@
 .maintenance-section { display: grid; gap: 16px; margin-bottom: 46px; }
-.maintenance-heading { margin: 0; }
-.maintenance-grid { display: grid; grid-template-columns: minmax(260px, .72fr) minmax(0, 1.45fr); gap: 14px; align-items: start; }
+.maintenance-heading { margin: 0; order: 0; }
+.maintenance-section > .error-banner, .maintenance-feedback { order: 1; }
+.maintenance-grid { display: grid; grid-template-columns: minmax(260px, .72fr) minmax(0, 1.45fr); gap: 14px; align-items: start; order: 3; }
 .maintenance-list { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 9px; max-height: 720px; overflow: hidden; padding: 10px; }
 .maintenance-list-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; }
 .maintenance-list-tools input { min-width: 0; height: 36px; padding: 0 11px; border: 1px solid #2d3932; border-radius: 9px; color: #dbe5df; background: #0f1512; font: inherit; font-size: 11px; outline: none; }
@@ -45,7 +46,8 @@
 .health-source { color: #66736c; font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
 .health-source.source-extension { color: #9fb9a7; }
 .maintenance-health { color: #76827b; }
-.cleanup-panel { display: grid; gap: 14px; padding: 18px; }
+.cleanup-panel { display: grid; gap: 14px; padding: 18px; order: 4; scroll-margin-top: 18px; }
+.cleanup-panel:has(.cleanup-row) { order: 2; border-color: #3e624a; }
 .cleanup-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .cleanup-list { display: grid; gap: 7px; }
 .cleanup-row { display: grid; grid-template-columns: 20px minmax(0,1fr) auto; align-items: center; gap: 11px; min-height: 58px; padding: 10px 12px; border: 1px solid #27312c; border-radius: 11px; background: #0f1512; cursor: pointer; }
@@ -76,6 +78,7 @@ html[data-theme="light"] .redirect-review strong { color: var(--dm-text-soft); }
 html[data-theme="light"] .redirect-review { border-color: #a8c9b4; background: #edf6f0; }
 html[data-theme="light"] .cleanup-eligibility { border-color: var(--dm-border); color: var(--dm-text-muted); background: var(--dm-bg-soft); }
 html[data-theme="light"] .cleanup-eligibility.eligible { border-color: #9fc4aa; color: #356047; background: #edf6f0; }
+html[data-theme="light"] .cleanup-panel:has(.cleanup-row) { border-color: #9fc4aa; }
 html[data-theme="light"] .health-history-row { border-color: var(--dm-border); color: var(--dm-text-muted); }
 html[data-theme="light"] .health-source { color: var(--dm-text-muted); }
 html[data-theme="light"] .health-source.source-extension { color: #47725a; }
