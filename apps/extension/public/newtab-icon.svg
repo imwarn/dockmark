@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Dockmark New Tab mark</title>
+  <desc id="desc">Transparent Dockmark D dot mark, adapted for browser light and dark chrome.</desc>
+  <style>
+    .mark { fill: #173126; }
+    @media (prefers-color-scheme: dark) { .mark { fill: #b8e0c5; } }
+  </style>
+  <path class="mark" d="M11 14h20c13 0 21 7 21 18s-8 18-21 18H11V14Zm19.5 27c7 0 12-3.4 12-9s-5-9-12-9H21v18h9.5Z"/>
+  <circle class="mark" cx="55" cy="46" r="4.5"/>
+</svg>
