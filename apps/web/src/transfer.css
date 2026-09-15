@@ -57,11 +57,14 @@
 .mapping-review-panel { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid #392d2a; }
 .mapping-review-panel > p { margin: 0; color: #bda39f; font-size: 11px; line-height: 1.55; }
 .mapping-review-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.mapping-review-sides > div { display: grid; gap: 4px; min-width: 0; padding: 11px; border: 1px solid #2b342f; border-radius: 11px; background: rgba(10,15,13,.58); }
+.mapping-review-sides > div { display: grid; gap: 6px; min-width: 0; padding: 11px; border: 1px solid #2b342f; border-radius: 11px; background: rgba(10,15,13,.58); }
 .mapping-review-sides span { color: #849087; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
 .mapping-review-sides strong, .mapping-review-sides small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mapping-review-sides strong { color: #cbd4cf; font-size: 12px; }
-.mapping-review-sides small { color: #748078; font-size: 10px; }
+.mapping-review-sides strong { display: grid; gap: 3px; padding: 8px 9px; border: 1px solid #35433b; border-radius: 8px; background: rgba(52,72,61,.2); color: #e0ebe5; font-size: 13px; }
+.mapping-review-sides strong::before { content: "TITLE"; color: #8fbc9f; font-size: 8px; font-weight: 700; letter-spacing: .1em; }
+.mapping-review-sides small { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 7px; align-items: baseline; color: #748078; font-size: 10px; }
+.mapping-review-sides small:first-of-type::before { content: "URL"; color: #849087; font-size: 8px; font-weight: 700; letter-spacing: .08em; }
+.mapping-review-sides small:last-of-type::before { content: "LOCATION"; color: #849087; font-size: 8px; font-weight: 700; letter-spacing: .08em; }
 .mapping-review-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mapping-review-actions .secondary { padding: 8px 10px; }
 .mapping-relink-control { display: flex; align-items: center; gap: 6px; min-width: min(100%, 420px); flex: 1; }
