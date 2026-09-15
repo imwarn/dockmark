@@ -15,6 +15,7 @@ export interface ParsedBookmark {
   description?: string;
   iconUrl?: string;
   healthPolicy?: HealthPolicy;
+  tags?: string[];
 }
 
 export type ImportStatus = "new" | "duplicate" | "invalid";
@@ -27,12 +28,16 @@ export interface ImportCandidate extends ParsedBookmark {
   note?: string;
 }
 
+interface DockmarkExportBookmark extends Bookmark {
+  tags?: string[];
+}
+
 interface DockmarkExport {
   format: "dockmark-bookmarks";
   version: 1;
   exportedAt: string;
   categories: Category[];
-  bookmarks: Bookmark[];
+  bookmarks: DockmarkExportBookmark[];
 }
 
 function directChild(element: Element, tagName: string) {
@@ -103,6 +108,23 @@ function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function tagsValue(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const tag = item.trim().replace(/\s+/g, " ").slice(0, 40);
+    if (!tag) continue;
+    const key = tag.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(tag);
+    if (tags.length >= 12) break;
+  }
+  return tags.length ? tags : undefined;
+}
+
 function healthPolicyValue(value: unknown): HealthPolicy | undefined {
   return typeof value === "string" && HEALTH_POLICIES.has(value as HealthPolicy)
     ? (value as HealthPolicy)
@@ -119,6 +141,7 @@ function parseBookmarkRecord(
   const description = stringValue(record.description);
   const iconUrl = stringValue(record.iconUrl);
   const healthPolicy = healthPolicyValue(record.healthPolicy);
+  const tags = tagsValue(record.tags);
   return [{
     title,
     url,
@@ -126,6 +149,7 @@ function parseBookmarkRecord(
     ...(description ? { description } : {}),
     ...(iconUrl ? { iconUrl } : {}),
     ...(healthPolicy ? { healthPolicy } : {}),
+    ...(tags ? { tags } : {}),
   }];
 }
 
@@ -230,13 +254,20 @@ function escapeHtml(value: string) {
     .replaceAll('"', "&quot;");
 }
 
-export function makeDockmarkJson(categories: Category[], bookmarks: Bookmark[]) {
+export function makeDockmarkJson(
+  categories: Category[],
+  bookmarks: Bookmark[],
+  bookmarkTags: Record<string, string[]> = {},
+) {
   const payload: DockmarkExport = {
     format: "dockmark-bookmarks",
     version: 1,
     exportedAt: new Date().toISOString(),
     categories,
-    bookmarks,
+    bookmarks: bookmarks.map((bookmark) => {
+      const tags = bookmarkTags[bookmark.id] ?? [];
+      return tags.length ? { ...bookmark, tags } : bookmark;
+    }),
   };
   return JSON.stringify(payload, null, 2);
 }
