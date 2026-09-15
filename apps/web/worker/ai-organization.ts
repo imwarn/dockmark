@@ -57,6 +57,8 @@ export class AiOrganizationHttpError extends Error {
 const MAX_BOOKMARKS = 20;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const FETCH_TIMEOUT_MS = 30_000;
+const MAX_PROVIDER_REDIRECTS = 3;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 function json(data: unknown, init: ResponseInit = {}) {
   const headers = new Headers(init.headers);
@@ -111,7 +113,7 @@ function bookmarkIds(value: unknown) {
   return ids;
 }
 
-function providerEndpoint(raw: string) {
+function validateProviderTarget(raw: string) {
   let url: URL;
   try {
     url = new URL(raw);
@@ -121,11 +123,25 @@ function providerEndpoint(raw: string) {
   if (url.protocol !== "https:") {
     throw new AiOrganizationHttpError(400, "invalid_provider", "Provider endpoint must use HTTPS.");
   }
+  if (url.username || url.password) {
+    throw new AiOrganizationHttpError(400, "invalid_provider", "Provider endpoint must not contain URL credentials.");
+  }
+
   const normalized = normalizeBookmarkUrl(url.toString());
   if (inferHealthPolicy(normalized) === "local-only") {
     throw new AiOrganizationHttpError(400, "invalid_provider", "Provider endpoint must be a public HTTPS endpoint.");
   }
-  return normalized;
+  return new URL(normalized);
+}
+
+function providerEndpoint(raw: string) {
+  const url = validateProviderTarget(raw);
+  const pathname = url.pathname.replace(/\/+$/, "");
+
+  // Accept the two common OpenAI-compatible forms: a base URL ending in /v1,
+  // or the complete /v1/chat/completions endpoint.
+  if (pathname === "/v1") url.pathname = "/v1/chat/completions";
+  return url.toString();
 }
 
 function extractText(payload: unknown) {
@@ -247,12 +263,7 @@ async function loadOrganizationInput(db: D1DatabaseLike, ids: string[]) {
   };
 }
 
-async function callProvider(
-  endpoint: string,
-  model: string,
-  apiKey: string,
-  input: Awaited<ReturnType<typeof loadOrganizationInput>>,
-) {
+function providerRequestBody(model: string, input: Awaited<ReturnType<typeof loadOrganizationInput>>) {
   const system = [
     "You organize a personal bookmark library.",
     "Return JSON only as an object with a suggestions array.",
@@ -265,43 +276,105 @@ async function callProvider(
     "Do not omit a selected bookmark.",
   ].join(" ");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(endpoint, {
+  return JSON.stringify({
+    model,
+    messages: [
+      { role: "system", content: system },
+      {
+        role: "user",
+        content: JSON.stringify({
+          categories: input.categories.map((category) => category.name),
+          bookmarks: input.bookmarks,
+          responseShape: {
+            suggestions: [
+              {
+                bookmarkId: "bookmark id",
+                title: "clean title",
+                description: "short description",
+                categoryName: "existing category name or null",
+                tags: ["tag"],
+              },
+            ],
+          },
+        }),
+      },
+    ],
+  });
+}
+
+async function fetchProviderResponse(endpoint: string, apiKey: string, body: string, signal: AbortSignal) {
+  let current = validateProviderTarget(endpoint);
+
+  for (let redirectCount = 0; redirectCount <= MAX_PROVIDER_REDIRECTS; redirectCount += 1) {
+    const response = await fetch(current.toString(), {
       method: "POST",
-      redirect: "error",
-      signal: controller.signal,
+      redirect: "manual",
+      signal,
       headers: {
         accept: "application/json",
         "content-type": "application/json",
         authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: system },
-          {
-            role: "user",
-            content: JSON.stringify({
-              categories: input.categories.map((category) => category.name),
-              bookmarks: input.bookmarks,
-              responseShape: {
-                suggestions: [
-                  {
-                    bookmarkId: "bookmark id",
-                    title: "clean title",
-                    description: "short description",
-                    categoryName: "existing category name or null",
-                    tags: ["tag"],
-                  },
-                ],
-              },
-            }),
-          },
-        ],
-      }),
+      body,
     });
+
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+
+    const location = response.headers.get("location");
+    await response.body?.cancel().catch(() => undefined);
+    if (!location) {
+      throw new AiOrganizationHttpError(502, "provider_redirect_invalid", "AI provider redirected without a Location header.");
+    }
+    if (redirectCount === MAX_PROVIDER_REDIRECTS) {
+      throw new AiOrganizationHttpError(502, "provider_redirect_limit", "AI provider redirected too many times.");
+    }
+
+    const next = validateProviderTarget(new URL(location, current).toString());
+    if (next.origin !== current.origin) {
+      throw new AiOrganizationHttpError(
+        502,
+        "provider_redirect_cross_origin",
+        `AI provider redirected to another origin (${next.origin}). Dockmark will not forward the API key across origins; configure the final provider endpoint directly.`,
+      );
+    }
+    current = next;
+  }
+
+  throw new AiOrganizationHttpError(502, "provider_redirect_limit", "AI provider redirected too many times.");
+}
+
+function providerNetworkError(error: unknown, endpoint: string) {
+  if (error instanceof Error && error.name === "AbortError") {
+    return new AiOrganizationHttpError(504, "provider_timeout", "AI provider request timed out after 30 seconds.");
+  }
+
+  const detail = error instanceof Error && error.message.trim()
+    ? ` Runtime detail: ${error.message.trim().slice(0, 300)}`
+    : "";
+  const target = new URL(endpoint);
+  const portHint = target.port && target.port !== "443"
+    ? " The provider uses a custom HTTPS port; if the hostname is proxied by Cloudflare, expose it on 443 or another Cloudflare-supported HTTPS port."
+    : "";
+
+  return new AiOrganizationHttpError(
+    502,
+    "provider_unavailable",
+    `AI provider network request failed before an HTTP response was received.${detail}${portHint} Check the endpoint DNS/TLS/port and any reverse-proxy redirect.`,
+  );
+}
+
+async function callProvider(
+  endpoint: string,
+  model: string,
+  apiKey: string,
+  input: Awaited<ReturnType<typeof loadOrganizationInput>>,
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const body = providerRequestBody(model, input);
+
+  try {
+    const response = await fetchProviderResponse(endpoint, apiKey, body, controller.signal);
 
     const contentLength = Number(response.headers.get("content-length") ?? 0);
     if (contentLength > MAX_RESPONSE_BYTES) {
@@ -317,7 +390,11 @@ async function callProvider(
     try {
       payload = text ? JSON.parse(text) as unknown : null;
     } catch {
-      throw new AiOrganizationHttpError(502, "provider_invalid_response", "AI provider returned a non-JSON HTTP response.");
+      throw new AiOrganizationHttpError(
+        502,
+        "provider_invalid_response",
+        `AI provider returned a non-JSON HTTP response (${response.status}). Check that the configured URL is the OpenAI-compatible /v1/chat/completions endpoint.`,
+      );
     }
 
     if (!response.ok) {
@@ -329,10 +406,7 @@ async function callProvider(
     return payload;
   } catch (error) {
     if (error instanceof AiOrganizationHttpError) throw error;
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new AiOrganizationHttpError(504, "provider_timeout", "AI provider request timed out.");
-    }
-    throw new AiOrganizationHttpError(502, "provider_unavailable", "AI provider could not be reached.");
+    throw providerNetworkError(error, endpoint);
   } finally {
     clearTimeout(timeout);
   }
