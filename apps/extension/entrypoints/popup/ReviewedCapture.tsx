@@ -75,7 +75,7 @@ async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
 
 export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: CaptureTab[] }) {
   const [review, setReview] = useState<ReviewItem[] | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const [selected, setSelected] = useState<Set<number>>(() => new Set<number>());
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -148,7 +148,7 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
       });
       const changedDuringReview = result.duplicateCount + result.skippedCount;
       setReview(null);
-      setSelected(new Set());
+      setSelected(new Set<number>());
       setNotice(
         changedDuringReview
           ? `Saved ${result.createdCount} tabs to Inbox; ${changedDuringReview} were skipped after a final duplicate recheck.`
@@ -192,7 +192,7 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
           </div>
           <div className="capture-selection-actions">
             <button className="text-button" type="button" disabled={busy || !newItems.length} onClick={() => setSelected(new Set(newItems.map((item) => item.index)))}>Select all new</button>
-            <button className="text-button" type="button" disabled={busy || !selected.size} onClick={() => setSelected(new Set())}>Clear</button>
+            <button className="text-button" type="button" disabled={busy || !selected.size} onClick={() => setSelected(new Set<number>())}>Clear</button>
           </div>
           <div className="capture-review-list">
             {review.map((item) => {
@@ -221,7 +221,7 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
             })}
           </div>
           <div className="capture-review-actions">
-            <button className="secondary" type="button" disabled={busy} onClick={() => { setReview(null); setSelected(new Set()); }}>Cancel review</button>
+            <button className="secondary" type="button" disabled={busy} onClick={() => { setReview(null); setSelected(new Set<number>()); }}>Cancel review</button>
             <button className="primary" type="button" disabled={busy || !selectedItems.length} onClick={() => void applyReviewedCapture()}>
               {busy ? "Saving…" : `Save ${selectedItems.length} selected`}
             </button>
