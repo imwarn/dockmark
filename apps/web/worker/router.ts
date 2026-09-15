@@ -1,5 +1,9 @@
 import baseWorker from "./index";
 import {
+  AiOrganizationHttpError,
+  handleAiOrganizationApi,
+} from "./ai-organization";
+import {
   AuthHttpError,
   authenticateRequest,
   authConfigured,
@@ -28,6 +32,7 @@ import { handleTagApi, TagHttpError } from "./tags";
 type BaseEnv = Parameters<typeof baseWorker.fetch>[1];
 type Env = BaseEnv & {
   DOCKMARK_ADMIN_PASSWORD?: string;
+  DOCKMARK_AI_API_KEY?: string;
 };
 
 function problem(status: number, code: string, message: string) {
@@ -97,6 +102,17 @@ export default {
         requireSameOrigin(request);
       } else if (!deviceCanAccess(request, pathname)) {
         return problem(403, "device_scope_denied", "This paired extension token is not allowed to perform that operation.");
+      }
+
+      if (pathname === "/api/ai/status" || pathname === "/api/ai/organize") {
+        try {
+          const response = await handleAiOrganizationApi(request, env, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof AiOrganizationHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark AI Organization API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
       }
 
       if (/^\/api\/bookmarks\/[^/]+\/health\/local-result$/.test(pathname)) {
