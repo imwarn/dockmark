@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
 import { listBookmarks, listCategories } from "./api";
+import { AiOrganizationSettings } from "./AiOrganizationSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { BookmarkMaintenance } from "./BookmarkMaintenance";
 import { BrowserSettingsManager } from "./BrowserSettingsManager";
@@ -36,7 +37,7 @@ export function SettingsPage() {
         <div>
           <p className="eyebrow">DOCKMARK SETTINGS</p>
           <h1>Private controls,<br />explicit policies.</h1>
-          <p>Manage appearance, security, browser sync behavior, metadata and health review, New Tab preferences and the curated public homepage from one place.</p>
+          <p>Manage appearance, security, browser sync behavior, metadata and health review, AI-assisted organization, New Tab preferences and the curated public homepage from one place.</p>
         </div>
       </section>
       {error && <div className="error-banner" role="alert">{error}</div>}
@@ -44,6 +45,7 @@ export function SettingsPage() {
       <SecuritySettings />
       <BrowserSettingsManager />
       <BookmarkMaintenance bookmarks={bookmarks} onChanged={refreshData} />
+      <AiOrganizationSettings bookmarks={bookmarks} categories={categories} onChanged={refreshData} />
       <PublicPageSettings bookmarks={bookmarks} categories={categories} />
     </main>
   );
