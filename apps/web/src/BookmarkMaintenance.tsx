@@ -146,6 +146,10 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
   const redirectedUrl = latest?.status === "redirected" && latest.finalUrl && latest.finalUrl !== selected?.url
     ? latest.finalUrl
     : null;
+  const metadataTitle = metadata?.title ?? null;
+  const metadataDescription = metadata?.description ?? null;
+  const metadataCanonicalUrl = metadata?.canonicalUrl ?? null;
+  const metadataIconUrl = metadata?.iconUrl ?? null;
 
   return (
     <section className="maintenance-section">
@@ -213,20 +217,20 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                 {loading ? <p className="maintenance-muted">Loading…</p> : metadata ? (
                   <div className="metadata-fields">
                     <div className="metadata-row">
-                      <span><small>Title</small><strong>{metadata.title ?? "Not provided"}</strong></span>
-                      {metadata.title && metadata.title !== selected.title && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ title: metadata.title }, "Metadata title applied.")}>Use title</button>}
+                      <span><small>Title</small><strong>{metadataTitle ?? "Not provided"}</strong></span>
+                      {metadataTitle && metadataTitle !== selected.title && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ title: metadataTitle }, "Metadata title applied.")}>Use title</button>}
                     </div>
                     <div className="metadata-row">
-                      <span><small>Description</small><strong>{metadata.description ?? "Not provided"}</strong></span>
-                      {metadata.description && metadata.description !== selected.description && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ description: metadata.description }, "Metadata description applied.")}>Use description</button>}
+                      <span><small>Description</small><strong>{metadataDescription ?? "Not provided"}</strong></span>
+                      {metadataDescription && metadataDescription !== selected.description && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ description: metadataDescription }, "Metadata description applied.")}>Use description</button>}
                     </div>
                     <div className="metadata-row">
-                      <span><small>Canonical URL</small><strong>{metadata.canonicalUrl ?? "Not provided"}</strong></span>
-                      {metadata.canonicalUrl && metadata.canonicalUrl !== selected.url && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ url: metadata.canonicalUrl }, "Canonical URL applied. Fetch metadata again for the new URL.", true)}>Use canonical</button>}
+                      <span><small>Canonical URL</small><strong>{metadataCanonicalUrl ?? "Not provided"}</strong></span>
+                      {metadataCanonicalUrl && metadataCanonicalUrl !== selected.url && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ url: metadataCanonicalUrl }, "Canonical URL applied. Fetch metadata again for the new URL.", true)}>Use canonical</button>}
                     </div>
                     <div className="metadata-row">
-                      <span><small>Icon</small><strong>{metadata.iconUrl ?? "Not provided"}</strong></span>
-                      {metadata.iconUrl && metadata.iconUrl !== selected.iconUrl && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ iconUrl: metadata.iconUrl }, "Metadata icon applied.")}>Use icon</button>}
+                      <span><small>Icon</small><strong>{metadataIconUrl ?? "Not provided"}</strong></span>
+                      {metadataIconUrl && metadataIconUrl !== selected.iconUrl && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ iconUrl: metadataIconUrl }, "Metadata icon applied.")}>Use icon</button>}
                     </div>
                     {metadata.imageUrl && <div className="metadata-row"><span><small>Open Graph image</small><strong>{metadata.imageUrl}</strong></span></div>}
                     {metadata.finalUrl && <div className="metadata-row"><span><small>Resolved page</small><strong>{metadata.finalUrl}</strong></span></div>}
