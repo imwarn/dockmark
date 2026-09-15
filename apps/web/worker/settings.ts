@@ -20,6 +20,7 @@ type BindValue = string | number | null;
 interface D1PreparedStatementLike {
   bind(...values: BindValue[]): D1PreparedStatementLike;
   first<T = unknown>(): Promise<T | null>;
+  all<T = unknown>(): Promise<{ results: T[] }>;
   run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
 }
 
@@ -30,6 +31,11 @@ export interface SettingsDbLike {
 interface SettingsRow {
   value: string;
   updated_at: string;
+}
+
+interface BookmarkTagRow {
+  bookmark_id: string;
+  name: string;
 }
 
 export class SettingsHttpError extends Error {
@@ -138,6 +144,21 @@ async function loadBrowserSettings(db: SettingsDbLike): Promise<BrowserSettings>
   return loadSetting(db, "browser", DEFAULT_BROWSER_SETTINGS, normalizeBrowserSettings);
 }
 
+async function loadBookmarkTags(db: SettingsDbLike) {
+  const result = await db.prepare(
+    `SELECT bt.bookmark_id, t.name
+       FROM bookmark_tags bt
+       JOIN tags t ON t.id = bt.tag_id
+      ORDER BY bt.bookmark_id ASC, t.name COLLATE NOCASE ASC`,
+  ).all<BookmarkTagRow>();
+
+  const bookmarkTags: Record<string, string[]> = {};
+  for (const row of result.results) {
+    (bookmarkTags[row.bookmark_id] ??= []).push(row.name);
+  }
+  return bookmarkTags;
+}
+
 export async function loadAppearanceSettings(db: SettingsDbLike): Promise<AppearanceSettings> {
   return loadSetting(db, "appearance", DEFAULT_APPEARANCE_SETTINGS, normalizeAppearanceSettings);
 }
@@ -161,7 +182,13 @@ export async function handleSettingsApi(
   pathname: string,
 ): Promise<Response | null> {
   if (pathname === "/api/settings/browser") {
-    if (request.method === "GET") return json({ settings: await loadBrowserSettings(db) });
+    if (request.method === "GET") {
+      const [settings, bookmarkTags] = await Promise.all([
+        loadBrowserSettings(db),
+        loadBookmarkTags(db),
+      ]);
+      return json({ settings, bookmarkTags });
+    }
     if (request.method === "PATCH") {
       const current = await loadBrowserSettings(db);
       const settings = mergeBrowserSettings(current, parseBrowserUpdate(await readBody(request)));
