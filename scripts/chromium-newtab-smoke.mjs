@@ -43,7 +43,7 @@ try {
   await page.waitForLoadState("domcontentloaded");
 
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "0.9.0");
+  assert.equal(manifest.version, "0.9.1");
   assert.equal(manifest.name, "Dockmark New Tab");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
 

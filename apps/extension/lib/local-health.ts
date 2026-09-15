@@ -33,6 +33,8 @@ const MAX_REDIRECTS = 5;
 const TIMEOUT_MS = 10_000;
 const PERMISSION_PAGE = "/local-health-permission.html";
 
+class LocalHealthPermissionFlowError extends Error {}
+
 function httpUrl(rawUrl: string) {
   const url = new URL(rawUrl);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -48,14 +50,24 @@ export function localHealthPermissionPattern(rawUrl: string) {
 
 async function focusPermissionPage() {
   const pageUrl = browser.runtime.getURL(PERMISSION_PAGE);
-  const tabs = await browser.tabs.query({ url: pageUrl });
-  const existing = tabs[0];
-  if (existing?.id != null) {
-    const tab = await browser.tabs.update(existing.id, { active: true });
-    if (tab?.windowId != null) await browser.windows.update(tab.windowId, { focused: true });
-    return;
+  try {
+    // chrome.tabs.query({ url }) accepts match patterns, not arbitrary chrome-extension:// URLs.
+    // Query all tabs and compare exact URLs so the permission page can be focused reliably.
+    const tabs = await browser.tabs.query({});
+    const existing = tabs.find((tab) => tab.url === pageUrl);
+    if (existing?.id != null) {
+      const tab = await browser.tabs.update(existing.id, { active: true });
+      if (tab?.windowId != null) await browser.windows.update(tab.windowId, { focused: true });
+      return;
+    }
+    await browser.tabs.create({ url: pageUrl, active: true });
+  } catch (error) {
+    throw new LocalHealthPermissionFlowError(
+      error instanceof Error && error.message
+        ? `Could not open the local health permission page: ${error.message}`
+        : "Could not open the local health permission page.",
+    );
   }
-  await browser.tabs.create({ url: pageUrl, active: true });
 }
 
 async function permissionFor(url: URL): Promise<LocalHealthPermissionRequired | null> {
@@ -178,6 +190,7 @@ export async function checkLocalHealth(rawUrl: string): Promise<LocalHealthRespo
       };
     }
   } catch (error) {
+    if (error instanceof LocalHealthPermissionFlowError) throw error;
     return {
       kind: "result",
       status: controller.signal.aborted ? "timeout" : "unavailable",
