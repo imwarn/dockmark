@@ -67,10 +67,12 @@
 
 ## V3 — AI-assisted organization
 
-- [x] OpenAI-compatible provider configuration (browser-local endpoint/model/key; direct provider request)
-- [x] API keys stored locally by default and never persisted to D1
+- [x] OpenAI-compatible Chat Completions endpoint/model configuration in the Web UI
+- [x] API key stored as the self-hosted `DOCKMARK_AI_API_KEY` Worker secret; never persisted to browser localStorage or D1
+- [x] Worker-side provider proxy with public-HTTPS endpoint validation, redirect blocking, timeout and response-size limits
 - [x] classification into existing categories, tags, title cleanup and descriptions as suggestions
 - [x] preview/diff/apply workflow for reviewed bulk AI edits (20 bookmarks/request)
-- [x] never allow AI to override URL or HealthPolicy safety exclusions; only `normal` bookmarks enter the v1.1 AI request surface
+- [x] never allow AI to override URL or HealthPolicy safety exclusions; only `normal` bookmarks enter the provider request/write surface
+- [x] preserve tags in Dockmark JSON export/import
 - [ ] optional richer tag browsing/search surfaces outside the AI review workflow
-- [ ] optional provider adapters/proxy mode for providers that do not allow browser CORS
+- [ ] optional provider adapters for Responses-style APIs, custom authentication or other non-Chat-Completions protocols
