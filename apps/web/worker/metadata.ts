@@ -1,4 +1,4 @@
-import { inferHealthPolicy, normalizeBookmarkUrl } from "@dockmark/core";
+import { inferHealthPolicy, normalizeBookmarkUrl, type HealthPolicy } from "@dockmark/core";
 
 type BindValue = string | number | null;
 
@@ -15,6 +15,7 @@ export interface MetadataDatabase {
 interface BookmarkRow {
   id: string;
   url: string;
+  health_policy: HealthPolicy;
 }
 
 interface MetadataRow {
@@ -83,12 +84,16 @@ function metadataFromRow(row: MetadataRow): BookmarkMetadata {
   };
 }
 
-function assertPublicTarget(rawUrl: string) {
+function assertPublicTarget(rawUrl: string, storedPolicy?: HealthPolicy) {
   const normalized = normalizeBookmarkUrl(rawUrl);
-  if (inferHealthPolicy(normalized) === "local-only") {
+  if (storedPolicy === "local-only" || inferHealthPolicy(normalized) === "local-only") {
     throw new MetadataHttpError(409, "metadata_local_only", "Local/private bookmarks are not fetched by the server.");
   }
   return new URL(normalized);
+}
+
+function validCodePoint(code: number) {
+  return Number.isInteger(code) && code >= 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
 }
 
 function decodeHtml(value: string) {
@@ -103,11 +108,11 @@ function decodeHtml(value: string) {
   return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
     if (entity.startsWith("#x") || entity.startsWith("#X")) {
       const code = Number.parseInt(entity.slice(2), 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      return validCodePoint(code) ? String.fromCodePoint(code) : match;
     }
     if (entity.startsWith("#")) {
       const code = Number.parseInt(entity.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      return validCodePoint(code) ? String.fromCodePoint(code) : match;
     }
     return named[entity.toLowerCase()] ?? match;
   });
@@ -209,10 +214,10 @@ async function readLimitedText(response: Response) {
   }
 }
 
-async function fetchRemoteMetadata(rawUrl: string): Promise<FetchedMetadata> {
+async function fetchRemoteMetadata(rawUrl: string, healthPolicy: HealthPolicy): Promise<FetchedMetadata> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let current = assertPublicTarget(rawUrl);
+  let current = assertPublicTarget(rawUrl, healthPolicy);
 
   try {
     for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
@@ -263,7 +268,7 @@ async function fetchRemoteMetadata(rawUrl: string): Promise<FetchedMetadata> {
 }
 
 async function bookmarkRow(db: MetadataDatabase, bookmarkId: string) {
-  return db.prepare("SELECT id, url FROM bookmarks WHERE id = ? LIMIT 1")
+  return db.prepare("SELECT id, url, health_policy FROM bookmarks WHERE id = ? LIMIT 1")
     .bind(bookmarkId)
     .first<BookmarkRow>();
 }
@@ -279,7 +284,7 @@ async function metadataRow(db: MetadataDatabase, bookmarkId: string) {
 }
 
 async function refreshMetadata(db: MetadataDatabase, bookmark: BookmarkRow) {
-  const fetched = await fetchRemoteMetadata(bookmark.url);
+  const fetched = await fetchRemoteMetadata(bookmark.url, bookmark.health_policy);
   const fetchedAt = new Date().toISOString();
   await db.prepare(
     `INSERT INTO bookmark_metadata
