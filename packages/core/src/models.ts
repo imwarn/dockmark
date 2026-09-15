@@ -16,6 +16,8 @@ export type HealthStatus =
   | "local-only"
   | "ignored";
 
+export type HealthCheckSource = "server" | "extension";
+
 export interface HealthCheck {
   id: Id;
   bookmarkId: Id;
@@ -24,6 +26,7 @@ export interface HealthCheck {
   finalUrl?: string;
   responseMs?: number;
   errorCode?: string;
+  source?: HealthCheckSource;
   checkedAt: string;
 }
 
