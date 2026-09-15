@@ -10,6 +10,7 @@ import {
   type ImportCandidate,
 } from "./bookmark-transfer";
 import { NativeBookmarkImport } from "./NativeBookmarkImport";
+import { listBookmarkTags, replaceBookmarkTags } from "./tag-api";
 import "./transfer.css";
 
 interface Props {
@@ -98,25 +99,39 @@ export function TransferManager({ bookmarks, categories, onChanged, onOpenExtens
 
       let imported = 0;
       let failed = 0;
+      let tagFailed = 0;
       const failedIds = new Set<string>();
       const chunkSize = 8;
 
       for (let offset = 0; offset < selected.length; offset += chunkSize) {
         const chunk = selected.slice(offset, offset + chunkSize);
-        const results = await Promise.allSettled(chunk.map((item) => createBookmark({
-          title: item.title.slice(0, 200),
-          url: item.normalizedUrl ?? item.url,
-          categoryId: item.categoryName ? categoryMap.get(categoryKey(item.categoryName)) ?? null : null,
-          ...(item.description ? { description: item.description.slice(0, 2000) } : {}),
-          ...(item.iconUrl ? { iconUrl: item.iconUrl.slice(0, 4096) } : {}),
-          ...(item.healthPolicy ? { healthPolicy: item.healthPolicy } : {}),
-        })));
+        const results = await Promise.allSettled(chunk.map(async (item) => {
+          const bookmark = await createBookmark({
+            title: item.title.slice(0, 200),
+            url: item.normalizedUrl ?? item.url,
+            categoryId: item.categoryName ? categoryMap.get(categoryKey(item.categoryName)) ?? null : null,
+            ...(item.description ? { description: item.description.slice(0, 2000) } : {}),
+            ...(item.iconUrl ? { iconUrl: item.iconUrl.slice(0, 4096) } : {}),
+            ...(item.healthPolicy ? { healthPolicy: item.healthPolicy } : {}),
+          });
+          let tagsStored = true;
+          if (item.tags?.length) {
+            try {
+              await replaceBookmarkTags(bookmark.id, item.tags);
+            } catch {
+              tagsStored = false;
+            }
+          }
+          return { bookmark, tagsStored };
+        }));
 
         results.forEach((result, index) => {
           const item = chunk[index];
           if (!item) return;
-          if (result.status === "fulfilled") imported += 1;
-          else {
+          if (result.status === "fulfilled") {
+            imported += 1;
+            if (!result.value.tagsStored) tagFailed += 1;
+          } else {
             failed += 1;
             failedIds.add(item.id);
           }
@@ -124,7 +139,11 @@ export function TransferManager({ bookmarks, categories, onChanged, onOpenExtens
       }
 
       await onChanged();
-      setMessage(`Imported ${imported} bookmark${imported === 1 ? "" : "s"}${failed ? `; ${failed} failed` : ""}.`);
+      setMessage(
+        `Imported ${imported} bookmark${imported === 1 ? "" : "s"}` +
+        `${failed ? `; ${failed} failed` : ""}` +
+        `${tagFailed ? `; ${tagFailed} imported but their tags could not be restored` : ""}.`,
+      );
       if (failed) {
         setItems((current) => current.filter((item) => failedIds.has(item.id) || item.status !== "new"));
       } else {
@@ -138,8 +157,21 @@ export function TransferManager({ bookmarks, categories, onChanged, onOpenExtens
     }
   }
 
-  function exportJson() {
-    downloadTextFile(`dockmark-${dateStamp()}.json`, makeDockmarkJson(categories, bookmarks), "application/json");
+  async function exportJson() {
+    setBusy(true);
+    setError(null);
+    try {
+      const bookmarkTags = await listBookmarkTags();
+      downloadTextFile(
+        `dockmark-${dateStamp()}.json`,
+        makeDockmarkJson(categories, bookmarks, bookmarkTags),
+        "application/json",
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not export Dockmark JSON.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function exportHtml() {
@@ -169,10 +201,10 @@ export function TransferManager({ bookmarks, categories, onChanged, onOpenExtens
         </article>
 
         <article className="form-card transfer-card">
-          <div className="card-heading"><div><h2>Export</h2><p>JSON preserves Dockmark metadata; HTML imports into conventional browsers.</p></div></div>
+          <div className="card-heading"><div><h2>Export</h2><p>JSON preserves Dockmark metadata and tags; HTML imports into conventional browsers.</p></div></div>
           <div className="export-actions">
-            <button className="secondary" type="button" onClick={exportJson} disabled={!bookmarks.length}>Export JSON</button>
-            <button className="secondary" type="button" onClick={exportHtml} disabled={!bookmarks.length}>Export HTML</button>
+            <button className="secondary" type="button" onClick={() => void exportJson()} disabled={busy || !bookmarks.length}>{busy ? "Preparing…" : "Export JSON"}</button>
+            <button className="secondary" type="button" onClick={exportHtml} disabled={busy || !bookmarks.length}>Export HTML</button>
           </div>
         </article>
       </div>
@@ -203,7 +235,11 @@ export function TransferManager({ bookmarks, categories, onChanged, onOpenExtens
             {items.slice(0, 500).map((item) => (
               <label className={`import-row status-${item.status}`} key={item.id}>
                 <input type="checkbox" checked={item.selected} disabled={item.status !== "new" || busy} onChange={() => toggle(item.id)} />
-                <span className="import-copy"><strong>{item.title}</strong><small>{item.normalizedUrl ?? item.url}</small><span>{item.categoryName ?? "Uncategorized"}</span></span>
+                <span className="import-copy">
+                  <strong>{item.title}</strong>
+                  <small>{item.normalizedUrl ?? item.url}</small>
+                  <span>{item.categoryName ?? "Uncategorized"}{item.tags?.length ? ` · Tags: ${item.tags.join(", ")}` : ""}</span>
+                </span>
                 <span className={`import-status policy-${item.healthPolicy ?? "none"}`}>{item.status === "new" && item.healthPolicy === "local-only" ? "LOCAL ONLY" : item.status.toUpperCase()}</span>
               </label>
             ))}
