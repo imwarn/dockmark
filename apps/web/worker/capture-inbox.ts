@@ -34,6 +34,11 @@ interface BookmarkRow {
   updated_at: string;
 }
 
+interface CaptureInput {
+  title: string;
+  url: string;
+}
+
 export class CaptureInboxHttpError extends Error {
   constructor(
     readonly status: number,
@@ -88,6 +93,31 @@ function parseBookmarkUrl(raw: string) {
   }
 }
 
+function parseCaptureInput(value: unknown, index?: number): CaptureInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new CaptureInboxHttpError(
+      400,
+      "invalid_field",
+      index === undefined ? "Capture input must be an object." : `items[${index}] must be an object.`,
+    );
+  }
+  const record = value as Record<string, unknown>;
+  const title = requiredString(record, "title", 200);
+  const url = parseBookmarkUrl(requiredString(record, "url", 4096));
+  return { title, url };
+}
+
+function parseCaptureItems(body: Record<string, unknown>) {
+  const rawItems = body.items;
+  if (!Array.isArray(rawItems) || !rawItems.length) {
+    throw new CaptureInboxHttpError(400, "invalid_field", "items must be a non-empty array.");
+  }
+  if (rawItems.length > 100) {
+    throw new CaptureInboxHttpError(400, "invalid_field", "A reviewed capture can contain at most 100 tabs.");
+  }
+  return rawItems.map((item, index) => parseCaptureInput(item, index));
+}
+
 function statusForPolicy(policy: HealthPolicy): HealthStatus {
   if (policy === "ignore") return "ignored";
   if (policy === "local-only") return "local-only";
@@ -128,23 +158,14 @@ async function nextBookmarkPosition(db: CaptureInboxDbLike, categoryId: string |
   return row?.next_position ?? 0;
 }
 
-async function captureBookmark(request: Request, db: CaptureInboxDbLike) {
-  const body = await readBody(request);
-  const url = parseBookmarkUrl(requiredString(body, "url", 4096));
-  const title = requiredString(body, "title", 200);
-
-  const duplicate = await db.prepare(`${BOOKMARK_SELECT} WHERE b.url = ? LIMIT 1`)
+async function duplicateForUrl(db: CaptureInboxDbLike, url: string) {
+  return db.prepare(`${BOOKMARK_SELECT} WHERE b.url = ? LIMIT 1`)
     .bind(url)
     .first<BookmarkRow>();
-  if (duplicate) {
-    return json({
-      result: "duplicate",
-      bookmark: bookmarkFromRow(duplicate),
-      duplicateState: duplicate.inbox_at ? "inbox" : "library",
-    });
-  }
+}
 
-  const healthPolicy = inferHealthPolicy(url);
+async function insertCapture(db: CaptureInboxDbLike, input: CaptureInput) {
+  const healthPolicy = inferHealthPolicy(input.url);
   const healthStatus = statusForPolicy(healthPolicy);
   const position = await nextBookmarkPosition(db, null);
   const id = crypto.randomUUID();
@@ -154,15 +175,111 @@ async function captureBookmark(request: Request, db: CaptureInboxDbLike) {
       (id, category_id, title, url, description, icon_url, health_policy, health_status, position, inbox_at)
      VALUES (?, NULL, ?, ?, NULL, NULL, ?, ?, ?, CURRENT_TIMESTAMP)`,
   )
-    .bind(id, title, url, healthPolicy, healthStatus, position)
+    .bind(id, input.title, input.url, healthPolicy, healthStatus, position)
     .run();
 
   const row = await db.prepare(`${BOOKMARK_SELECT} WHERE b.id = ? LIMIT 1`)
     .bind(id)
     .first<BookmarkRow>();
   if (!row) throw new CaptureInboxHttpError(500, "write_failed", "Captured bookmark could not be created.");
+  return row;
+}
 
+async function captureBookmark(request: Request, db: CaptureInboxDbLike) {
+  const input = parseCaptureInput(await readBody(request));
+  const duplicate = await duplicateForUrl(db, input.url);
+  if (duplicate) {
+    return json({
+      result: "duplicate",
+      bookmark: bookmarkFromRow(duplicate),
+      duplicateState: duplicate.inbox_at ? "inbox" : "library",
+    });
+  }
+
+  const row = await insertCapture(db, input);
   return json({ result: "created", bookmark: bookmarkFromRow(row) }, { status: 201 });
+}
+
+async function reviewCaptureBatch(request: Request, db: CaptureInboxDbLike) {
+  const items = parseCaptureItems(await readBody(request));
+  const firstIndexByUrl = new Map<string, number>();
+  const reviewed = [] as Array<Record<string, unknown>>;
+
+  for (const [index, item] of items.entries()) {
+    const duplicateOf = firstIndexByUrl.get(item.url);
+    if (duplicateOf !== undefined) {
+      reviewed.push({
+        index,
+        title: item.title,
+        url: item.url,
+        state: "selection-duplicate",
+        duplicateOf,
+      });
+      continue;
+    }
+    firstIndexByUrl.set(item.url, index);
+
+    const duplicate = await duplicateForUrl(db, item.url);
+    if (duplicate) {
+      reviewed.push({
+        index,
+        title: item.title,
+        url: item.url,
+        state: "duplicate",
+        duplicateState: duplicate.inbox_at ? "inbox" : "library",
+        bookmark: bookmarkFromRow(duplicate),
+      });
+      continue;
+    }
+
+    reviewed.push({ index, title: item.title, url: item.url, state: "new" });
+  }
+
+  return json({ items: reviewed });
+}
+
+async function captureBatch(request: Request, db: CaptureInboxDbLike) {
+  const items = parseCaptureItems(await readBody(request));
+  const seen = new Set<string>();
+  const results = [] as Array<Record<string, unknown>>;
+  let createdCount = 0;
+  let duplicateCount = 0;
+  let skippedCount = 0;
+
+  for (const [index, item] of items.entries()) {
+    if (seen.has(item.url)) {
+      skippedCount += 1;
+      results.push({ index, title: item.title, url: item.url, result: "selection-duplicate" });
+      continue;
+    }
+    seen.add(item.url);
+
+    const duplicate = await duplicateForUrl(db, item.url);
+    if (duplicate) {
+      duplicateCount += 1;
+      results.push({
+        index,
+        title: item.title,
+        url: item.url,
+        result: "duplicate",
+        duplicateState: duplicate.inbox_at ? "inbox" : "library",
+        bookmark: bookmarkFromRow(duplicate),
+      });
+      continue;
+    }
+
+    const row = await insertCapture(db, item);
+    createdCount += 1;
+    results.push({ index, title: item.title, url: item.url, result: "created", bookmark: bookmarkFromRow(row) });
+  }
+
+  return json({
+    result: "batch",
+    createdCount,
+    duplicateCount,
+    skippedCount,
+    results,
+  }, { status: createdCount ? 201 : 200 });
 }
 
 async function listInbox(db: CaptureInboxDbLike) {
@@ -233,6 +350,20 @@ export async function handleCaptureInboxApi(
       throw new CaptureInboxHttpError(405, "method_not_allowed", "Only POST is supported for bookmark capture.");
     }
     return captureBookmark(request, db);
+  }
+
+  if (pathname === "/api/capture/review") {
+    if (request.method !== "POST") {
+      throw new CaptureInboxHttpError(405, "method_not_allowed", "Only POST is supported for capture review.");
+    }
+    return reviewCaptureBatch(request, db);
+  }
+
+  if (pathname === "/api/capture/batch") {
+    if (request.method !== "POST") {
+      throw new CaptureInboxHttpError(405, "method_not_allowed", "Only POST is supported for reviewed batch capture.");
+    }
+    return captureBatch(request, db);
   }
 
   if (pathname === "/api/inbox") {

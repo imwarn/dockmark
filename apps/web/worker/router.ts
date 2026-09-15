@@ -55,7 +55,10 @@ function normalizedPathname(request: Request) {
 }
 
 function deviceCanCapture(request: Request, pathname: string) {
-  return request.method.toUpperCase() === "POST" && pathname === "/api/capture/bookmark";
+  if (request.method.toUpperCase() !== "POST") return false;
+  return pathname === "/api/capture/bookmark" ||
+    pathname === "/api/capture/review" ||
+    pathname === "/api/capture/batch";
 }
 
 async function settingsResponse(request: Request, env: Env, pathname: string) {
@@ -112,7 +115,11 @@ export default {
         return problem(403, "device_scope_denied", "This paired extension token is not allowed to perform that operation.");
       }
 
-      if (pathname === "/api/capture/bookmark" || pathname === "/api/inbox" || /^\/api\/inbox\/[^/]+$/.test(pathname)) {
+      if (pathname === "/api/capture/bookmark" ||
+          pathname === "/api/capture/review" ||
+          pathname === "/api/capture/batch" ||
+          pathname === "/api/inbox" ||
+          /^\/api\/inbox\/[^/]+$/.test(pathname)) {
         try {
           const response = await handleCaptureInboxApi(request, env.DB, pathname);
           if (response) return response;
