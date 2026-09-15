@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Bookmark, HealthCheck, HealthStatus } from "@dockmark/core";
 import {
   checkBookmarkHealth,
+  deleteBookmark,
   getBookmarkMetadata,
   listBookmarkHealthChecks,
   refreshBookmarkMetadata,
@@ -30,6 +31,8 @@ const healthLabels: Record<HealthStatus, string> = {
   ignored: "Ignored",
 };
 
+const cleanupStatuses = new Set<HealthStatus>(["dns-error", "tls-error", "unavailable"]);
+
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
@@ -47,12 +50,19 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
   const [metadataBusy, setMetadataBusy] = useState(false);
   const [healthBusy, setHealthBusy] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupSelection, setCleanupSelection] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const selected = useMemo(
     () => bookmarks.find((bookmark) => bookmark.id === selectedId) ?? null,
     [bookmarks, selectedId],
+  );
+
+  const cleanupCandidates = useMemo(
+    () => bookmarks.filter((bookmark) => bookmark.healthPolicy === "normal" && cleanupStatuses.has(bookmark.healthStatus)),
+    [bookmarks],
   );
 
   useEffect(() => {
@@ -64,6 +74,11 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
       setSelectedId(bookmarks[0]?.id ?? null);
     }
   }, [bookmarks, selectedId]);
+
+  useEffect(() => {
+    const allowed = new Set(cleanupCandidates.map((bookmark) => bookmark.id));
+    setCleanupSelection((current) => new Set([...current].filter((id) => allowed.has(id))));
+  }, [cleanupCandidates]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -142,6 +157,37 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
     }
   }
 
+  function toggleCleanup(id: string) {
+    setCleanupSelection((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteCleanupSelection() {
+    const ids = [...cleanupSelection];
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} reviewed broken bookmark${ids.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+
+    setCleanupBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => deleteBookmark(id)));
+      const deleted = results.filter((result) => result.status === "fulfilled").length;
+      const failed = results.length - deleted;
+      setCleanupSelection(new Set());
+      await onChanged();
+      setNotice(`Deleted ${deleted} reviewed bookmark${deleted === 1 ? "" : "s"}${failed ? `; ${failed} could not be deleted` : ""}.`);
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
+
   const latest = checks[0] ?? null;
   const redirectedUrl = latest?.status === "redirected" && latest.finalUrl && latest.finalUrl !== selected?.url
     ? latest.finalUrl
@@ -150,6 +196,7 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
   const metadataDescription = metadata?.description ?? null;
   const metadataCanonicalUrl = metadata?.canonicalUrl ?? null;
   const metadataIconUrl = metadata?.iconUrl ?? null;
+  const allCleanupSelected = cleanupCandidates.length > 0 && cleanupSelection.size === cleanupCandidates.length;
 
   return (
     <section className="maintenance-section">
@@ -281,6 +328,43 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
           )}
         </div>
       </div>
+
+      <article className="panel cleanup-panel">
+        <div className="maintenance-card-heading">
+          <div>
+            <p className="eyebrow">CLEANUP REVIEW</p>
+            <h3>Delete only what you reviewed.</h3>
+            <p>Only normal-policy bookmarks whose latest status is DNS error, TLS error or unavailable appear here. Ignored, local-only, manual, timeout, auth, rate-limit and redirect results are excluded.</p>
+          </div>
+          <div className="cleanup-actions">
+            <button
+              className="secondary"
+              type="button"
+              disabled={!cleanupCandidates.length || cleanupBusy}
+              onClick={() => setCleanupSelection(allCleanupSelected ? new Set() : new Set(cleanupCandidates.map((bookmark) => bookmark.id)))}
+            >
+              {allCleanupSelected ? "Clear selection" : "Select candidates"}
+            </button>
+            <button className="danger-button" type="button" disabled={!cleanupSelection.size || cleanupBusy} onClick={() => void deleteCleanupSelection()}>
+              {cleanupBusy ? "Deleting…" : `Delete selected (${cleanupSelection.size})`}
+            </button>
+          </div>
+        </div>
+
+        <div className="cleanup-list">
+          {cleanupCandidates.map((bookmark) => (
+            <label className="cleanup-row" key={bookmark.id}>
+              <input type="checkbox" checked={cleanupSelection.has(bookmark.id)} onChange={() => toggleCleanup(bookmark.id)} />
+              <span>
+                <strong>{bookmark.title}</strong>
+                <small>{bookmark.url}</small>
+              </span>
+              <span className={`health-badge status-${bookmark.healthStatus}`}>{healthLabels[bookmark.healthStatus]}</span>
+            </label>
+          ))}
+          {!cleanupCandidates.length && <p className="maintenance-muted">No conservative cleanup candidates right now.</p>}
+        </div>
+      </article>
     </section>
   );
 }
