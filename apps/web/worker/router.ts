@@ -8,6 +8,10 @@ import {
   requireSameOrigin,
 } from "./auth";
 import {
+  handleMetadataApi,
+  MetadataHttpError,
+} from "./metadata";
+import {
   handlePublicBookmarkApi,
   PublicBookmarkHttpError,
 } from "./public-bookmarks";
@@ -88,6 +92,17 @@ export default {
         requireSameOrigin(request);
       } else if (!deviceCanAccess(request, pathname)) {
         return problem(403, "device_scope_denied", "This paired extension token is not allowed to perform that operation.");
+      }
+
+      if (/^\/api\/bookmarks\/[^/]+\/metadata$/.test(pathname)) {
+        try {
+          const response = await handleMetadataApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof MetadataHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Metadata API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
       }
 
       if (pathname === "/api/categories/reorder" || pathname === "/api/bookmarks/reorder") {
