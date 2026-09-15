@@ -14,6 +14,9 @@
   --dm-danger: #d49b98;
   --dm-grid: rgba(255,255,255,.015);
   --dm-glow: rgba(99,159,126,.16);
+  --dm-inverse-bg: #0b130f;
+  --dm-inverse-text: #edf5f0;
+  --dm-inverse-soft: #a7b7ae;
 }
 
 html[data-theme="light"] {
@@ -32,6 +35,9 @@ html[data-theme="light"] {
   --dm-danger: #a75550;
   --dm-grid: rgba(23,49,38,.025);
   --dm-glow: rgba(81,132,101,.11);
+  --dm-inverse-bg: #0b130f;
+  --dm-inverse-text: #f0f7f3;
+  --dm-inverse-soft: #aebcb5;
 }
 
 html, body { background: var(--dm-bg); color: var(--dm-text); }
@@ -107,6 +113,27 @@ html[data-theme="light"] .settings-segmented button.active { color: var(--dm-acc
 html[data-theme="light"] .settings-toggle { border-color: var(--dm-border); background: var(--dm-bg-card); }
 html[data-theme="light"] .error-banner,
 html[data-theme="light"] .public-error { border-color: #e1b8b4; background: #fff3f2; color: #9f4e49; }
+
+/* Some Settings rows intentionally keep Dockmark's dark inverse surface in light mode. */
+html[data-theme="light"] .security-device,
+html[data-theme="light"] .public-bookmark-row {
+  border-color: #203129;
+  background: var(--dm-inverse-bg);
+}
+html[data-theme="light"] .security-device strong,
+html[data-theme="light"] .public-bookmark-row strong { color: var(--dm-inverse-text); }
+html[data-theme="light"] .security-device small,
+html[data-theme="light"] .public-bookmark-row small { color: var(--dm-inverse-soft); }
+html[data-theme="light"] .public-bookmark-row em {
+  color: #aab9b1;
+  font-weight: 700;
+  letter-spacing: .1em;
+}
+html[data-theme="light"] .public-bookmark-row:has(input:checked) {
+  border-color: #5c8c6d;
+  background: #0e1a14;
+}
+html[data-theme="light"] .public-bookmark-row:has(input:checked) em { color: #b7e4c4; }
 
 .appearance-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .appearance-option { display: grid; grid-template-columns: 92px 1fr 24px; align-items: center; gap: 14px; min-height: 118px; text-align: left; color: inherit; cursor: pointer; }

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Dockmark dark mark</title>
+  <desc id="desc">Dockmark D dot favicon mark on a dark background.</desc>
+  <rect width="64" height="64" rx="16" fill="#0a0f0c"/>
+  <path d="M17 15h14c11 0 18 6.4 18 17s-7 17-18 17H17V15Zm13.5 26c6.5 0 10.5-3.4 10.5-9s-4-9-10.5-9H25v18h5.5Z" fill="#b8e0c5"/>
+  <circle cx="52" cy="47" r="4" fill="#b8e0c5"/>
+</svg>
