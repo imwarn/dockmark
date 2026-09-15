@@ -25,10 +25,10 @@
         <section class="hero">
           <p class="eyebrow">NEW TAB · LOCAL FIRST</p>
           <h1>Your Dockmark, ready before the network is.</h1>
-          <p class="hero-subtitle">Search cached bookmarks, Workspaces and open tabs instantly. When your paired Dockmark server is reachable, this snapshot refreshes quietly in the background.</p>
+          <p class="hero-subtitle">Search cached bookmark titles, URLs, descriptions, categories and #tags alongside Workspaces and open tabs. When your paired Dockmark server is reachable, this snapshot refreshes quietly in the background.</p>
 
           <div class="command-wrap">
-            <input id="search" class="command-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search bookmarks, workspaces, open tabs, or the web…" autofocus />
+            <input id="search" class="command-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search title, URL, description, category, #tag, workspace, tab, or the web…" autofocus />
             <span class="command-hint">↵</span>
             <div id="command-results" class="command-results" hidden></div>
           </div>
@@ -55,11 +55,12 @@
         <span id="sync-status">No local snapshot yet.</span>
         <div class="footer-actions">
           <span id="settings-status">Default launcher settings</span>
-          <button id="clear-cache" class="footer-button" type="button">Clear cache</button>
+          <button id="clear-cache" class="footer-button" type="button" title="Remove all cached bookmarks, tags, categories and workspaces from this browser only">Clear local snapshot</button>
         </div>
       </footer>
     </div>
     <script src="newtab-auth.js"></script>
     <script src="newtab.js"></script>
+    <script src="newtab-search.js"></script>
   </body>
 </html>
