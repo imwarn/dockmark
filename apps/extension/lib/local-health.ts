@@ -48,8 +48,10 @@ export function localHealthPermissionPattern(rawUrl: string) {
 
 async function focusPermissionPage() {
   const pageUrl = browser.runtime.getURL(PERMISSION_PAGE);
-  const tabs = await browser.tabs.query({ url: pageUrl });
-  const existing = tabs[0];
+  // chrome.tabs.query({ url }) accepts match patterns, not arbitrary chrome-extension:// URLs.
+  // Query all tabs and compare exact URLs so the permission page can be focused reliably.
+  const tabs = await browser.tabs.query({});
+  const existing = tabs.find((tab) => tab.url === pageUrl);
   if (existing?.id != null) {
     const tab = await browser.tabs.update(existing.id, { active: true });
     if (tab?.windowId != null) await browser.windows.update(tab.windowId, { focused: true });
