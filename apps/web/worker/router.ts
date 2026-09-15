@@ -8,6 +8,10 @@ import {
   requireSameOrigin,
 } from "./auth";
 import {
+  handleLocalHealthResultApi,
+  LocalHealthHttpError,
+} from "./local-health-result";
+import {
   handleMetadataApi,
   MetadataHttpError,
 } from "./metadata";
@@ -92,6 +96,17 @@ export default {
         requireSameOrigin(request);
       } else if (!deviceCanAccess(request, pathname)) {
         return problem(403, "device_scope_denied", "This paired extension token is not allowed to perform that operation.");
+      }
+
+      if (/^\/api\/bookmarks\/[^/]+\/health\/local-result$/.test(pathname)) {
+        try {
+          const response = await handleLocalHealthResultApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof LocalHealthHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Local Health API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
       }
 
       if (/^\/api\/bookmarks\/[^/]+\/metadata$/.test(pathname)) {

@@ -2,7 +2,7 @@
 
 **A cloud-synced personal launcher for bookmarks, workspaces and browser tabs.**
 
-Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and configurable search live in one self-hosted launcher that works across browsers. The optional Chromium extension adds privileged capabilities such as live open-tab search, switching to an existing tab, Workspace reuse/pinning, pinned Session restore and reviewed browser-native bookmark synchronization. Users can choose a Standard profile or an opt-in Dockmark New Tab profile with a local-first offline-capable launcher.
+Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and configurable search live in one self-hosted launcher that works across browsers. The optional Chromium extension adds privileged capabilities such as live open-tab search, switching to an existing tab, Workspace reuse/pinning, pinned Session restore, reviewed browser-native bookmark synchronization and explicitly authorized local/private URL health checks. Users can choose a Standard profile or an opt-in Dockmark New Tab profile with a local-first offline-capable launcher.
 
 <p align="center">
   <picture>
@@ -16,7 +16,7 @@ Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and co
 
 The Web app resolves the favicon dynamically so it follows the active System / Light / Dark appearance. The static SVG above documents the canonical mark: dark mode uses the `#0a0f0c` Dockmark surface with the soft green mark, while light mode uses the paired `#f4f7f5` surface with dark green ink.
 
-> Status: **v0.8.0** — persisted bookmark/category reordering, System / Light / Dark appearance, curated public page, secure extension pairing and local-first browser settings are implemented. Metadata and Health improvements are the next active milestone.
+> Status: **v0.9.0** — reviewed page metadata, server-side public URL health checks, redirect review, conservative cleanup, persisted health history and extension-only local/private URL checks with explicit per-host permission are implemented. Browser sync remains review-gated: no silent background bookmark mutation.
 
 ## Deploy to Cloudflare
 
@@ -68,6 +68,7 @@ Dockmark ships two Chromium packages from the same codebase. They are alternativ
 Dockmark New Tab                 Recommended
 - Complete Browser Bridge
 - Reviewed bookmark sync/writeback
+- Local/private URL health checks with explicit per-host permission
 - Local-first Dockmark launcher on every new tab
 - Last-known-good offline cache
 
@@ -76,12 +77,19 @@ dockmark-newtab-chrome-v<version>.zip
 Standard Dockmark Extension
 - Complete Browser Bridge
 - Reviewed bookmark sync/writeback
+- Local/private URL health checks with explicit per-host permission
 - Keeps the browser's existing New Tab page unchanged
 
 dockmark-chrome-v<version>.zip
 ```
 
 The New Tab package uses Chromium's static `chrome_url_overrides.newtab` manifest capability. The Standard package is explicitly validated in CI to contain no New Tab override.
+
+### Local health checks
+
+Dockmark's Worker never fetches bookmarks classified as `local-only`. When you explicitly choose **Check locally** in Settings → Metadata & Health, the browser extension performs the probe from your browser instead.
+
+The extension does not receive local-host access at install time. If a check needs access, Dockmark opens a dedicated permission-review page and asks Chromium for the exact hostname pattern required for that bookmark. Redirects are followed only while the next target remains local/private; a local → public redirect is surfaced for review rather than used to broaden browser permissions. Browser-originated results are stored in the same health history but labeled separately from server checks.
 
 ### Local-first Dockmark New Tab
 
@@ -135,7 +143,7 @@ The Web **Extension** page presents both profiles as one Dockmark product choice
 5. Open the Dockmark extension popup, enter your deployed Dockmark origin, and choose **Connect**.
 6. If you need browser bookmark import/sync/writeback, separately choose **Enable bookmark access**.
 
-The extension requests host permission only for the Dockmark origin you explicitly connect and dynamically registers the Web bridge there.
+The extension requests host permission only for the Dockmark origin you explicitly connect and dynamically registers the Web bridge there. Local/private health checks request their own exact-host permission only when you explicitly run **Check locally**.
 
 When switching an existing unpacked installation between Standard and New Tab profiles, replace the files in the **same extension folder** and click **Reload** in `chrome://extensions`. Keeping the same unpacked path preserves the extension ID, local mappings, configured origin and local New Tab cache. Do not load both profiles side-by-side.
 
@@ -193,7 +201,7 @@ CI uploads both ZIPs as Actions artifacts, and the versioned Extension Release w
 
 CI runs real headless Chromium instances for both profiles.
 
-The Standard smoke verifies the MV3 service worker, versioned capability handshake, optional native-bookmark permission semantics, open-tab enumeration/activation, pinned Session restore and—critically—that the Standard manifest does **not** override New Tab.
+The Standard smoke verifies the MV3 service worker, versioned capability handshake, optional native-bookmark permission semantics, local-health capability/permission-review semantics, open-tab enumeration/activation, pinned Session restore and—critically—that the Standard manifest does **not** override New Tab.
 
 The New Tab smoke loads the packaged New Tab variant, seeds a last-known-good snapshot while giving it no Dockmark host permission/network access, then verifies that cached bookmarks, Workspaces and search-engine commands still render and search locally. It also verifies local settings behavior including card limits, Open Tabs visibility, default-search override, manual-refresh mode and cache clearing, and confirms the New Tab manifest override is isolated to that opt-in profile.
 
@@ -218,8 +226,9 @@ After deploying the Web app, a useful live bridge check is:
 5. Open a Workspace containing a `reuse` item and a `pinned` item; the existing matching tab should be reused and the pinned item should become pinned.
 6. Restore a Session containing a pinned tab; its pinned state should be preserved.
 7. Enable **Native bookmarks**, map a small reviewed subset and exercise Browser → Dockmark and explicit Dockmark → Browser Review actions.
-8. With the New Tab profile, open a new tab online once to seed/refresh the local snapshot, then disconnect the network and confirm cached search/launch remains available.
-9. Change Browser/New Tab settings in the Web Extension page, sync them, and verify the New Tab profile follows the selected limits/search/refresh policy after its next successful settings refresh.
+8. Select a `local-only` bookmark in Settings → Metadata & Health, choose **Check locally**, review the exact-host browser permission, and confirm the resulting health row is labeled **Browser**.
+9. With the New Tab profile, open a new tab online once to seed/refresh the local snapshot, then disconnect the network and confirm cached search/launch remains available.
+10. Change Browser/New Tab settings in the Web Extension page, sync them, and verify the New Tab profile follows the selected limits/search/refresh policy after its next successful settings refresh.
 
 ## Design principles
 
@@ -232,7 +241,7 @@ After deploying the Web app, a useful live bridge check is:
 - Browser-native bookmark access is optional and reviewed; native IDs/mappings stay local to the extension.
 - Browser bookmark writes are explicit per-item actions, never background mutations.
 - Manual extension download remains available even after browser-store distribution channels are added.
-- Local/private URLs are never health-checked from Cloudflare.
+- Local/private URLs are never health-checked from Cloudflare; explicit extension checks require per-host browser permission.
 - `ignore` and `local-only` entries are excluded from bulk broken-link deletion.
 - AI changes are suggestions with preview/diff/apply, never silent mutations.
 - AI API keys stay local in v1.

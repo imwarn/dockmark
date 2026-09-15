@@ -30,7 +30,7 @@
 - [x] URL metadata fetch: title, description, canonical, favicon and OpenGraph
 - [x] metadata review gate: fetched values stay separate until explicitly applied
 - [x] server-side public URL health checks with redirect revalidation and SSRF safeguards
-- [ ] extension-only local URL health checks
+- [x] extension-only local URL health checks with explicit per-host permission review
 - [x] redirect review and one-click URL replacement
 - [x] conservative bulk cleanup that excludes ignored/local/manual entries and transient/special statuses
 - [x] health history storage, API and Settings review UI

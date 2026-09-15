@@ -56,9 +56,11 @@ try {
   await popup.waitForLoadState("domcontentloaded");
 
   const manifest = await popup.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "0.7.0");
+  assert.equal(manifest.version, "0.9.0");
   assert.ok(!manifest.permissions?.includes("bookmarks"), "Bookmarks should not be a required install-time permission.");
   assert.ok(manifest.optional_permissions?.includes("bookmarks"), "Bookmarks should be declared as an optional permission.");
+  assert.ok(manifest.optional_host_permissions?.includes("http://*/*"), "HTTP host access should remain optional for explicit local checks.");
+  assert.ok(manifest.optional_host_permissions?.includes("https://*/*"), "HTTPS host access should remain optional for explicit local checks.");
   assert.equal(manifest.chrome_url_overrides, undefined, "The standard Dockmark build must not override the browser new tab page.");
 
   const capabilities = await popup.evaluate(async () =>
@@ -66,7 +68,7 @@ try {
   );
   assert.equal(capabilities.connected, true);
   assert.equal(capabilities.protocolVersion, 1);
-  assert.equal(capabilities.extensionVersion, "0.7.0");
+  assert.equal(capabilities.extensionVersion, "0.9.0");
   assert.equal(capabilities.capabilities.openTabs, true);
   assert.equal(capabilities.capabilities.workspaceReuse, true);
   assert.equal(capabilities.capabilities.workspacePinned, true);
@@ -75,7 +77,34 @@ try {
   assert.equal(capabilities.capabilities.nativeBookmarkSync, true);
   assert.equal(capabilities.capabilities.nativeBookmarkWriteback, true);
   assert.equal(capabilities.permissions.nativeBookmarks, false);
-  assert.equal(capabilities.capabilities.localHealth, false);
+  assert.equal(capabilities.capabilities.localHealth, true);
+
+  const localPattern = "http://127.0.0.1/*";
+  const hasLocalHostAccess = await popup.evaluate(async (pattern) =>
+    chrome.permissions.contains({ origins: [pattern] }),
+    localPattern,
+  );
+  assert.equal(hasLocalHostAccess, false, "Local host access must not be granted at install time.");
+
+  await popup.evaluate(async ({ localPattern, origin }) => {
+    await chrome.storage.local.set({
+      dockmarkPendingLocalHealthPermissionV1: {
+        url: `${origin}/health`,
+        origin,
+        pattern: localPattern,
+        requestedAt: new Date().toISOString(),
+      },
+    });
+  }, { localPattern, origin });
+
+  const permissionPage = await context.newPage();
+  await permissionPage.goto(`chrome-extension://${extensionId}/local-health-permission.html`);
+  await permissionPage.waitForLoadState("domcontentloaded");
+  await permissionPage.getByText("Allow this local host?", { exact: true }).waitFor();
+  assert.match(await permissionPage.locator("body").innerText(), /http:\/\/127\.0\.0\.1\/\*/);
+  assert.match(await permissionPage.locator("body").innerText(), /does not request access to every website/i);
+  await popup.evaluate(async () => chrome.storage.local.remove("dockmarkPendingLocalHealthPermissionV1"));
+  await permissionPage.close();
 
   const first = await context.newPage();
   await first.goto(`${origin}/one`);
@@ -118,9 +147,11 @@ try {
   assert.equal(restored.pinned, true, "Session restore should preserve pinned state.");
 
   console.log(`✓ Dockmark Chromium extension loaded: ${extensionId}`);
-  console.log("✓ Capability handshake protocol 1 / extension 0.7.0");
+  console.log("✓ Capability handshake protocol 1 / extension 0.9.0");
   console.log("✓ Native bookmark import, mapping sync and explicit writeback capabilities advertised");
   console.log("✓ Native bookmark capability is optional and ungranted by default");
+  console.log("✓ Local health capability is advertised without install-time host grants");
+  console.log("✓ Local health permission page scopes the request to one hostname");
   console.log("✓ Standard build does not override the browser new tab page");
   console.log("✓ Open-tab enumeration and activation");
   console.log("✓ Pinned Session restore");

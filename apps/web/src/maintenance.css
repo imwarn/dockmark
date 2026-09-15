@@ -24,10 +24,13 @@
 .metadata-row small, .redirect-review small { color: #6f7b74; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
 .metadata-row strong, .redirect-review strong { overflow-wrap: anywhere; color: #bdc9c1; font-size: 11px; font-weight: 550; line-height: 1.45; }
 .redirect-review { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px; border: 1px solid #42604c; border-radius: 12px; background: #101b14; }
+.health-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .health-history { display: grid; gap: 6px; }
-.health-history-row { display: grid; grid-template-columns: 105px 52px 74px minmax(120px,1fr) 150px; align-items: center; gap: 10px; min-height: 38px; padding: 7px 9px; border-bottom: 1px solid #222b27; color: #849089; font-size: 10px; }
+.health-history-row { display: grid; grid-template-columns: 105px 58px 48px 74px minmax(120px,1fr) 150px; align-items: center; gap: 10px; min-height: 38px; padding: 7px 9px; border-bottom: 1px solid #222b27; color: #849089; font-size: 10px; }
 .health-history-row:last-child { border-bottom: 0; }
 .health-history-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.health-source { color: #66736c; font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
+.health-source.source-extension { color: #9fb9a7; }
 .maintenance-health { color: #76827b; }
 .cleanup-panel { display: grid; gap: 14px; padding: 18px; }
 .cleanup-actions { display: flex; flex: 0 0 auto; gap: 8px; }
@@ -52,6 +55,8 @@ html[data-theme="light"] .metadata-row strong,
 html[data-theme="light"] .redirect-review strong { color: var(--dm-text-soft); }
 html[data-theme="light"] .redirect-review { border-color: #a8c9b4; background: #edf6f0; }
 html[data-theme="light"] .health-history-row { border-color: var(--dm-border); color: var(--dm-text-muted); }
+html[data-theme="light"] .health-source { color: var(--dm-text-muted); }
+html[data-theme="light"] .health-source.source-extension { color: #47725a; }
 
 @media (max-width: 900px) {
   .maintenance-grid { grid-template-columns: 1fr; }
@@ -60,8 +65,8 @@ html[data-theme="light"] .health-history-row { border-color: var(--dm-border); c
 
 @media (max-width: 680px) {
   .maintenance-card-heading, .metadata-row, .redirect-review { align-items: stretch; flex-direction: column; }
-  .cleanup-actions { width: 100%; flex-wrap: wrap; }
-  .cleanup-actions button { flex: 1 1 auto; }
+  .health-actions, .cleanup-actions { width: 100%; flex-wrap: wrap; }
+  .health-actions button, .cleanup-actions button { flex: 1 1 auto; }
   .cleanup-row { grid-template-columns: 20px minmax(0,1fr); }
   .cleanup-row .health-badge { grid-column: 2; justify-self: start; }
   .health-history-row { grid-template-columns: 1fr 1fr; }

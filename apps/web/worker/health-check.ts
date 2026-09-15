@@ -2,6 +2,7 @@ import {
   inferHealthPolicy,
   normalizeBookmarkUrl,
   type HealthCheck,
+  type HealthCheckSource,
   type HealthPolicy,
   type HealthStatus,
 } from "@dockmark/core";
@@ -33,6 +34,7 @@ interface HealthCheckRow {
   final_url: string | null;
   response_ms: number | null;
   error_code: string | null;
+  source: HealthCheckSource;
   checked_at: string;
 }
 
@@ -67,6 +69,7 @@ function healthFromRow(row: HealthCheckRow): HealthCheck {
     ...(row.final_url ? { finalUrl: row.final_url } : {}),
     ...(row.response_ms == null ? {} : { responseMs: row.response_ms }),
     ...(row.error_code ? { errorCode: row.error_code } : {}),
+    source: row.source,
     checkedAt: row.checked_at,
   };
 }
@@ -205,8 +208,8 @@ async function insertResult(db: HealthDatabase, bookmarkId: string, result: Prob
   const checkedAt = new Date().toISOString();
   await db.prepare(
     `INSERT INTO health_checks
-      (id, bookmark_id, status, http_status, final_url, response_ms, error_code, checked_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, bookmark_id, status, http_status, final_url, response_ms, error_code, source, checked_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'server', ?)`,
   )
     .bind(
       id,
@@ -232,6 +235,7 @@ async function insertResult(db: HealthDatabase, bookmarkId: string, result: Prob
     ...(result.finalUrl ? { finalUrl: result.finalUrl } : {}),
     responseMs: result.responseMs,
     ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+    source: "server",
     checkedAt,
   };
   return check;
@@ -261,7 +265,7 @@ export async function checkBookmarkHealth(db: HealthDatabase, bookmarkId: string
 
 export async function listBookmarkHealthChecks(db: HealthDatabase, bookmarkId: string) {
   const result = await db.prepare(
-    `SELECT id, bookmark_id, status, http_status, final_url, response_ms, error_code, checked_at
+    `SELECT id, bookmark_id, status, http_status, final_url, response_ms, error_code, source, checked_at
        FROM health_checks
       WHERE bookmark_id = ?
       ORDER BY checked_at DESC

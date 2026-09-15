@@ -37,21 +37,26 @@ Supported health policies:
 
 - `normal` — eligible for server-side checks.
 - `ignore` — excluded from automatic checks and bulk broken-link cleanup.
-- `local-only` — excluded from server checks and cleanup; the optional extension may check it locally later.
+- `local-only` — excluded from Worker checks and cleanup; it can be checked explicitly from the browser extension after per-host permission review.
 - `manual` — excluded from bulk checks but may be checked through an explicit single-bookmark action.
 
 Changing a bookmark URL resets health status when appropriate. `ignore` and `local-only` map to `ignored` and `local-only` statuses respectively.
 
 ## Health checks
 
-- `POST /api/bookmarks/:id/check` — explicitly check one `normal` or `manual` bookmark.
-- `GET /api/bookmarks/:id/health` — return up to 20 most recent check records.
+- `POST /api/bookmarks/:id/check` — explicitly check one `normal` or `manual` bookmark from the Worker.
+- `GET /api/bookmarks/:id/health` — return up to 20 most recent check records from both server and extension sources.
+- `POST /api/bookmarks/:id/health/local-result` — same-origin signed-in Web session only; record one result produced by the browser extension for a `local-only` bookmark.
 
-Server checks use a short timeout, do not automatically follow redirects, and revalidate every redirect target before requesting it. Local/private targets and redirects are rejected. `ignore` and `local-only` bookmarks cannot be checked by the server.
+Server checks use a short timeout, do not automatically follow redirects, and revalidate every redirect target before requesting it. Local/private targets and redirects are rejected. `ignore` and `local-only` bookmarks cannot be checked by the Worker.
 
-A check records status, HTTP status when available, final URL, elapsed milliseconds, optional error code and timestamp in D1. The bookmark's current `health_status` is updated from the latest result.
+Extension local checks use the opposite trust boundary: they are available only for bookmarks classified `local-only`, run from the user's browser, and request optional host permission only after an explicit **Check locally** action and permission-review page. The extension follows redirects only while the next target remains local/private. A local → public redirect is returned for review instead of broadening browser permissions.
 
-The Settings maintenance UI treats redirects as reviewable suggestions rather than automatic mutations. When a check records a safe final URL, the user can explicitly replace the bookmark URL. Bulk cleanup is also review-gated: only `normal` bookmarks whose latest result is `dns-error`, `tls-error` or `unavailable` are candidates. `ignore`, `local-only`, `manual`, timeout, authentication, rate-limit and redirect results are excluded from that cleanup list.
+A check records status, HTTP status when available, final URL, elapsed milliseconds, optional error code, source (`server` or `extension`) and timestamp in D1. The bookmark's current `health_status` is updated from the latest accepted result.
+
+`POST /api/bookmarks/:id/health/local-result` is deliberately not part of the paired-device bearer-token scope. The Browser Bridge returns the probe result to the authenticated Dockmark page, and the same-origin Web session records it. The endpoint rejects non-`local-only` bookmarks and validates status, URL and timing fields before storage.
+
+The Settings maintenance UI treats redirects as reviewable suggestions rather than automatic mutations. When a check records a final URL, the user can explicitly replace the bookmark URL. Bulk cleanup is also review-gated: only `normal` bookmarks whose latest result is `dns-error`, `tls-error` or `unavailable` are candidates. `ignore`, `local-only`, `manual`, timeout, authentication, rate-limit and redirect results are excluded from that cleanup list.
 
 ## Bookmark metadata
 
@@ -75,7 +80,7 @@ A metadata snapshot may contain:
 }
 ```
 
-Server metadata fetching follows the same local/private safety boundary as health checks. A bookmark explicitly marked `local-only` is not fetched from the Worker even if its hostname appears public. Every redirect target is revalidated before the next request. Fetching is capped at five redirects, ten seconds and 512 KiB of HTML; non-HTML responses are rejected. The parser extracts HTML/OpenGraph title and description, canonical URL, favicon candidates and OpenGraph image when present.
+Server metadata fetching follows the same local/private safety boundary as server health checks. A bookmark explicitly marked `local-only` is not fetched from the Worker even if its hostname appears public. Every redirect target is revalidated before the next request. Fetching is capped at five redirects, ten seconds and 512 KiB of HTML; non-HTML responses are rejected. The parser extracts HTML/OpenGraph title and description, canonical URL, favicon candidates and OpenGraph image when present.
 
 Metadata routes require the authenticated Web session. Paired extension device tokens do not receive metadata-maintenance scope.
 
