@@ -27,6 +27,21 @@ type SessionSummary = {
   items: SessionItem[];
 };
 
+type CaptureBookmark = {
+  id: string;
+  title: string;
+  url: string;
+  categoryId?: string;
+  categoryName?: string;
+  inboxAt?: string;
+};
+
+type CaptureResult = {
+  result: "created" | "duplicate";
+  bookmark: CaptureBookmark;
+  duplicateState?: "inbox" | "library";
+};
+
 const SERVER_KEY = "dockmarkServerUrl";
 const DEVICE_KEY = "dockmarkDeviceLabel";
 const TOKEN_KEY = "dockmarkDeviceToken";
@@ -62,6 +77,14 @@ function apiUrl(origin: string, path: string) {
   return new URL(path, `${origin}/`).toString();
 }
 
+function hostLabel(value: string) {
+  try {
+    return new URL(value).host;
+  } catch {
+    return value;
+  }
+}
+
 async function requestJson<T>(url: string, init: RequestInit = {}, includeDeviceToken = true): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
@@ -86,6 +109,7 @@ function Popup() {
   const [pairCode, setPairCode] = useState("");
   const [sessionName, setSessionName] = useState(defaultSessionName);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [captureResult, setCaptureResult] = useState<CaptureResult | null>(null);
   const [connected, setConnected] = useState(false);
   const [paired, setPaired] = useState(false);
   const [bookmarkAccess, setBookmarkAccess] = useState(false);
@@ -97,6 +121,10 @@ function Popup() {
   const savableTabs = useMemo(
     () => tabs.filter((tab): tab is TabSummary & { url: string } => Boolean(tab.url && /^https?:\/\//i.test(tab.url))),
     [tabs],
+  );
+  const activeSavableTab = useMemo(
+    () => savableTabs.find((tab) => tab.active) ?? null,
+    [savableTabs],
   );
 
   useEffect(() => {
@@ -178,6 +206,7 @@ function Popup() {
     setBusy(true);
     setStatus(null);
     setError(null);
+    setCaptureResult(null);
 
     try {
       const origin = normalizeServerUrl(serverUrl);
@@ -212,7 +241,7 @@ function Popup() {
         try {
           await refreshSessions(origin);
           setPaired(true);
-          setStatus("Connected and paired. Browser bridge and private cloud access are ready.");
+          setStatus("Connected and paired. Browser bridge, Quick Capture and private cloud access are ready.");
           return;
         } catch (caught) {
           if (caught instanceof DockmarkRequestError && (caught.status === 401 || caught.status === 403)) {
@@ -250,7 +279,7 @@ function Popup() {
       setPairCode("");
       setPaired(true);
       await refreshSessions();
-      setStatus(`Paired as “${result.device.name}”. Private cloud refresh and Session save are enabled.`);
+      setStatus(`Paired as “${result.device.name}”. Quick Capture and private cloud Session save are enabled.`);
     });
   }
 
@@ -259,6 +288,7 @@ function Popup() {
       await browser.storage.local.remove(TOKEN_KEY);
       setPaired(false);
       setSessions([]);
+      setCaptureResult(null);
       setStatus("Removed this device token locally. To invalidate a copied token everywhere, revoke this device from Dockmark Settings → Security.");
     });
   }
@@ -278,6 +308,36 @@ function Popup() {
       setBookmarkAccess(!removed);
       setStatus(removed ? "Native bookmark access disabled." : "Native bookmark access is still enabled.");
     });
+  }
+
+  async function saveCurrentTab() {
+    await run(async () => {
+      if (!connected) throw new Error("Connect the extension to your Dockmark site first.");
+      if (!paired) throw new Error("Pair this extension before using Quick Capture.");
+      if (!activeSavableTab?.url) throw new Error("The current tab is not an HTTP/HTTPS page that Dockmark can save.");
+      if (new URL(activeSavableTab.url).origin === normalizeServerUrl(serverUrl)) {
+        throw new Error("Dockmark does not capture its own management page.");
+      }
+
+      const result = await requestJson<CaptureResult>(apiUrl(serverUrl, "/api/capture/bookmark"), {
+        method: "POST",
+        body: JSON.stringify({
+          title: activeSavableTab.title || activeSavableTab.url,
+          url: activeSavableTab.url,
+        }),
+      });
+      setCaptureResult(result);
+      if (result.result === "created") {
+        setStatus("Saved current tab to Dockmark Inbox. Review and file it from Web → Inbox.");
+      } else {
+        setStatus(null);
+      }
+    });
+  }
+
+  async function openCaptureReview() {
+    const path = captureResult?.duplicateState === "library" ? "/app" : "/app/inbox";
+    await browser.tabs.create({ url: apiUrl(serverUrl, path), active: true });
   }
 
   async function saveWindow() {
@@ -332,7 +392,7 @@ function Popup() {
           <strong>Dockmark site</strong>
           <span className={connected ? "online" : "offline"}>{connected ? paired ? "Paired" : "Connected" : initializing ? "Checking" : "Local only"}</span>
         </div>
-        <input value={serverUrl} onChange={(event) => { setServerUrl(event.target.value); setConnected(false); setPaired(false); }} placeholder="https://dockmark.example.com" inputMode="url" />
+        <input value={serverUrl} onChange={(event) => { setServerUrl(event.target.value); setConnected(false); setPaired(false); setCaptureResult(null); }} placeholder="https://dockmark.example.com" inputMode="url" />
         <div className="inline-fields">
           <input value={deviceLabel} onChange={(event) => setDeviceLabel(event.target.value)} placeholder="Main MacBook" />
           <button className="secondary" disabled={initializing || busy || !serverUrl.trim()} onClick={() => void connect()}>
@@ -346,7 +406,7 @@ function Popup() {
           <div className="section-heading"><strong>Private cloud pairing</strong><span className={paired ? "online" : "offline"}>{paired ? "Authenticated" : "Required"}</span></div>
           {paired ? (
             <>
-              <p>This extension holds a revocable per-device token. It can read launcher data and save Sessions, but it cannot use its token to edit Dockmark bookmarks, settings or public-page selection.</p>
+              <p>This extension holds a revocable per-device token. It can read launcher data, save Sessions and append the current tab to Inbox. It cannot edit or delete existing Dockmark bookmarks, settings or public-page selection.</p>
               <button className="secondary" disabled={busy} onClick={() => void unpairLocal()}>Remove local device token</button>
             </>
           ) : (
@@ -368,6 +428,31 @@ function Popup() {
           {bookmarkAccess ? "Disable bookmark access" : "Enable bookmark access"}
         </button>
       </section>
+
+      {connected && paired && (
+        <section className="card capture-card">
+          <div className="section-heading"><strong>Quick Capture</strong><span>Current tab → Inbox</span></div>
+          {activeSavableTab ? (
+            <div className="capture-current">
+              <strong>{activeSavableTab.title || activeSavableTab.url}</strong>
+              <small>{hostLabel(activeSavableTab.url)}</small>
+            </div>
+          ) : (
+            <p className="empty">Open an HTTP/HTTPS page to capture it.</p>
+          )}
+          <button className="primary" disabled={busy || !activeSavableTab} onClick={() => void saveCurrentTab()}>Save current tab</button>
+          {captureResult && (
+            <div className={`capture-review ${captureResult.result}`}>
+              <span>{captureResult.result === "created" ? "Saved to Inbox" : "Duplicate review"}</span>
+              <strong>{captureResult.bookmark.title}</strong>
+              <small>{captureResult.bookmark.categoryName ?? (captureResult.duplicateState === "inbox" ? "Already waiting in Inbox" : "Already in Dockmark library")}</small>
+              <button className="secondary" type="button" onClick={() => void openCaptureReview()}>
+                {captureResult.duplicateState === "library" ? "Open Dockmark" : "Open Inbox"}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       {connected && paired && (
         <section className="card save-card">
