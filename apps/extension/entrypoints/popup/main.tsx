@@ -175,8 +175,18 @@ function Popup() {
   }
 
   async function connect() {
-    await run(async () => {
+    setBusy(true);
+    setStatus(null);
+    setError(null);
+
+    try {
       const origin = normalizeServerUrl(serverUrl);
+
+      // Firefox requires permissions.request to run directly from the user gesture.
+      // Do not await storage or any other async work before this request.
+      const granted = await browser.permissions.request({ origins: [hostPattern(origin)] });
+      if (!granted) throw new Error("Dockmark site access was not granted.");
+
       const stored = await browser.storage.local.get([SERVER_KEY, TOKEN_KEY]);
       const previousOrigin = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
       const existingToken = typeof stored[TOKEN_KEY] === "string" ? stored[TOKEN_KEY] : "";
@@ -190,9 +200,6 @@ function Popup() {
       await browser.storage.local.set({ [SERVER_KEY]: origin, [DEVICE_KEY]: label });
       setServerUrl(origin);
       setDeviceLabel(label);
-
-      const granted = await browser.permissions.request({ origins: [hostPattern(origin)] });
-      if (!granted) throw new Error("Dockmark site access was not granted.");
 
       await browser.runtime.sendMessage({ type: "dockmark:configure-bridge", origin });
 
@@ -217,7 +224,11 @@ function Popup() {
         }
       }
       setStatus("Site access connected. Create a pairing code in Dockmark Settings → Security, then enter it below for private cloud access.");
-    });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function pairDevice() {
