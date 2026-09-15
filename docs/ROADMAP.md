@@ -38,7 +38,7 @@
 ## V2 — browser bridge
 
 - [x] reviewed browser-native bookmark import with URL de-duplication and extension-local mapping
-- [ ] optional two-way browser bookmark synchronization (current model intentionally uses reviewed Browser→Dockmark plus explicit per-item Dockmark→Browser writeback; no silent background mutation)
+- [ ] optional two-way browser bookmark synchronization (intentionally deferred beyond v1.0: current model uses reviewed Browser→Dockmark plus explicit per-item Dockmark→Browser writeback; no silent background mutation)
 - [x] save current browser window as a cloud Session
 - [x] restore a Session from the extension with pinned state preserved
 - [x] inject live open tabs into the Web Command Palette
@@ -51,7 +51,10 @@
 - [x] CI artifact for installable Chromium ZIP
 - [x] tag-driven GitHub Release packaging
 - [ ] deployed-origin manual bridge + native bookmark permission smoke check
-- [ ] Firefox validation next
+- [x] Firefox Manifest V3 build/package validation in CI
+- [x] Firefox release ZIP + reproducible sources ZIP packaging
+- [ ] Firefox deployed-origin runtime validation (`docs/FIREFOX_VALIDATION.md`)
+- [ ] signed Firefox distribution / AMO channel after runtime validation
 
 ## Deployment
 
