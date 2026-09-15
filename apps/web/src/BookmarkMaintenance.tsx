@@ -48,8 +48,26 @@ function displayTime(value: string) {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
 }
 
+function cleanupEligibility(bookmark: Bookmark | null) {
+  if (!bookmark) return null;
+  if (bookmark.healthPolicy !== "normal") {
+    return `${bookmark.healthPolicy} policy is intentionally excluded from bulk cleanup.`;
+  }
+  if (cleanupStatuses.has(bookmark.healthStatus)) {
+    return "Latest hard-failure status is eligible for Cleanup Review.";
+  }
+  if (bookmark.healthStatus === "timeout") {
+    return "Timeout is treated as transient, so it is intentionally excluded from Cleanup Review.";
+  }
+  if (bookmark.healthStatus === "redirected") {
+    return "Redirects stay in review and are never bulk-cleanup candidates.";
+  }
+  return null;
+}
+
 export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(() => bookmarks[0]?.id ?? null);
+  const [query, setQuery] = useState("");
   const [metadata, setMetadata] = useState<BookmarkMetadata | null>(null);
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [loading, setLoading] = useState(false);
@@ -65,6 +83,14 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
     () => bookmarks.find((bookmark) => bookmark.id === selectedId) ?? null,
     [bookmarks, selectedId],
   );
+
+  const visibleBookmarks = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return bookmarks;
+    return bookmarks.filter((bookmark) =>
+      bookmark.title.toLowerCase().includes(normalized) || bookmark.url.toLowerCase().includes(normalized),
+    );
+  }, [bookmarks, query]);
 
   const cleanupCandidates = useMemo(
     () => bookmarks.filter((bookmark) => bookmark.healthPolicy === "normal" && cleanupStatuses.has(bookmark.healthStatus)),
@@ -144,7 +170,14 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
       const check = await checkBookmarkHealth(selected.id);
       const history = await listBookmarkHealthChecks(selected.id);
       setChecks(history);
-      setNotice(`Server health check: ${healthLabels[check.status]}.`);
+      const cleanupNote = selected.healthPolicy === "normal" && cleanupStatuses.has(check.status)
+        ? " Added to Cleanup Review."
+        : check.status === "timeout"
+          ? " Timeout is treated as transient and is excluded from Cleanup Review."
+          : selected.healthPolicy !== "normal"
+            ? ` ${selected.healthPolicy} policy is excluded from bulk cleanup.`
+            : "";
+      setNotice(`Server health check: ${healthLabels[check.status]}.${cleanupNote}`);
       await onChanged();
     } catch (caught) {
       setError(messageFrom(caught));
@@ -244,6 +277,11 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
   const metadataDescription = metadata?.description ?? null;
   const metadataCanonicalUrl = metadata?.canonicalUrl ?? null;
   const metadataIconUrl = metadata?.iconUrl ?? null;
+  const metadataResolvedUrl = metadata?.finalUrl ?? null;
+  const resolvedUrlSuggestion = metadataResolvedUrl && metadataResolvedUrl !== selected?.url
+    ? metadataResolvedUrl
+    : null;
+  const selectedCleanupEligibility = cleanupEligibility(selected);
   const allCleanupSelected = cleanupCandidates.length > 0 && cleanupSelection.size === cleanupCandidates.length;
 
   return (
@@ -265,21 +303,34 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
 
       <div className="maintenance-grid">
         <div className="maintenance-list panel">
-          {bookmarks.map((bookmark) => (
-            <button
-              type="button"
-              className={`maintenance-list-item${bookmark.id === selectedId ? " active" : ""}`}
-              key={bookmark.id}
-              onClick={() => setSelectedId(bookmark.id)}
-            >
-              <span>
-                <strong>{bookmark.title}</strong>
-                <small>{bookmark.url}</small>
-              </span>
-              <em className={`maintenance-health status-${bookmark.healthStatus}`}>{healthLabels[bookmark.healthStatus]}</em>
-            </button>
-          ))}
-          {!bookmarks.length && <div className="empty-state"><strong>No bookmarks yet.</strong><span>Add a bookmark before running metadata or health maintenance.</span></div>}
+          <div className="maintenance-list-tools">
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search title or URL…"
+              aria-label="Search Metadata and Health bookmarks"
+            />
+            <span>{visibleBookmarks.length} / {bookmarks.length}</span>
+          </div>
+          <div className="maintenance-list-scroll">
+            {visibleBookmarks.map((bookmark) => (
+              <button
+                type="button"
+                className={`maintenance-list-item${bookmark.id === selectedId ? " active" : ""}`}
+                key={bookmark.id}
+                onClick={() => setSelectedId(bookmark.id)}
+              >
+                <span>
+                  <strong>{bookmark.title}</strong>
+                  <small>{bookmark.url}</small>
+                </span>
+                <em className={`maintenance-health status-${bookmark.healthStatus}`}>{healthLabels[bookmark.healthStatus]}</em>
+              </button>
+            ))}
+            {!bookmarks.length && <div className="empty-state"><strong>No bookmarks yet.</strong><span>Add a bookmark before running metadata or health maintenance.</span></div>}
+            {bookmarks.length > 0 && !visibleBookmarks.length && <div className="empty-state"><strong>No matches.</strong><span>Try another title or URL.</span></div>}
+          </div>
         </div>
 
         <div className="maintenance-inspector">
@@ -294,7 +345,10 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                     <h3>{selected.title}</h3>
                     <a href={selected.url} target="_blank" rel="noreferrer">{selected.url}</a>
                   </div>
-                  <span className={`health-badge status-${selected.healthStatus}`}>{healthLabels[selected.healthStatus]}</span>
+                  <div className="selected-badges">
+                    <span className="maintenance-policy">{selected.healthPolicy}</span>
+                    <span className={`health-badge status-${selected.healthStatus}`}>{healthLabels[selected.healthStatus]}</span>
+                  </div>
                 </div>
               </article>
 
@@ -305,7 +359,7 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                     <p>
                       {selected.healthPolicy === "local-only"
                         ? "Local/private page metadata is never fetched by the Worker. Local health checks stay in the browser extension instead."
-                        : "Server fetches are limited to public HTTP(S) pages, follow at most five redirects and read at most 512 KiB of HTML."}
+                        : "Server fetches are limited to public HTTP(S) pages, follow at most five redirects and read at most 512 KiB of HTML. Canonical URL comes only from the page's rel=canonical tag; HTTP redirects are shown separately as Resolved URL."}
                     </p>
                   </div>
                   <button
@@ -337,7 +391,12 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                       {metadataIconUrl && metadataIconUrl !== selected.iconUrl && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ iconUrl: metadataIconUrl }, "Metadata icon applied.")}>Use icon</button>}
                     </div>
                     {metadata.imageUrl && <div className="metadata-row"><span><small>Open Graph image</small><strong>{metadata.imageUrl}</strong></span></div>}
-                    {metadata.finalUrl && <div className="metadata-row"><span><small>Resolved page</small><strong>{metadata.finalUrl}</strong></span></div>}
+                    {metadataResolvedUrl && (
+                      <div className="metadata-row">
+                        <span><small>Resolved URL</small><strong>{metadataResolvedUrl}</strong></span>
+                        {resolvedUrlSuggestion && <button className="text-action" disabled={applying} onClick={() => void applyUpdate({ url: resolvedUrlSuggestion }, "Resolved URL applied. Metadata was invalidated for the new URL.", true)}>Use resolved URL</button>}
+                      </div>
+                    )}
                     <p className="maintenance-muted">Fetched {displayTime(metadata.fetchedAt)}. Suggestions remain separate until you apply them.</p>
                   </div>
                 ) : (
@@ -376,6 +435,12 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                     )}
                   </div>
                 </div>
+
+                {selectedCleanupEligibility && (
+                  <p className={`cleanup-eligibility${selected.healthPolicy === "normal" && cleanupStatuses.has(selected.healthStatus) ? " eligible" : ""}`}>
+                    {selectedCleanupEligibility}
+                  </p>
+                )}
 
                 {redirectedUrl && (
                   <div className="redirect-review">
