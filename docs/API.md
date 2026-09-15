@@ -51,6 +51,34 @@ Server checks use a short timeout, do not automatically follow redirects, and re
 
 A check records status, HTTP status when available, final URL, elapsed milliseconds, optional error code and timestamp in D1. The bookmark's current `health_status` is updated from the latest result.
 
+The Settings maintenance UI treats redirects as reviewable suggestions rather than automatic mutations. When a check records a safe final URL, the user can explicitly replace the bookmark URL. Bulk cleanup is also review-gated: only `normal` bookmarks whose latest result is `dns-error`, `tls-error` or `unavailable` are candidates. `ignore`, `local-only`, `manual`, timeout, authentication, rate-limit and redirect results are excluded from that cleanup list.
+
+## Bookmark metadata
+
+- `GET /api/bookmarks/:id/metadata` — return the stored metadata snapshot, or `null` when nothing has been fetched.
+- `POST /api/bookmarks/:id/metadata` — fetch the page now and replace the stored metadata snapshot.
+
+Metadata is stored separately from the bookmark so fetching it never silently changes title, URL, description or icon. The Web maintenance UI exposes explicit **Use title**, **Use description**, **Use canonical** and **Use icon** actions. Changing the bookmark URL invalidates its stored metadata snapshot automatically.
+
+A metadata snapshot may contain:
+
+```json
+{
+  "bookmarkId": "bookmark-id",
+  "title": "Example",
+  "description": "Example page",
+  "canonicalUrl": "https://example.com/",
+  "iconUrl": "https://example.com/favicon.ico",
+  "imageUrl": "https://example.com/og.png",
+  "finalUrl": "https://example.com/",
+  "fetchedAt": "2026-09-15T12:00:00.000Z"
+}
+```
+
+Server metadata fetching follows the same local/private safety boundary as health checks. A bookmark explicitly marked `local-only` is not fetched from the Worker even if its hostname appears public. Every redirect target is revalidated before the next request. Fetching is capped at five redirects, ten seconds and 512 KiB of HTML; non-HTML responses are rejected. The parser extracts HTML/OpenGraph title and description, canonical URL, favicon candidates and OpenGraph image when present.
+
+Metadata routes require the authenticated Web session. Paired extension device tokens do not receive metadata-maintenance scope.
+
 ## Workspaces
 
 A Workspace is a cloud-stored reusable set of URLs. Items can either reference an existing Dockmark bookmark or exist only inside the Workspace.

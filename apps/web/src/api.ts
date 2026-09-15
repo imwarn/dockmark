@@ -40,6 +40,17 @@ export class ApiError extends Error {
   }
 }
 
+export interface BookmarkMetadata {
+  bookmarkId: string;
+  title?: string;
+  description?: string;
+  canonicalUrl?: string;
+  iconUrl?: string;
+  imageUrl?: string;
+  finalUrl?: string;
+  fetchedAt: string;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body) headers.set("content-type", "application/json");
@@ -122,6 +133,21 @@ export async function listBookmarkHealthChecks(id: string) {
     `/api/bookmarks/${encodeURIComponent(id)}/health`,
   );
   return response.checks;
+}
+
+export async function getBookmarkMetadata(id: string) {
+  const response = await request<{ metadata: BookmarkMetadata | null }>(
+    `/api/bookmarks/${encodeURIComponent(id)}/metadata`,
+  );
+  return response.metadata;
+}
+
+export async function refreshBookmarkMetadata(id: string) {
+  const response = await request<{ metadata: BookmarkMetadata }>(
+    `/api/bookmarks/${encodeURIComponent(id)}/metadata`,
+    { method: "POST" },
+  );
+  return response.metadata;
 }
 
 export async function listWorkspaces() {
