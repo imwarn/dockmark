@@ -4,7 +4,19 @@
 
 Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and configurable search live in one self-hosted launcher that works across browsers. The optional Chromium extension adds privileged capabilities such as live open-tab search, switching to an existing tab, Workspace reuse/pinning, pinned Session restore and reviewed browser-native bookmark synchronization. Users can choose a Standard profile or an opt-in Dockmark New Tab profile with a local-first offline-capable launcher.
 
-> Status: active V1 development. The Web app, D1 data model, search/command palette and Chromium browser bridge are functional; packaging and browser validation are automated in CI.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/brand/dockmark-mark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./docs/brand/dockmark-mark-light.svg">
+    <img src="./docs/brand/dockmark-mark-dark.svg" width="96" height="96" alt="Dockmark D dot brand mark">
+  </picture>
+</p>
+
+<p align="center"><strong>D·</strong> — the minimal Dockmark mark used from favicon scale through the Web UI.</p>
+
+The Web app resolves the favicon dynamically so it follows the active System / Light / Dark appearance. The static SVG above documents the canonical mark: dark mode uses the `#0a0f0c` Dockmark surface with the soft green mark, while light mode uses the paired `#f4f7f5` surface with dark green ink.
+
+> Status: **v0.8.0** — persisted bookmark/category reordering, System / Light / Dark appearance, curated public page, secure extension pairing and local-first browser settings are implemented. Metadata and Health improvements are the next active milestone.
 
 ## Deploy to Cloudflare
 
