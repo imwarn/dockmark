@@ -29,14 +29,25 @@
 .health-history-row:last-child { border-bottom: 0; }
 .health-history-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .maintenance-health { color: #76827b; }
+.cleanup-panel { display: grid; gap: 14px; padding: 18px; }
+.cleanup-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.cleanup-list { display: grid; gap: 7px; }
+.cleanup-row { display: grid; grid-template-columns: 20px minmax(0,1fr) auto; align-items: center; gap: 11px; min-height: 58px; padding: 10px 12px; border: 1px solid #27312c; border-radius: 11px; background: #0f1512; cursor: pointer; }
+.cleanup-row input { width: 16px; height: 16px; accent-color: #91bc9f; }
+.cleanup-row > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
+.cleanup-row strong, .cleanup-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cleanup-row strong { font-size: 12px; }
+.cleanup-row small { color: #77827c; font-size: 10px; }
 
 html[data-theme="light"] .maintenance-list-item:hover { border-color: var(--dm-border); background: var(--dm-bg-soft); }
 html[data-theme="light"] .maintenance-list-item.active { border-color: #8cb09a; background: #e6f0ea; }
 html[data-theme="light"] .maintenance-list-item small,
 html[data-theme="light"] .maintenance-card-heading p,
 html[data-theme="light"] .maintenance-card-heading a,
-html[data-theme="light"] .maintenance-muted { color: var(--dm-text-muted); }
-html[data-theme="light"] .metadata-row { border-color: var(--dm-border); background: var(--dm-bg-soft); }
+html[data-theme="light"] .maintenance-muted,
+html[data-theme="light"] .cleanup-row small { color: var(--dm-text-muted); }
+html[data-theme="light"] .metadata-row,
+html[data-theme="light"] .cleanup-row { border-color: var(--dm-border); background: var(--dm-bg-soft); }
 html[data-theme="light"] .metadata-row strong,
 html[data-theme="light"] .redirect-review strong { color: var(--dm-text-soft); }
 html[data-theme="light"] .redirect-review { border-color: #a8c9b4; background: #edf6f0; }
@@ -49,6 +60,10 @@ html[data-theme="light"] .health-history-row { border-color: var(--dm-border); c
 
 @media (max-width: 680px) {
   .maintenance-card-heading, .metadata-row, .redirect-review { align-items: stretch; flex-direction: column; }
+  .cleanup-actions { width: 100%; flex-wrap: wrap; }
+  .cleanup-actions button { flex: 1 1 auto; }
+  .cleanup-row { grid-template-columns: 20px minmax(0,1fr); }
+  .cleanup-row .health-badge { grid-column: 2; justify-self: start; }
   .health-history-row { grid-template-columns: 1fr 1fr; }
   .health-history-url, .health-history-row time { grid-column: 1 / -1; }
 }
