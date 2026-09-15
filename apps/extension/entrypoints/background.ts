@@ -1,4 +1,5 @@
 import { browser } from "wxt/browser";
+import { checkLocalHealth } from "../lib/local-health";
 
 const SERVER_KEY = "dockmarkServerUrl";
 const NATIVE_BOOKMARK_MAPPINGS_KEY = "dockmarkNativeBookmarkMappingsV1";
@@ -15,7 +16,7 @@ const BRIDGE_CAPABILITIES = {
   nativeBookmarks: true,
   nativeBookmarkSync: true,
   nativeBookmarkWriteback: true,
-  localHealth: false,
+  localHealth: true,
 } as const;
 
 type RestoreItem = {
@@ -420,6 +421,11 @@ export default defineBackground(() => {
     if (message?.type === "dockmark:get-capabilities") return bridgeStatus();
     if (message?.type === "dockmark:get-open-tabs") return currentWindowTabs();
 
+    if (message?.type === "dockmark:local-health-permission-updated") {
+      void broadcastBridgeEvent("local-health-permission-updated");
+      return { ok: true };
+    }
+
     if (message?.type === "dockmark:activate-tab" && typeof message.tabId === "number") {
       return activateTab(message.tabId);
     }
@@ -455,6 +461,11 @@ export default defineBackground(() => {
         const items = (message.payload as { items?: unknown } | undefined)?.items;
         if (!Array.isArray(items)) throw new Error("Session items must be an array.");
         return restoreItems(items as RestoreItem[]);
+      }
+      if (message.action === "check-local-health") {
+        const url = (message.payload as { url?: unknown } | undefined)?.url;
+        if (!isHttpUrl(url)) throw new Error("Local health URL must use HTTP or HTTPS.");
+        return checkLocalHealth(url);
       }
       if (message.action === "get-native-bookmarks") {
         return nativeBookmarkSnapshot();
