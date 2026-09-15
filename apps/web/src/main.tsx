@@ -10,6 +10,7 @@ import "./search-engines.css";
 import "./bridge.css";
 import "./reorder.css";
 import "./theme.css";
+import "./bookmark-tags.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root");
