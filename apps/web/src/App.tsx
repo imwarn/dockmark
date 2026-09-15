@@ -27,6 +27,7 @@ import {
   listSessions,
   listWorkspaces,
 } from "./api";
+import { listBookmarkTags } from "./tag-api";
 import { BookmarkManager } from "./BookmarkManager";
 import { BrowserExtensionManager } from "./BrowserExtensionManager";
 import { SearchEngineManager } from "./SearchEngineManager";
@@ -65,6 +66,7 @@ export function App() {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [bookmarkTags, setBookmarkTags] = useState<Record<string, string[]>>({});
   const [categories, setCategories] = useState<Category[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceWithItems[]>([]);
   const [sessions, setSessions] = useState<SessionWithItems[]>([]);
@@ -81,15 +83,17 @@ export function App() {
     setLoading(true);
     setDataError(null);
     try {
-      const [nextCategories, nextBookmarks, nextWorkspaces, nextSessions, nextSearchEngines] = await Promise.all([
+      const [nextCategories, nextBookmarks, nextBookmarkTags, nextWorkspaces, nextSessions, nextSearchEngines] = await Promise.all([
         listCategories(),
         listBookmarks(),
+        listBookmarkTags(),
         listWorkspaces(),
         listSessions(),
         listSearchEngines(),
       ]);
       setCategories(nextCategories);
       setBookmarks(nextBookmarks);
+      setBookmarkTags(nextBookmarkTags);
       setWorkspaces(nextWorkspaces);
       setSessions(nextSessions);
       setSearchEngines(nextSearchEngines);
@@ -148,6 +152,11 @@ export function App() {
     [searchEngines],
   );
 
+  const categoryById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+
   const results = useMemo(() => {
     const trimmed = query.trim();
     const normalized = trimmed.toLowerCase();
@@ -199,14 +208,31 @@ export function App() {
       subtitle: `Restore session · ${session.items.length} tabs${session.sourceDevice ? ` · ${session.sourceDevice}` : ""}`,
       score: Math.max(0, 30 - index),
     }));
-    const bookmarkResults: CommandResult[] = bookmarks.map((bookmark) => ({
-      id: bookmark.id,
-      source: "bookmark",
-      title: bookmark.title,
-      subtitle: hostLabel(bookmark.url),
-      url: bookmark.url,
-      score: 30,
-    }));
+    const bookmarkResults: CommandResult[] = bookmarks.flatMap((bookmark) => {
+      const tags = bookmarkTags[bookmark.id] ?? [];
+      const category = bookmark.categoryId ? categoryById.get(bookmark.categoryId) ?? "" : "Uncategorized";
+      const tagTokens = tags.map((tag) => `#${tag}`);
+      const searchable = [
+        bookmark.title,
+        bookmark.url,
+        bookmark.description ?? "",
+        category,
+        ...tags,
+        ...tagTokens,
+      ].join(" ").toLowerCase();
+      if (normalized && !searchable.includes(normalized)) return [];
+      const subtitleParts = [hostLabel(bookmark.url)];
+      if (category) subtitleParts.push(category);
+      if (tagTokens.length) subtitleParts.push(tagTokens.slice(0, 3).join(" "));
+      return [{
+        id: bookmark.id,
+        source: "bookmark" as const,
+        title: bookmark.title,
+        subtitle: subtitleParts.join(" · "),
+        url: bookmark.url,
+        score: 30,
+      }];
+    });
     const navigationResults: CommandResult[] = [{
       id: "navigation:extension",
       source: "navigation",
@@ -218,7 +244,7 @@ export function App() {
     const localCandidates = [...tabResults, ...workspaceResults, ...sessionResults, ...bookmarkResults, ...navigationResults];
     const filtered = normalized
       ? localCandidates.filter((item) =>
-          `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
+          item.source === "bookmark" || `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
         )
       : localCandidates;
     const localResults = rankCommands(filtered).slice(0, trimmed && defaultEngine ? 7 : 8);
@@ -235,7 +261,7 @@ export function App() {
     }
 
     return localResults;
-  }, [bookmarks, bridgeConnected, defaultEngine, openTabs, query, searchEngines, sessions, workspaces]);
+  }, [bookmarkTags, bookmarks, bridgeConnected, categoryById, defaultEngine, openTabs, query, searchEngines, sessions, workspaces]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -401,7 +427,7 @@ export function App() {
           onChanged={refresh}
         />
       ) : view === "bookmarks" ? (
-        <BookmarkManager bookmarks={bookmarks} categories={categories} loading={loading} onChanged={refresh} />
+        <BookmarkManager bookmarks={bookmarks} categories={categories} bookmarkTags={bookmarkTags} loading={loading} onChanged={refresh} />
       ) : view === "search" ? (
         <SearchEngineManager engines={searchEngines} loading={loading} onChanged={refresh} />
       ) : view === "transfer" ? (
@@ -422,7 +448,7 @@ export function App() {
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => void refreshBridge()}
                 onKeyDown={onCommandKeyDown}
-                placeholder="Search open tabs, Dockmark or type !g, !gh, !ddg…"
+                placeholder="Search tabs, bookmarks, descriptions or #tags; type !g, !gh, !ddg…"
                 aria-label="Search Dockmark"
                 aria-controls="dockmark-command-results"
                 aria-activedescendant={results[selectedIndex] ? `command-result-${selectedIndex}` : undefined}
