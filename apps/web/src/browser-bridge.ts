@@ -1,3 +1,5 @@
+import type { HealthStatus } from "@dockmark/core";
+
 export const BRIDGE_PROTOCOL_VERSION = 1;
 
 export interface BridgeCapabilities {
@@ -49,6 +51,24 @@ export interface BridgeWorkspaceResult {
   reused: number;
   pinned: number;
 }
+
+export interface BridgeLocalHealthPermissionRequired {
+  kind: "permission-required";
+  origin: string;
+  pattern: string;
+  url: string;
+}
+
+export interface BridgeLocalHealthResult {
+  kind: "result";
+  status: Exclude<HealthStatus, "unknown" | "local-only" | "ignored">;
+  httpStatus?: number;
+  finalUrl?: string;
+  responseMs: number;
+  errorCode?: string;
+}
+
+export type BridgeLocalHealthResponse = BridgeLocalHealthPermissionRequired | BridgeLocalHealthResult;
 
 export interface NativeBrowserBookmark {
   id: string;
@@ -195,6 +215,10 @@ export async function openWorkspaceWithBridge(items: BridgeWorkspaceItem[]) {
 
 export async function restoreSessionWithBridge(items: BridgeSessionItem[]) {
   return request<{ ok: boolean; opened: number }>("restore-session", { items }, 4000);
+}
+
+export async function checkLocalHealthWithBridge(url: string) {
+  return request<BridgeLocalHealthResponse>("check-local-health", { url }, 12_000);
 }
 
 export async function getNativeBookmarksWithBridge() {
