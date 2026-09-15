@@ -11,6 +11,7 @@ import {
   EXTENSION_DOWNLOAD_URL,
   EXTENSION_RELEASE_URL,
   EXTENSION_RELEASE_VERSION,
+  FIREFOX_EXTENSION_DOWNLOAD_URL,
   NEW_TAB_EXTENSION_DOWNLOAD_URL,
   compareExtensionVersions,
 } from "./extension-distribution";
@@ -97,10 +98,10 @@ export function BrowserExtensionManager() {
 
       <div className="extension-hero-card">
         <div className="extension-hero-copy">
-          <span className="extension-version">Chromium · v{EXTENSION_RELEASE_VERSION}</span>
-          <h2>{status ? `Extension ${status.extensionVersion} detected` : "One Dockmark extension, two install profiles"}</h2>
+          <span className="extension-version">Chromium + Firefox · v{EXTENSION_RELEASE_VERSION}</span>
+          <h2>{status ? `Extension ${status.extensionVersion} detected` : "One Browser Bridge, explicit browser profiles"}</h2>
           <p>
-            Both profiles include the same Browser Bridge, open-tab actions, Sessions and reviewed Browser ↔ Dockmark bookmark sync. Pick exactly one: keep your browser's current New Tab page, or use the local-first Dockmark launcher on every new tab.
+            Chromium keeps the Standard and local-first New Tab profiles. Firefox joins v1.0 with a Standard MV3 preview using the same reviewed Browser Bridge, native-bookmark permission model and local-health safety boundaries.
           </p>
           {status && protocolCompatible && !nativeBookmarksGranted && (
             <div className="extension-permission-callout">
@@ -122,7 +123,7 @@ export function BrowserExtensionManager() {
         <article className="extension-profile extension-profile-recommended">
           <div className="extension-profile-heading">
             <div>
-              <span className="extension-profile-kicker">RECOMMENDED</span>
+              <span className="extension-profile-kicker">CHROMIUM · RECOMMENDED</span>
               <h2>Dockmark New Tab</h2>
             </div>
             <span className="extension-profile-badge">LOCAL FIRST</span>
@@ -144,7 +145,7 @@ export function BrowserExtensionManager() {
         <article className="extension-profile">
           <div className="extension-profile-heading">
             <div>
-              <span className="extension-profile-kicker">STANDARD</span>
+              <span className="extension-profile-kicker">CHROMIUM · STANDARD</span>
               <h2>Dockmark Extension</h2>
             </div>
             <span className="extension-profile-badge">NEW TAB UNCHANGED</span>
@@ -162,26 +163,59 @@ export function BrowserExtensionManager() {
             </button>
           </div>
         </article>
+
+        <article className="extension-profile extension-profile-firefox">
+          <div className="extension-profile-heading">
+            <div>
+              <span className="extension-profile-kicker">FIREFOX · PREVIEW</span>
+              <h2>Dockmark Extension for Firefox</h2>
+            </div>
+            <span className="extension-profile-badge">MV3 STANDARD</span>
+          </div>
+          <p>The Firefox package intentionally starts with the Standard profile. It targets Manifest V3 so Dockmark can keep the same dynamic, explicitly authorized bridge registration model instead of falling back to a broader MV2 permission surface.</p>
+          <ul>
+            <li>Same open-tab, Workspace, Session and reviewed native-bookmark capabilities.</li>
+            <li>Bookmark access stays optional; local/private health access stays per-host and explicit.</li>
+            <li>No New Tab override yet — Firefox New Tab parity waits for real-browser validation.</li>
+          </ul>
+          <div className="extension-actions">
+            <button className="primary" type="button" onClick={() => external(FIREFOX_EXTENSION_DOWNLOAD_URL)}>
+              Download Firefox v{EXTENSION_RELEASE_VERSION}
+            </button>
+          </div>
+        </article>
       </section>
 
       <p className="extension-profile-note">
-        Install <strong>one profile only</strong>. For an existing unpacked Dockmark installation, replace the files in the same extension folder with the profile ZIP contents and click <strong>Reload</strong> in <code>chrome://extensions</code>. Keeping the same folder preserves the extension ID, local mappings and cached New Tab data.
+        Install <strong>one Chromium profile only</strong>. For an existing unpacked Chromium installation, replace the files in the same extension folder and click <strong>Reload</strong> in <code>chrome://extensions</code>; keeping the same folder preserves the extension ID, mappings and New Tab cache. The Firefox GitHub ZIP is an unsigned validation build and is intended for temporary loading through <code>about:debugging</code> until signed distribution is configured.
       </p>
 
       {(guideOpen || !status) && (
         <article className="extension-guide form-card">
           <div className="card-heading">
-            <div><h2>Manual installation</h2><p>Early Access installation from the GitHub Release ZIP.</p></div>
+            <div><h2>Manual installation</h2><p>Release ZIP installation for Chromium and Firefox validation.</p></div>
             <a className="text-action" href={EXTENSION_RELEASE_URL} target="_blank" rel="noreferrer">Release page ↗</a>
           </div>
-          <ol>
-            <li>Choose either <code>dockmark-newtab-chrome-v{EXTENSION_RELEASE_VERSION}.zip</code> or <code>dockmark-chrome-v{EXTENSION_RELEASE_VERSION}.zip</code>, then unzip it.</li>
-            <li>Open <code>chrome://extensions</code> (or the equivalent extensions page in your Chromium browser).</li>
-            <li>Enable <strong>Developer mode</strong>, then choose <strong>Load unpacked</strong>.</li>
-            <li>Select the extracted Dockmark extension folder containing <code>manifest.json</code>.</li>
-            <li>Open the Dockmark extension popup, set this site as the server, then grant site access when prompted.</li>
-            <li>If you need browser bookmark import/sync or manual writeback, separately choose <strong>Enable bookmark access</strong> in the popup.</li>
-          </ol>
+          <div className="extension-guide-columns">
+            <div>
+              <h3>Chromium</h3>
+              <ol>
+                <li>Choose either <code>dockmark-newtab-chrome-v{EXTENSION_RELEASE_VERSION}.zip</code> or <code>dockmark-chrome-v{EXTENSION_RELEASE_VERSION}.zip</code>, then unzip it.</li>
+                <li>Open <code>chrome://extensions</code> (or the equivalent extensions page in your Chromium browser).</li>
+                <li>Enable <strong>Developer mode</strong>, choose <strong>Load unpacked</strong>, then select the folder containing <code>manifest.json</code>.</li>
+                <li>Open the Dockmark popup, set this site as the server, grant site access, then separately enable bookmark access if you need reviewed browser bookmark sync/writeback.</li>
+              </ol>
+            </div>
+            <div>
+              <h3>Firefox preview</h3>
+              <ol>
+                <li>Download <code>dockmark-firefox-v{EXTENSION_RELEASE_VERSION}.zip</code> and unzip it.</li>
+                <li>Open <code>about:debugging#/runtime/this-firefox</code> and choose <strong>Load Temporary Add-on…</strong>.</li>
+                <li>Select the extracted <code>manifest.json</code>. The temporary add-on is removed when Firefox restarts.</li>
+                <li>Configure the Dockmark origin in the popup, approve only that site, then test bookmark access and local-health host permission separately.</li>
+              </ol>
+            </div>
+          </div>
         </article>
       )}
 

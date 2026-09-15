@@ -123,3 +123,53 @@ jobs:
           path: artifacts/*.zip
           if-no-files-found: error
           retention-days: 14
+
+  firefox-extension:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Firefox MV3 extension
+        run: npm run build:extension:firefox
+
+      - name: Package Firefox MV3 extension
+        run: npm run package:extension:firefox
+
+      - name: Validate Firefox package and sources
+        run: |
+          VERSION=$(node -p "require('./apps/extension/package.json').version")
+          STANDARD="apps/extension/.output/dockmark-firefox-v${VERSION}.zip"
+          SOURCES="apps/extension/.output/dockmark-firefox-sources-v${VERSION}.zip"
+          test -f "$STANDARD"
+          test -f "$SOURCES"
+          unzip -Z1 "$STANDARD" | grep -qx "manifest.json"
+          unzip -Z1 "$SOURCES" | grep -qx "package.json"
+          unzip -Z1 "$SOURCES" | grep -qx "wxt.config.ts"
+          unzip -p "$STANDARD" manifest.json | node -e 'let data=""; process.stdin.on("data", c => data += c); process.stdin.on("end", () => { const m=JSON.parse(data); const permissions=new Set(m.permissions || []); const optional=new Set(m.optional_permissions || []); const hosts=new Set(m.optional_host_permissions || []); const gecko=m.browser_specific_settings?.gecko; if (m.manifest_version !== 3) throw new Error("Firefox package must target MV3"); if (m.chrome_url_overrides) throw new Error("Firefox Standard package must not override New Tab"); for (const permission of ["storage","tabs","scripting"]) if (!permissions.has(permission)) throw new Error(`Missing ${permission} permission`); if (!optional.has("bookmarks")) throw new Error("Bookmarks must remain optional"); if (!hosts.has("http://*/*") || !hosts.has("https://*/*")) throw new Error("Host access must remain optional for HTTP(S)"); if (gecko?.id !== "dockmark@imwarn.github.io") throw new Error("Firefox package must have a stable Gecko id"); if (!gecko?.data_collection_permissions?.required?.includes("none")) throw new Error("Firefox package must declare no required data collection"); });'
+
+      - name: Stage Firefox packages
+        run: |
+          VERSION=$(node -p "require('./apps/extension/package.json').version")
+          mkdir -p artifacts
+          cp "apps/extension/.output/dockmark-firefox-v${VERSION}.zip" artifacts/
+          cp "apps/extension/.output/dockmark-firefox-sources-v${VERSION}.zip" artifacts/
+
+      - name: Upload Firefox packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockmark-firefox-extension
+          path: artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 14

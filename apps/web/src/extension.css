@@ -18,6 +18,7 @@
 .extension-profiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
 .extension-profile { min-width: 0; padding: 22px; border: 1px solid #28322d; border-radius: 18px; background: rgba(14,19,17,.78); }
 .extension-profile-recommended { border-color: #3c5a48; background: radial-gradient(circle at 95% 5%, rgba(111,164,128,.12), transparent 16rem), rgba(15,22,18,.9); box-shadow: inset 0 0 0 1px rgba(132,179,148,.035); }
+.extension-profile-firefox { grid-column: 1 / -1; border-color: #35443c; background: radial-gradient(circle at 92% 10%, rgba(113,145,126,.08), transparent 18rem), rgba(14,19,17,.78); }
 .extension-profile-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .extension-profile-heading h2 { margin: 5px 0 0; font-size: 22px; letter-spacing: -.025em; }
 .extension-profile-kicker { color: #769683; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
@@ -28,6 +29,9 @@
 .extension-profile-note { margin: 12px 2px 0; color: #68746d; font-size: 12px; line-height: 1.6; }
 .extension-profile-note code { padding: 2px 5px; border: 1px solid #2d3732; border-radius: 5px; background: #0e1311; color: #c8d4cd; }
 .extension-guide { margin-top: 16px; }
+.extension-guide-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 6px; }
+.extension-guide-columns > div { min-width: 0; }
+.extension-guide h3 { margin: 0 0 10px; font-size: 14px; }
 .extension-guide ol { display: grid; gap: 10px; margin: 4px 0 0; padding-left: 22px; color: #9ba69f; font-size: 13px; line-height: 1.55; }
 .extension-guide code { padding: 2px 5px; border: 1px solid #2d3732; border-radius: 5px; background: #0e1311; color: #c8d4cd; }
 .extension-diagnostics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
@@ -54,6 +58,8 @@
   .extension-hero-card { grid-template-columns: 1fr; }
   .extension-mark { display: none; }
   .extension-profiles { grid-template-columns: 1fr; }
+  .extension-profile-firefox { grid-column: auto; }
+  .extension-guide-columns { grid-template-columns: 1fr; }
   .extension-diagnostics-grid { grid-template-columns: 1fr; }
   .extension-nudge { align-items: flex-start; }
 }

@@ -1,6 +1,6 @@
-export const EXTENSION_RELEASE_VERSION = "0.9.1";
+export const EXTENSION_RELEASE_VERSION = "1.0.0";
 
-// Fill these when Chrome Web Store listings are public. The UI will promote the
+// Fill these when browser-store listings are public. The UI will promote the
 // store action while keeping manual downloads visible.
 export const CHROME_WEB_STORE_URL: string | null = null;
 export const CHROME_NEW_TAB_WEB_STORE_URL: string | null = null;
@@ -10,6 +10,12 @@ export const EXTENSION_DOWNLOAD_URL =
 
 export const NEW_TAB_EXTENSION_DOWNLOAD_URL =
   `https://github.com/imwarn/dockmark/releases/download/v${EXTENSION_RELEASE_VERSION}/dockmark-newtab-chrome-v${EXTENSION_RELEASE_VERSION}.zip`;
+
+export const FIREFOX_EXTENSION_DOWNLOAD_URL =
+  `https://github.com/imwarn/dockmark/releases/download/v${EXTENSION_RELEASE_VERSION}/dockmark-firefox-v${EXTENSION_RELEASE_VERSION}.zip`;
+
+export const FIREFOX_EXTENSION_SOURCES_URL =
+  `https://github.com/imwarn/dockmark/releases/download/v${EXTENSION_RELEASE_VERSION}/dockmark-firefox-sources-v${EXTENSION_RELEASE_VERSION}.zip`;
 
 export const EXTENSION_RELEASE_URL =
   `https://github.com/imwarn/dockmark/releases/tag/v${EXTENSION_RELEASE_VERSION}`;

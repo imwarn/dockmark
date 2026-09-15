@@ -1,16 +1,16 @@
 {
   "name": "@dockmark/extension",
-  "version": "0.9.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wxt",
-    "dev:firefox": "wxt -b firefox",
+    "dev:firefox": "wxt -b firefox --mv3",
     "build": "wxt build",
-    "build:firefox": "wxt build -b firefox",
+    "build:firefox": "wxt build -b firefox --mv3",
     "zip": "wxt zip && node ../../scripts/rename-extension-package.mjs",
     "zip:newtab": "npm run build && node ../../scripts/package-newtab-extension.mjs",
-    "zip:firefox": "wxt zip -b firefox",
+    "zip:firefox": "wxt zip -b firefox --mv3 && node ../../scripts/rename-firefox-extension-package.mjs",
     "typecheck": "wxt prepare && tsc -p tsconfig.json"
   },
   "dependencies": {
