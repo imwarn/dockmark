@@ -104,10 +104,15 @@ async function fetchProbe(url: string, signal: AbortSignal) {
 }
 
 export async function checkLocalHealth(rawUrl: string): Promise<LocalHealthResponse> {
+  const initial = httpUrl(rawUrl);
+  if (inferHealthPolicy(initial.toString()) !== "local-only") {
+    throw new Error("Extension local health checks are restricted to local/private URLs.");
+  }
+
   const started = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let current = httpUrl(rawUrl);
+  let current = initial;
   let redirected = false;
 
   try {
@@ -143,8 +148,8 @@ export async function checkLocalHealth(rawUrl: string): Promise<LocalHealthRespo
           };
         }
 
-        // Do not expand extension access from a local target to a public host.
-        // Record the redirect for review and let the normal server checker own public targets.
+        // Never broaden browser access from a local target to a public host.
+        // Surface the public redirect for explicit review instead.
         if (inferHealthPolicy(next.toString()) !== "local-only") {
           return {
             kind: "result",
