@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
 import { updateBookmark } from "./api";
 import {
-  clearAiProviderKey,
   generateAiOrganizationSuggestions,
+  getAiProviderStatus,
   loadAiProviderSettings,
   saveAiProviderSettings,
   type AiOrganizationSuggestion,
@@ -30,6 +30,7 @@ function sameTags(left: string[], right: string[]) {
 
 export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Props) {
   const [provider, setProvider] = useState<AiProviderSettings>(() => loadAiProviderSettings());
+  const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
   const [bookmarkTags, setBookmarkTags] = useState<Record<string, string[]>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [suggestions, setSuggestions] = useState<AiOrganizationSuggestion[]>([]);
@@ -46,8 +47,10 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     void (async () => {
       setLoadingTags(true);
       try {
-        const next = await listBookmarkTags();
-        if (!cancelled) setBookmarkTags(next);
+        const [nextTags, status] = await Promise.all([listBookmarkTags(), getAiProviderStatus()]);
+        if (cancelled) return;
+        setBookmarkTags(nextTags);
+        setApiKeyConfigured(status.apiKeyConfigured);
       } catch (caught) {
         if (!cancelled) setError(messageFrom(caught));
       } finally {
@@ -86,13 +89,18 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
   function saveProvider() {
     setError(null);
     saveAiProviderSettings(provider);
-    setMessage("AI provider configuration saved in this browser only.");
+    setMessage("Provider endpoint and model saved in this browser. The API key stays in the Worker secret store.");
   }
 
-  function clearProviderKey() {
-    clearAiProviderKey();
-    setProvider((current) => ({ ...current, apiKey: "" }));
-    setMessage("Local API key cleared.");
+  async function refreshKeyStatus() {
+    setError(null);
+    try {
+      const status = await getAiProviderStatus();
+      setApiKeyConfigured(status.apiKeyConfigured);
+      setMessage(status.apiKeyConfigured ? "Worker AI secret is configured." : "Worker AI secret is still missing.");
+    } catch (caught) {
+      setError(messageFrom(caught));
+    }
   }
 
   function toggleBookmark(id: string) {
@@ -122,11 +130,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     setAcceptedIds(new Set());
     try {
       saveAiProviderSettings(provider);
-      const next = await generateAiOrganizationSuggestions(provider, {
-        bookmarks: selected,
-        categories,
-        bookmarkTags,
-      });
+      const next = await generateAiOrganizationSuggestions(provider, selected.map((bookmark) => bookmark.id));
       setSuggestions(next);
       setAcceptedIds(new Set(next.map((suggestion) => suggestion.bookmarkId)));
       setMessage(
@@ -158,7 +162,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     setMessage(null);
     let applied = 0;
     let skipped = 0;
-    let failed = 0;
+    const failedIds = new Set<string>();
 
     try {
       for (const suggestion of accepted) {
@@ -181,16 +185,18 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
           setBookmarkTags((tags) => ({ ...tags, [current.id]: suggestion.tags }));
           applied += 1;
         } catch {
-          failed += 1;
+          failedIds.add(suggestion.bookmarkId);
         }
       }
       await onChanged();
-      setSuggestions((current) => current.filter((suggestion) => !acceptedIds.has(suggestion.bookmarkId) || failed > 0));
-      setAcceptedIds(new Set());
+      setSuggestions((current) => current.filter((suggestion) =>
+        !acceptedIds.has(suggestion.bookmarkId) || failedIds.has(suggestion.bookmarkId),
+      ));
+      setAcceptedIds(new Set(failedIds));
       setMessage(
         `Applied ${applied} reviewed AI suggestion${applied === 1 ? "" : "s"}` +
         `${skipped ? `; ${skipped} skipped because the bookmark is no longer AI-eligible` : ""}` +
-        `${failed ? `; ${failed} failed and should be reviewed again` : ""}. URLs and HealthPolicy were untouched.`,
+        `${failedIds.size ? `; ${failedIds.size} failed and remain selected for review` : ""}. URLs and HealthPolicy were untouched.`,
       );
     } catch (caught) {
       setError(messageFrom(caught));
@@ -205,10 +211,10 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
         <div>
           <p className="eyebrow">AI-ASSISTED ORGANIZATION</p>
           <h2>Suggest first.<br />Apply only after review.</h2>
-          <p>Classify bookmarks into existing categories, clean titles, draft descriptions and suggest tags. Dockmark never sends or changes a bookmark until you explicitly select it, generate suggestions and apply the reviewed diff.</p>
+          <p>Classify bookmarks into existing categories, clean titles, draft descriptions and suggest tags. Dockmark never sends a bookmark until you explicitly select it and click Generate, and it never applies a suggestion until you review the diff.</p>
         </div>
         <div className="settings-sync-state">
-          <strong>Local-first provider</strong>
+          <strong>{apiKeyConfigured === null ? "Checking AI secret" : apiKeyConfigured ? "Worker secret ready" : "Worker secret required"}</strong>
           <span>Max 20 bookmarks / request</span>
         </div>
       </div>
@@ -216,7 +222,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
       <div className="settings-grid">
         <article className="form-card settings-card ai-provider-card">
           <div className="card-heading">
-            <div><h3>OpenAI-compatible provider</h3><p>Stored in this browser's localStorage. Requests go directly from your browser to the configured endpoint.</p></div>
+            <div><h3>OpenAI-compatible provider</h3><p>Endpoint and model are browser-local preferences. The API key is never stored in Web localStorage or D1; the Worker reads it from <code>DOCKMARK_AI_API_KEY</code>.</p></div>
           </div>
           <label className="settings-field">
             <span>Chat completions endpoint</span>
@@ -226,20 +232,18 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
             <span>Model</span>
             <input value={provider.model} onChange={(event) => setProvider({ ...provider, model: event.target.value })} placeholder="Provider model id" autoComplete="off" />
           </label>
-          <label className="settings-field">
-            <span>API key (local only)</span>
-            <input type="password" value={provider.apiKey} onChange={(event) => setProvider({ ...provider, apiKey: event.target.value })} placeholder="Optional for local providers" autoComplete="off" />
-          </label>
           <div className="ai-provider-actions">
-            <button className="secondary" type="button" onClick={saveProvider}>Save locally</button>
-            <button className="text-action muted-action" type="button" onClick={clearProviderKey} disabled={!provider.apiKey}>Clear API key</button>
+            <button className="secondary" type="button" onClick={saveProvider}>Save endpoint + model locally</button>
+            <button className="text-action" type="button" onClick={() => void refreshKeyStatus()}>Refresh secret status</button>
           </div>
-          <p className="settings-footnote">The API key is not written to D1 or Dockmark settings. Your selected bookmark title, URL, description, category and tags are sent to the provider only when you click Generate. The provider must allow browser CORS.</p>
+          <p className="settings-footnote">
+            Configure the secret in your self-hosted Worker with <code>npx wrangler secret put DOCKMARK_AI_API_KEY</code> or the Cloudflare dashboard. The provider endpoint must be public HTTPS. Selected bookmark content is loaded by the Worker and sent only after Generate; the key never enters the page.
+          </p>
         </article>
 
         <article className="form-card settings-card ai-selection-card">
           <div className="card-heading">
-            <div><h3>Select bookmarks</h3><p>Only <strong>Normal</strong> HealthPolicy bookmarks are eligible in this first stage. Local-only, ignore and manual entries are excluded from AI requests.</p></div>
+            <div><h3>Select bookmarks</h3><p>Only <strong>Normal</strong> HealthPolicy bookmarks are eligible in this first stage. Local-only, ignore and manual entries are excluded before the provider request.</p></div>
             <span>{selectedIds.size}/20</span>
           </div>
           <input className="ai-bookmark-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter title or URL…" aria-label="Filter bookmarks for AI organization" />
@@ -267,8 +271,8 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
               );
             })}
           </div>
-          <button className="primary ai-generate-button" type="button" disabled={generating || applying || !selectedIds.size || !provider.model.trim() || !provider.endpoint.trim()} onClick={() => void generate()}>
-            {generating ? "Generating suggestions…" : `Generate suggestions ${selectedIds.size}`}
+          <button className="primary ai-generate-button" type="button" disabled={generating || applying || apiKeyConfigured !== true || !selectedIds.size || !provider.model.trim() || !provider.endpoint.trim()} onClick={() => void generate()}>
+            {generating ? "Generating suggestions…" : apiKeyConfigured === false ? "Configure Worker AI secret first" : `Generate suggestions ${selectedIds.size}`}
           </button>
         </article>
       </div>
@@ -320,7 +324,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
         </section>
       )}
 
-      {loadingTags && <p className="settings-footnote">Loading existing tags…</p>}
+      {loadingTags && <p className="settings-footnote">Loading existing tags and AI secret status…</p>}
     </section>
   );
 }
