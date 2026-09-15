@@ -9,6 +9,12 @@ import {
   updateBookmark,
   type BookmarkMetadata,
 } from "./api";
+import {
+  checkLocalHealthWithBridge,
+  getBridgeStatus,
+  onBridgeEvent,
+} from "./browser-bridge";
+import { recordLocalBookmarkHealthResult } from "./local-health-api";
 import "./maintenance.css";
 
 interface Props {
@@ -80,6 +86,13 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
     setCleanupSelection((current) => new Set([...current].filter((id) => allowed.has(id))));
   }, [cleanupCandidates]);
 
+  useEffect(() => onBridgeEvent((event) => {
+    if (event === "local-health-permission-updated") {
+      setError(null);
+      setNotice("Local host access granted. Run Check locally again to record the result.");
+    }
+  }), []);
+
   useEffect(() => {
     if (!selectedId) {
       setMetadata(null);
@@ -107,7 +120,7 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
   }, [selectedId]);
 
   async function fetchMetadata() {
-    if (!selected) return;
+    if (!selected || selected.healthPolicy === "local-only") return;
     setMetadataBusy(true);
     setError(null);
     setNotice(null);
@@ -131,8 +144,43 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
       const check = await checkBookmarkHealth(selected.id);
       const history = await listBookmarkHealthChecks(selected.id);
       setChecks(history);
-      setNotice(`Health check: ${healthLabels[check.status]}.`);
+      setNotice(`Server health check: ${healthLabels[check.status]}.`);
       await onChanged();
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setHealthBusy(false);
+    }
+  }
+
+  async function runLocalHealthCheck() {
+    if (!selected || selected.healthPolicy !== "local-only") return;
+    setHealthBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const bridge = await getBridgeStatus();
+      if (!bridge.capabilities.localHealth) {
+        throw new Error("This Dockmark browser extension does not support local health checks. Update it to v0.9.0 or later.");
+      }
+
+      const result = await checkLocalHealthWithBridge(selected.url);
+      if (result.kind === "permission-required") {
+        setNotice(`Browser host access is required for ${result.pattern}. Approve the permission in the extension tab, then run Check locally again.`);
+        return;
+      }
+
+      const check = await recordLocalBookmarkHealthResult(selected.id, {
+        status: result.status,
+        ...(result.httpStatus === undefined ? {} : { httpStatus: result.httpStatus }),
+        ...(result.finalUrl === undefined ? {} : { finalUrl: result.finalUrl }),
+        responseMs: result.responseMs,
+        ...(result.errorCode === undefined ? {} : { errorCode: result.errorCode }),
+      });
+      const history = await listBookmarkHealthChecks(selected.id);
+      setChecks(history);
+      await onChanged();
+      setNotice(`Browser health check: ${healthLabels[check.status]}.`);
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -254,10 +302,19 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                 <div className="maintenance-card-heading">
                   <div>
                     <h3>Page metadata</h3>
-                    <p>Server fetches are limited to public HTTP(S) pages, follow at most five redirects and read at most 512 KiB of HTML.</p>
+                    <p>
+                      {selected.healthPolicy === "local-only"
+                        ? "Local/private page metadata is never fetched by the Worker. Local health checks stay in the browser extension instead."
+                        : "Server fetches are limited to public HTTP(S) pages, follow at most five redirects and read at most 512 KiB of HTML."}
+                    </p>
                   </div>
-                  <button className="secondary" type="button" disabled={metadataBusy || loading} onClick={() => void fetchMetadata()}>
-                    {metadataBusy ? "Fetching…" : metadata ? "Refresh metadata" : "Fetch metadata"}
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={metadataBusy || loading || selected.healthPolicy === "local-only"}
+                    onClick={() => void fetchMetadata()}
+                  >
+                    {selected.healthPolicy === "local-only" ? "Server metadata disabled" : metadataBusy ? "Fetching…" : metadata ? "Refresh metadata" : "Fetch metadata"}
                   </button>
                 </div>
 
@@ -284,7 +341,11 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                     <p className="maintenance-muted">Fetched {displayTime(metadata.fetchedAt)}. Suggestions remain separate until you apply them.</p>
                   </div>
                 ) : (
-                  <p className="maintenance-muted">No stored metadata. Fetching does not change the bookmark by itself.</p>
+                  <p className="maintenance-muted">
+                    {selected.healthPolicy === "local-only"
+                      ? "No server metadata is fetched for this local/private bookmark."
+                      : "No stored metadata. Fetching does not change the bookmark by itself."}
+                  </p>
                 )}
               </article>
 
@@ -292,16 +353,28 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                 <div className="maintenance-card-heading">
                   <div>
                     <h3>Health history</h3>
-                    <p>Server checks remain disabled for ignored and local/private bookmarks.</p>
+                    <p>
+                      {selected.healthPolicy === "local-only"
+                        ? "Local/private checks run only in the paired browser extension after you explicitly allow the exact hostname."
+                        : "Server checks remain disabled for ignored bookmarks. Manual-policy bookmarks can still be checked explicitly."}
+                    </p>
                   </div>
-                  <button
-                    className="secondary"
-                    type="button"
-                    disabled={healthBusy || selected.healthPolicy === "ignore" || selected.healthPolicy === "local-only"}
-                    onClick={() => void runHealthCheck()}
-                  >
-                    {healthBusy ? "Checking…" : "Check now"}
-                  </button>
+                  <div className="health-actions">
+                    {selected.healthPolicy === "local-only" ? (
+                      <button className="secondary" type="button" disabled={healthBusy} onClick={() => void runLocalHealthCheck()}>
+                        {healthBusy ? "Checking locally…" : "Check locally"}
+                      </button>
+                    ) : (
+                      <button
+                        className="secondary"
+                        type="button"
+                        disabled={healthBusy || selected.healthPolicy === "ignore"}
+                        onClick={() => void runHealthCheck()}
+                      >
+                        {healthBusy ? "Checking…" : selected.healthPolicy === "ignore" ? "Ignored" : "Check now"}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {redirectedUrl && (
@@ -315,6 +388,7 @@ export function BookmarkMaintenance({ bookmarks, onChanged }: Props) {
                   {checks.slice(0, 10).map((check) => (
                     <div className="health-history-row" key={check.id}>
                       <span className={`health-badge status-${check.status}`}>{healthLabels[check.status]}</span>
+                      <span className={`health-source source-${check.source ?? "server"}`}>{check.source === "extension" ? "Browser" : "Server"}</span>
                       <span>{check.httpStatus ?? "—"}</span>
                       <span>{check.responseMs == null ? "—" : `${check.responseMs} ms`}</span>
                       <span className="health-history-url">{check.finalUrl ?? selected.url}</span>
