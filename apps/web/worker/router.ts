@@ -12,6 +12,10 @@ import {
   requireSameOrigin,
 } from "./auth";
 import {
+  CaptureInboxHttpError,
+  handleCaptureInboxApi,
+} from "./capture-inbox";
+import {
   handleLocalHealthResultApi,
   LocalHealthHttpError,
 } from "./local-health-result";
@@ -48,6 +52,10 @@ function problem(status: number, code: string, message: string) {
 function normalizedPathname(request: Request) {
   const pathname = new URL(request.url).pathname;
   return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+}
+
+function deviceCanCapture(request: Request, pathname: string) {
+  return request.method.toUpperCase() === "POST" && pathname === "/api/capture/bookmark";
 }
 
 async function settingsResponse(request: Request, env: Env, pathname: string) {
@@ -100,8 +108,19 @@ export default {
 
       if (principal.kind === "session") {
         requireSameOrigin(request);
-      } else if (!deviceCanAccess(request, pathname)) {
+      } else if (!deviceCanAccess(request, pathname) && !deviceCanCapture(request, pathname)) {
         return problem(403, "device_scope_denied", "This paired extension token is not allowed to perform that operation.");
+      }
+
+      if (pathname === "/api/capture/bookmark" || pathname === "/api/inbox" || /^\/api\/inbox\/[^/]+$/.test(pathname)) {
+        try {
+          const response = await handleCaptureInboxApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof CaptureInboxHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Capture/Inbox API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
       }
 
       if (pathname === "/api/ai/status" || pathname === "/api/ai/organize") {

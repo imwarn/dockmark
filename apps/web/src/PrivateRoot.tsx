@@ -1,11 +1,14 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { App } from "./App";
+import { InboxPage } from "./InboxPage";
 import { SettingsPage } from "./SettingsPage";
 import { getAuthStatus, login, logout, type AuthStatus } from "./auth-client";
 import "./security.css";
 
 function targetView() {
-  return window.location.pathname.startsWith("/app/settings") ? "settings" : "app";
+  if (window.location.pathname.startsWith("/app/settings")) return "settings";
+  if (window.location.pathname.startsWith("/app/inbox")) return "inbox";
+  return "app";
 }
 
 function navigate(path: string) {
@@ -28,6 +31,7 @@ function PrivateNavigation({ children, onLogout }: { children: ReactNode; onLogo
         <a href="/" className="private-utility-brand"><span>D·</span> Public page</a>
         <nav>
           <button className={path === "/app" ? "active" : ""} type="button" onClick={() => navigate("/app")}>Workspace</button>
+          <button className={path.startsWith("/app/inbox") ? "active" : ""} type="button" onClick={() => navigate("/app/inbox")}>Inbox</button>
           <button className={path.startsWith("/app/settings") ? "active" : ""} type="button" onClick={() => navigate("/app/settings")}>Settings</button>
           <button type="button" onClick={() => void onLogout()}>Sign out</button>
         </nav>
@@ -150,10 +154,14 @@ export function PrivateRoot() {
   if (!status?.configured) return <SetupRequired onRetry={refreshStatus} />;
   if (!status.authenticated || status.kind !== "session") return <LoginCard onAuthenticated={refreshStatus} />;
 
-  const view = path.startsWith("/app/settings") ? "settings" : targetView();
+  const view = path.startsWith("/app/settings")
+    ? "settings"
+    : path.startsWith("/app/inbox")
+      ? "inbox"
+      : targetView();
   return (
     <PrivateNavigation onLogout={signOut}>
-      {view === "settings" ? <SettingsPage /> : <App />}
+      {view === "settings" ? <SettingsPage /> : view === "inbox" ? <InboxPage /> : <App />}
     </PrivateNavigation>
   );
 }

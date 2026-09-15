@@ -58,6 +58,7 @@
 - [x] Firefox deployed-origin runtime validation (`docs/FIREFOX_VALIDATION.md`)
 - [x] New Tab local snapshot search across bookmark title, URL, description, category and `#tag` terms
 - [x] one-click New Tab local snapshot reset that leaves cloud data, pairing, browser settings and bookmark mappings untouched; test-phase caches are reseeded rather than migrated
+- [x] dedicated transparent New Tab `D·` favicon with light/dark browser-chrome adaptation
 - [ ] signed Firefox distribution / AMO channel after runtime validation
 
 ## Deployment
@@ -80,3 +81,14 @@
 - [x] preserve tags in Dockmark JSON export/import
 - [x] richer tag browsing/search surfaces outside the AI review workflow
 - [ ] optional provider adapters for Responses-style APIs, custom authentication or other non-Chat-Completions protocols
+
+## V4 — capture and smart library
+
+- [x] paired extension Quick Capture: save the active HTTP/HTTPS tab directly into Dockmark Inbox
+- [x] exact-URL duplicate review before insertion; duplicate capture never creates a second bookmark
+- [x] Inbox as a system review state rather than a synthetic category
+- [x] Web Inbox filing flow: keep uncategorized or move to an existing category, then clear Inbox state explicitly
+- [x] paired device scope remains append-only for Quick Capture; it cannot edit/delete existing Dockmark bookmarks
+- [ ] reviewed multi-tab capture from selected/current-window tabs into Inbox
+- [ ] optional metadata suggestion refresh for newly captured public URLs, still behind explicit review
+- [ ] saved filters / Smart Collections built from category, tags, domain, health and Inbox state
