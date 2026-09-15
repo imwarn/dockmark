@@ -1,0 +1,54 @@
+.maintenance-section { display: grid; gap: 16px; margin-bottom: 46px; }
+.maintenance-heading { margin: 0; }
+.maintenance-grid { display: grid; grid-template-columns: minmax(260px, .72fr) minmax(0, 1.45fr); gap: 14px; align-items: start; }
+.maintenance-list { display: grid; gap: 7px; max-height: 720px; overflow: auto; padding: 10px; }
+.maintenance-list-item { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 12px; border: 1px solid transparent; border-radius: 11px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.maintenance-list-item:hover { border-color: #2d3932; background: #111713; }
+.maintenance-list-item.active { border-color: #496653; background: #142019; }
+.maintenance-list-item > span { display: grid; gap: 4px; min-width: 0; }
+.maintenance-list-item strong, .maintenance-list-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.maintenance-list-item strong { font-size: 13px; }
+.maintenance-list-item small { color: #77827c; font-size: 10px; }
+.maintenance-list-item em { font-size: 9px; font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
+.maintenance-inspector { display: grid; gap: 14px; min-width: 0; }
+.maintenance-card { display: grid; gap: 16px; padding: 18px; }
+.maintenance-card-heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; }
+.maintenance-card-heading h3 { margin: 4px 0 5px; font-size: 16px; }
+.maintenance-card-heading p { margin: 0; max-width: 650px; color: #77827c; font-size: 11px; line-height: 1.55; }
+.maintenance-card-heading a { display: block; overflow: hidden; max-width: 650px; color: #8fa097; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.maintenance-empty, .maintenance-muted { color: #77827c; font-size: 11px; }
+.maintenance-feedback { margin: 0; }
+.metadata-fields { display: grid; gap: 8px; }
+.metadata-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 58px; padding: 10px 12px; border: 1px solid #27312c; border-radius: 11px; background: #0f1512; }
+.metadata-row > span, .redirect-review > span { display: grid; gap: 4px; min-width: 0; }
+.metadata-row small, .redirect-review small { color: #6f7b74; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.metadata-row strong, .redirect-review strong { overflow-wrap: anywhere; color: #bdc9c1; font-size: 11px; font-weight: 550; line-height: 1.45; }
+.redirect-review { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px; border: 1px solid #42604c; border-radius: 12px; background: #101b14; }
+.health-history { display: grid; gap: 6px; }
+.health-history-row { display: grid; grid-template-columns: 105px 52px 74px minmax(120px,1fr) 150px; align-items: center; gap: 10px; min-height: 38px; padding: 7px 9px; border-bottom: 1px solid #222b27; color: #849089; font-size: 10px; }
+.health-history-row:last-child { border-bottom: 0; }
+.health-history-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.maintenance-health { color: #76827b; }
+
+html[data-theme="light"] .maintenance-list-item:hover { border-color: var(--dm-border); background: var(--dm-bg-soft); }
+html[data-theme="light"] .maintenance-list-item.active { border-color: #8cb09a; background: #e6f0ea; }
+html[data-theme="light"] .maintenance-list-item small,
+html[data-theme="light"] .maintenance-card-heading p,
+html[data-theme="light"] .maintenance-card-heading a,
+html[data-theme="light"] .maintenance-muted { color: var(--dm-text-muted); }
+html[data-theme="light"] .metadata-row { border-color: var(--dm-border); background: var(--dm-bg-soft); }
+html[data-theme="light"] .metadata-row strong,
+html[data-theme="light"] .redirect-review strong { color: var(--dm-text-soft); }
+html[data-theme="light"] .redirect-review { border-color: #a8c9b4; background: #edf6f0; }
+html[data-theme="light"] .health-history-row { border-color: var(--dm-border); color: var(--dm-text-muted); }
+
+@media (max-width: 900px) {
+  .maintenance-grid { grid-template-columns: 1fr; }
+  .maintenance-list { max-height: 300px; }
+}
+
+@media (max-width: 680px) {
+  .maintenance-card-heading, .metadata-row, .redirect-review { align-items: stretch; flex-direction: column; }
+  .health-history-row { grid-template-columns: 1fr 1fr; }
+  .health-history-url, .health-history-row time { grid-column: 1 / -1; }
+}
