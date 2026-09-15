@@ -7,6 +7,7 @@ import "./style.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root");
+const appRoot = root;
 
 let pending: PendingLocalHealthPermission | null = null;
 let busy = false;
@@ -20,7 +21,7 @@ async function closeCurrentTab() {
 }
 
 function render() {
-  root.innerHTML = "";
+  appRoot.innerHTML = "";
   const main = document.createElement("main");
   main.className = "permission-shell";
 
@@ -88,7 +89,7 @@ function render() {
   }
 
   main.append(card);
-  root.append(main);
+  appRoot.append(main);
 }
 
 async function loadPending() {
