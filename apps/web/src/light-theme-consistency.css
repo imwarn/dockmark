@@ -1,0 +1,221 @@
+/* Final light-mode cleanup for the older Transfer / Extension / Public Page
+   surfaces that intentionally used dark inverse cards before the shared theme
+   token pass. Dark mode remains unchanged. */
+
+html[data-theme="light"] .extension-state {
+  border-color: var(--dm-border);
+  background: var(--dm-bg-card);
+  color: var(--dm-text-muted);
+}
+html[data-theme="light"] .extension-state-success {
+  border-color: #a8cbb5;
+  background: #eef8f1;
+  color: #315f47;
+}
+html[data-theme="light"] .extension-state-warning {
+  border-color: #dfc995;
+  background: #fff8e9;
+  color: #7a6328;
+}
+html[data-theme="light"] .extension-state-danger {
+  border-color: #e1b8b4;
+  background: var(--dm-danger-bg);
+  color: #9f4e49;
+}
+
+html[data-theme="light"] .extension-hero-card {
+  border-color: var(--dm-border);
+  background:
+    radial-gradient(circle at 90% 20%, rgba(79,128,99,.10), transparent 17rem),
+    rgba(255,255,255,.88);
+  box-shadow: 0 18px 44px rgba(40,67,54,.05);
+}
+html[data-theme="light"] .extension-version,
+html[data-theme="light"] .extension-profile-kicker { color: var(--dm-accent); }
+html[data-theme="light"] .extension-hero-copy h2,
+html[data-theme="light"] .extension-profile-heading h2 { color: var(--dm-text); }
+html[data-theme="light"] .extension-hero-copy > p,
+html[data-theme="light"] .extension-profile > p,
+html[data-theme="light"] .extension-profile ul,
+html[data-theme="light"] .extension-profile-note { color: var(--dm-text-muted); }
+html[data-theme="light"] .extension-mark {
+  border-color: #bdd2c5;
+  background: #e8f1eb;
+  color: var(--dm-accent-strong);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.7), 0 16px 36px rgba(40,67,54,.08);
+}
+html[data-theme="light"] .extension-profile,
+html[data-theme="light"] .extension-profile-firefox {
+  border-color: var(--dm-border);
+  background: rgba(255,255,255,.86);
+  box-shadow: 0 12px 30px rgba(40,67,54,.035);
+}
+html[data-theme="light"] .extension-profile-recommended {
+  border-color: #a8cbb5;
+  background:
+    radial-gradient(circle at 95% 5%, rgba(79,128,99,.11), transparent 17rem),
+    #f8fbf9;
+  box-shadow: inset 0 0 0 1px rgba(79,128,99,.05), 0 12px 30px rgba(40,67,54,.04);
+}
+html[data-theme="light"] .extension-profile-badge {
+  border-color: #b9d0c1;
+  background: #edf5f0;
+  color: #426d55;
+}
+html[data-theme="light"] .extension-profile-note code,
+html[data-theme="light"] .extension-guide code {
+  border-color: var(--dm-border);
+  background: var(--dm-bg-soft);
+  color: var(--dm-text-soft);
+}
+html[data-theme="light"] .extension-guide ol,
+html[data-theme="light"] .diagnostic-list dt,
+html[data-theme="light"] .capability-list span,
+html[data-theme="light"] .extension-diagnostic-note { color: var(--dm-text-muted); }
+html[data-theme="light"] .diagnostic-list dd { color: var(--dm-text-soft); }
+html[data-theme="light"] .diagnostic-list > div,
+html[data-theme="light"] .capability-list > div,
+html[data-theme="light"] .extension-diagnostic-note { border-color: var(--dm-border); }
+html[data-theme="light"] .extension-nudge {
+  border-color: var(--dm-border);
+  background: rgba(255,255,255,.82);
+}
+html[data-theme="light"] .extension-nudge:hover {
+  border-color: #a8cbb5;
+  background: var(--dm-hover-bg);
+}
+html[data-theme="light"] .extension-nudge-copy span { color: var(--dm-text-muted); }
+html[data-theme="light"] .extension-nudge-action { color: var(--dm-accent-strong); }
+
+html[data-theme="light"] .file-drop {
+  border-color: var(--dm-border-strong);
+  background: #fbfcfb;
+  color: var(--dm-text);
+}
+html[data-theme="light"] .file-drop:hover {
+  border-color: var(--dm-accent);
+  background: var(--dm-hover-bg);
+}
+html[data-theme="light"] .file-drop span,
+html[data-theme="light"] .native-import-actions > span { color: var(--dm-text-muted); }
+html[data-theme="light"] .native-readonly {
+  border-color: #a8cbb5;
+  background: #eef8f1;
+  color: #426d55;
+}
+html[data-theme="light"] .success-banner {
+  border-color: #a8cbb5;
+  background: var(--dm-success-bg);
+  color: #315f47;
+}
+html[data-theme="light"] .import-preview,
+html[data-theme="light"] .mapping-preview {
+  border-color: var(--dm-border);
+  background: rgba(255,255,255,.90);
+  color: var(--dm-text);
+  box-shadow: 0 14px 34px rgba(40,67,54,.035);
+}
+html[data-theme="light"] .preview-heading,
+html[data-theme="light"] .import-stats,
+html[data-theme="light"] .mapping-stats,
+html[data-theme="light"] .preview-limit,
+html[data-theme="light"] .mapping-note { border-color: var(--dm-border); }
+html[data-theme="light"] .import-stats span,
+html[data-theme="light"] .mapping-stats span {
+  border-color: var(--dm-border);
+  color: var(--dm-text-muted);
+  background: #f8faf9;
+}
+html[data-theme="light"] .import-stats strong,
+html[data-theme="light"] .mapping-stats strong { color: var(--dm-text); }
+html[data-theme="light"] .import-row:hover,
+html[data-theme="light"] .mapping-row:hover { background: var(--dm-hover-bg); }
+html[data-theme="light"] .import-row:has(input:checked) {
+  background: var(--dm-selected-bg);
+}
+html[data-theme="light"] .import-copy strong,
+html[data-theme="light"] .mapping-copy strong { color: var(--dm-text); }
+html[data-theme="light"] .import-copy small,
+html[data-theme="light"] .import-copy span,
+html[data-theme="light"] .mapping-copy small,
+html[data-theme="light"] .preview-limit,
+html[data-theme="light"] .mapping-note,
+html[data-theme="light"] .mapping-review-note { color: var(--dm-text-muted); }
+html[data-theme="light"] .import-status,
+html[data-theme="light"] .mapping-status {
+  border-color: var(--dm-border);
+  background: var(--dm-bg-soft);
+  color: var(--dm-text-muted);
+}
+html[data-theme="light"] .status-mapped .import-status,
+html[data-theme="light"] .mapping-status-synced {
+  border-color: #a8cbb5;
+  background: #eef8f1;
+  color: #426d55;
+}
+html[data-theme="light"] .status-invalid .import-status,
+html[data-theme="light"] .mapping-status-cloud-changed,
+html[data-theme="light"] .mapping-status-conflict {
+  border-color: #e1b8b4;
+  background: var(--dm-danger-bg);
+  color: #9f4e49;
+}
+html[data-theme="light"] .policy-local-only,
+html[data-theme="light"] .mapping-status-native-changed,
+html[data-theme="light"] .mapping-status-mapping-stale,
+html[data-theme="light"] .mapping-status-native-missing,
+html[data-theme="light"] .mapping-status-cloud-missing {
+  border-color: #dfc995;
+  background: #fff8e9;
+  color: #7a6328;
+}
+html[data-theme="light"] .mapping-row-review {
+  border-color: #e1b8b4;
+  background: #fff7f6;
+}
+html[data-theme="light"] .mapping-row-review:hover { background: #fff2f0; }
+html[data-theme="light"] .mapping-review-panel { border-color: #ead2cf; }
+html[data-theme="light"] .mapping-review-panel > p { color: #8b625f; }
+html[data-theme="light"] .mapping-review-sides > div {
+  border-color: var(--dm-border);
+  background: #fbfcfb;
+}
+html[data-theme="light"] .mapping-review-sides span,
+html[data-theme="light"] .mapping-review-sides small { color: var(--dm-text-muted); }
+html[data-theme="light"] .mapping-review-sides strong {
+  border-color: #c4d8cb;
+  background: #eef5f0;
+  color: var(--dm-text);
+}
+html[data-theme="light"] .mapping-review-sides strong::before { color: var(--dm-accent); }
+html[data-theme="light"] .mapping-relink-control select {
+  border-color: var(--dm-border-strong);
+  background: var(--dm-input-bg);
+  color: var(--dm-text);
+}
+
+/* Public Page curation should behave like the rest of Settings in light mode;
+   it is no longer presented as a dark inverse island. */
+html[data-theme="light"] .public-bookmark-row {
+  border-color: var(--dm-border);
+  background: #ffffff;
+  color: var(--dm-text);
+}
+html[data-theme="light"] .public-bookmark-row:hover {
+  border-color: #b7cdbf;
+  background: var(--dm-hover-bg);
+}
+html[data-theme="light"] .public-bookmark-row strong { color: var(--dm-text); }
+html[data-theme="light"] .public-bookmark-row small { color: var(--dm-text-muted); }
+html[data-theme="light"] .public-bookmark-row em {
+  color: var(--dm-text-muted);
+  font-weight: 700;
+  letter-spacing: .1em;
+}
+html[data-theme="light"] .public-bookmark-row input { accent-color: var(--dm-accent); }
+html[data-theme="light"] .public-bookmark-row:has(input:checked) {
+  border-color: #9fc5ae;
+  background: var(--dm-selected-bg);
+  box-shadow: inset 0 0 0 1px rgba(79,128,99,.08);
+}
+html[data-theme="light"] .public-bookmark-row:has(input:checked) em { color: var(--dm-accent-strong); }
