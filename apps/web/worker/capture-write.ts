@@ -15,6 +15,9 @@ interface D1PreparedStatementLike {
 
 interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatementLike;
+}
+
+interface D1BatchDatabaseLike extends D1DatabaseLike {
   batch(statements: D1PreparedStatementLike[]): Promise<unknown[]>;
 }
 
@@ -158,6 +161,14 @@ const BOOKMARK_SELECT = `SELECT b.id, b.category_id, c.name AS category_name,
                            FROM bookmarks b
                       LEFT JOIN categories c ON c.id = b.category_id`;
 
+function batchDb(db: D1DatabaseLike) {
+  const candidate = db as D1BatchDatabaseLike;
+  if (typeof candidate.batch !== "function") {
+    throw new CaptureWriteHttpError(500, "batch_unavailable", "D1 batch execution is unavailable in this runtime.");
+  }
+  return candidate;
+}
+
 async function duplicateForUrl(db: D1DatabaseLike, url: string) {
   return db.prepare(`${BOOKMARK_SELECT} WHERE b.url = ? LIMIT 1`)
     .bind(url)
@@ -217,8 +228,9 @@ async function captureOne(request: Request, db: D1DatabaseLike) {
   };
 
   try {
-    await db.batch([insertStatement(db, pending)]);
+    await batchDb(db).batch([insertStatement(db, pending)]);
   } catch (error) {
+    if (error instanceof CaptureWriteHttpError) throw error;
     if (isBookmarkUrlUniqueViolation(error)) {
       const racedDuplicate = await duplicateForUrl(db, input.url);
       if (racedDuplicate) {
@@ -296,9 +308,8 @@ async function preparePending(
 }
 
 async function commitPending(db: D1DatabaseLike, pending: PendingCapture[]) {
-  if (!pending.length) return pending;
-  await db.batch(pending.map((item) => insertStatement(db, item)));
-  return pending;
+  if (!pending.length) return;
+  await batchDb(db).batch(pending.map((item) => insertStatement(db, item)));
 }
 
 async function captureBatch(request: Request, db: D1DatabaseLike) {
@@ -311,6 +322,7 @@ async function captureBatch(request: Request, db: D1DatabaseLike) {
     try {
       await commitPending(db, pending);
     } catch (error) {
+      if (error instanceof CaptureWriteHttpError) throw error;
       if (!isBookmarkUrlUniqueViolation(error)) throw error;
 
       // D1 batch is transactional, so a uniqueness race rolls the whole insert batch back.
@@ -339,6 +351,7 @@ async function captureBatch(request: Request, db: D1DatabaseLike) {
         try {
           await commitPending(db, pending);
         } catch (retryError) {
+          if (retryError instanceof CaptureWriteHttpError) throw retryError;
           if (isBookmarkUrlUniqueViolation(retryError)) {
             throw new CaptureWriteHttpError(
               409,
