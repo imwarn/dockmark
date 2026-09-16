@@ -289,6 +289,13 @@ async function listInbox(db: CaptureInboxDbLike) {
   return json({ bookmarks: result.results.map(bookmarkFromRow) });
 }
 
+async function inboxCount(db: CaptureInboxDbLike) {
+  const row = await db.prepare(
+    "SELECT COUNT(*) AS count FROM bookmarks WHERE inbox_at IS NOT NULL",
+  ).first<{ count: number }>();
+  return json({ count: Number(row?.count ?? 0) });
+}
+
 function inboxBookmarkId(pathname: string) {
   const match = pathname.match(/^\/api\/inbox\/([^/]+)$/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
@@ -371,6 +378,13 @@ export async function handleCaptureInboxApi(
       throw new CaptureInboxHttpError(405, "method_not_allowed", "Only GET is supported for Inbox.");
     }
     return listInbox(db);
+  }
+
+  if (pathname === "/api/inbox/count") {
+    if (request.method !== "GET") {
+      throw new CaptureInboxHttpError(405, "method_not_allowed", "Only GET is supported for Inbox count.");
+    }
+    return inboxCount(db);
   }
 
   const id = inboxBookmarkId(pathname);
