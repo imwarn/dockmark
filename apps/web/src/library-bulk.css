@@ -1,0 +1,135 @@
+.library-bulk-card {
+  display: grid;
+  gap: 16px;
+}
+
+.library-bulk-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.library-bulk-heading p,
+.library-bulk-review p {
+  margin: 4px 0 0;
+  color: var(--text-muted, #819087);
+}
+
+.library-bulk-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.library-bulk-selection strong {
+  color: var(--text-primary, #d7e7dc);
+}
+
+.library-bulk-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.library-bulk-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.library-bulk-grid label > span {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted, #819087);
+}
+
+.library-bulk-grid input,
+.library-bulk-grid select {
+  width: 100%;
+}
+
+.library-bulk-help,
+.library-bulk-error {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.library-bulk-error {
+  color: #f0a8a8;
+}
+
+.library-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.library-bulk-review {
+  border: 1px solid color-mix(in srgb, var(--accent, #7fb594) 42%, transparent);
+  background: color-mix(in srgb, var(--accent, #7fb594) 9%, transparent);
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.library-bulk-review-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.library-bulk-review-summary span {
+  border: 1px solid color-mix(in srgb, var(--accent, #7fb594) 32%, transparent);
+  background: color-mix(in srgb, var(--accent, #7fb594) 8%, transparent);
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.bookmark-select-control {
+  align-self: flex-start;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  margin-top: 2px;
+}
+
+.bookmark-select-control input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #7fb594);
+}
+
+.bookmark-card.is-selected {
+  border-color: color-mix(in srgb, var(--accent, #7fb594) 58%, transparent);
+  background: color-mix(in srgb, var(--accent, #7fb594) 8%, var(--surface, #101713));
+}
+
+@media (max-width: 860px) {
+  .library-bulk-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .library-bulk-heading {
+    flex-direction: column;
+  }
+}
+
+[data-theme="light"] .library-bulk-review,
+:root[data-theme="light"] .library-bulk-review {
+  background: #f3f8f4;
+  border-color: #cfe0d4;
+}
+
+[data-theme="light"] .bookmark-card.is-selected,
+:root[data-theme="light"] .bookmark-card.is-selected {
+  background: #f1f7f2;
+  border-color: #bdd5c4;
+}
