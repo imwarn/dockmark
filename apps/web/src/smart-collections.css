@@ -17,7 +17,8 @@
 .smart-list-row small { color: var(--muted); }
 .smart-list-row em { min-width: 28px; font-style: normal; color: var(--muted); text-align: right; }
 .smart-editor-heading h2 { margin: 4px 0 0; }
-.smart-actions { display: flex; align-items: center; gap: 10px; }
+.smart-actions, .smart-preview-actions { display: flex; align-items: center; gap: 10px; }
+.smart-preview-actions { justify-content: flex-end; flex-wrap: wrap; }
 .smart-filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 20px; }
 .smart-filter-grid label { display: grid; gap: 6px; }
 .smart-filter-grid label > span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
@@ -35,16 +36,25 @@
 .smart-bookmark-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 42%; }
 .smart-bookmark-meta span { padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .smart-empty { padding: 32px 20px; color: var(--muted); text-align: center; }
+.smart-bulk-handoff { margin-top: 22px; display: grid; gap: 12px; }
+.smart-bulk-handoff-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 0 4px; }
+.smart-bulk-handoff-heading h2 { margin: 4px 0 0; }
+.smart-bulk-handoff-heading > span { color: var(--muted); font-size: 12px; text-align: right; }
+.smart-bulk-handoff .library-bulk-management { width: auto; margin: 0; padding: 0; }
+.smart-bulk-handoff .library-bulk-card { box-shadow: 0 18px 50px color-mix(in srgb, #000 12%, transparent); }
 
 @media (max-width: 840px) {
   .smart-shell { width: min(100% - 24px, 1180px); padding-top: 28px; }
   .smart-hero { align-items: stretch; flex-direction: column; }
   .smart-summary { align-self: flex-start; text-align: left; }
   .smart-grid { grid-template-columns: 1fr; }
+  .smart-bulk-handoff-heading { align-items: flex-start; flex-direction: column; }
+  .smart-bulk-handoff-heading > span { text-align: left; }
 }
 
 @media (max-width: 620px) {
   .smart-filter-grid { grid-template-columns: 1fr; }
   .smart-editor-heading, .smart-preview-heading, .smart-bookmark { align-items: stretch; flex-direction: column; }
+  .smart-preview-actions { justify-content: flex-start; }
   .smart-bookmark-meta { justify-content: flex-start; max-width: none; }
 }
