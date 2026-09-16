@@ -27,7 +27,7 @@ export interface InboxReviewPatch {
   bookmarkId: string;
   title: string;
   description: string | null;
-  categoryId?: string | null;
+  categoryId: string | null | undefined;
   tags: string[];
 }
 
