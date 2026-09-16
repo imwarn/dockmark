@@ -2,7 +2,8 @@
   const LOCAL_CACHE_KEY = "dockmarkNewTabCacheV1";
   const originalBuildResults = buildResults;
   const originalRefreshCloud = refreshCloud;
-  let syncingTags = false;
+  const originalExecuteResult = executeResult;
+  let syncingLibraryMetadata = false;
 
   function normalizedTags(bookmark) {
     return asArray(bookmark?.tags)
@@ -63,6 +64,116 @@
     };
   }
 
+  function inboxIdSet() {
+    return new Set(
+      asArray(snapshot.inboxBookmarkIds)
+        .filter((id) => typeof id === "string" && id.trim()),
+    );
+  }
+
+  function collectionMatchesBookmark(collection, bookmark) {
+    if (!collection || !isHttpUrl(bookmark?.url)) return false;
+    const filters = collection.filters && typeof collection.filters === "object" && !Array.isArray(collection.filters)
+      ? collection.filters
+      : {};
+
+    if (Object.prototype.hasOwnProperty.call(filters, "categoryId")) {
+      if (filters.categoryId === null ? Boolean(bookmark.categoryId) : bookmark.categoryId !== filters.categoryId) return false;
+    }
+
+    if (Array.isArray(filters.tags) && filters.tags.length) {
+      const tags = new Set(normalizedTags(bookmark).map((tag) => tag.toLocaleLowerCase()));
+      if (!filters.tags.every((tag) => typeof tag === "string" && tags.has(tag.toLocaleLowerCase()))) return false;
+    }
+
+    if (typeof filters.domain === "string" && filters.domain) {
+      let host = "";
+      try { host = new URL(bookmark.url).hostname.toLocaleLowerCase(); } catch { return false; }
+      const domain = filters.domain.toLocaleLowerCase();
+      if (host !== domain && !host.endsWith(`.${domain}`)) return false;
+    }
+
+    if (typeof filters.healthStatus === "string" && bookmark.healthStatus !== filters.healthStatus) return false;
+    const inboxIds = inboxIdSet();
+    if (filters.inbox === "inbox" && !inboxIds.has(bookmark.id)) return false;
+    if (filters.inbox === "library" && inboxIds.has(bookmark.id)) return false;
+    return true;
+  }
+
+  function collectionMembers(collection) {
+    return asArray(snapshot.bookmarks)
+      .filter((bookmark) => collectionMatchesBookmark(collection, bookmark))
+      .sort((left, right) => (left.position ?? 0) - (right.position ?? 0));
+  }
+
+  function collectionFilterLabels(collection) {
+    const filters = collection?.filters && typeof collection.filters === "object" && !Array.isArray(collection.filters)
+      ? collection.filters
+      : {};
+    const labels = [];
+    if (Object.prototype.hasOwnProperty.call(filters, "categoryId")) {
+      labels.push(filters.categoryId === null ? "Uncategorized" : categoryName(filters.categoryId));
+    }
+    for (const tag of asArray(filters.tags)) {
+      if (typeof tag === "string" && tag.trim()) labels.push(`#${tag.trim()}`);
+    }
+    if (typeof filters.domain === "string" && filters.domain) labels.push(filters.domain);
+    if (typeof filters.healthStatus === "string" && filters.healthStatus) labels.push(filters.healthStatus);
+    if (filters.inbox === "inbox") labels.push("Inbox only");
+    if (filters.inbox === "library") labels.push("Filed library");
+    return labels;
+  }
+
+  function collectionResult(rawQuery, collection) {
+    if (!collection || typeof collection.name !== "string" || !collection.name.trim()) return null;
+    const query = rawQuery.trim().toLocaleLowerCase();
+    if (!query || query.startsWith("@")) return null;
+    const labels = collectionFilterLabels(collection);
+    const haystack = [collection.name, ...labels].join(" ").toLocaleLowerCase();
+    const terms = query.split(/\s+/).filter(Boolean);
+    if (!terms.every((term) => haystack.includes(term))) return null;
+
+    const name = collection.name.trim();
+    const nameLower = name.toLocaleLowerCase();
+    let score = 420;
+    if (nameLower === query) score += 100;
+    else if (nameLower.startsWith(query)) score += 70;
+    else if (nameLower.includes(query)) score += 45;
+    else score += 20;
+    const count = collectionMembers(collection).length;
+
+    return {
+      kind: "collection",
+      title: name,
+      subtitle: `${count} bookmark${count === 1 ? "" : "s"}${labels.length ? ` · ${labels.slice(0, 4).join(" · ")}` : " · All bookmarks"}`,
+      collection,
+      score,
+    };
+  }
+
+  function browsedCollection(rawQuery) {
+    const query = rawQuery.trim();
+    if (!query.startsWith("@")) return null;
+    const name = query.slice(1).trim().toLocaleLowerCase();
+    if (!name) return null;
+    return asArray(snapshot.smartCollections).find((collection) =>
+      typeof collection?.name === "string" && collection.name.trim().toLocaleLowerCase() === name,
+    ) || null;
+  }
+
+  function collectionBookmarkResult(collection, bookmark, index) {
+    const tags = normalizedTags(bookmark);
+    const subtitleParts = [displayHost(bookmark.url), categoryName(bookmark.categoryId), `@${collection.name}`];
+    if (tags.length) subtitleParts.push(tags.slice(0, 2).map((tag) => `#${tag}`).join(" "));
+    return {
+      kind: "bookmark",
+      title: bookmark.title || bookmark.url,
+      subtitle: subtitleParts.join(" · "),
+      url: bookmark.url,
+      score: 900 - index,
+    };
+  }
+
   buildResults = function enhancedBuildResults(rawQuery) {
     const query = rawQuery.trim();
     if (!query) return [];
@@ -70,16 +181,28 @@
     // Keep explicit search-engine commands authoritative.
     if (searchEngineCommand(query)) return originalBuildResults(rawQuery);
 
+    const collection = browsedCollection(query);
+    if (collection) {
+      return collectionMembers(collection)
+        .slice(0, 10)
+        .map((bookmark, index) => collectionBookmarkResult(collection, bookmark, index));
+    }
+
     const baseResults = originalBuildResults(rawQuery).filter((result) => result.kind !== "bookmark");
     const bookmarkResults = snapshot.bookmarks
       .map((bookmark) => bookmarkResult(query, bookmark))
       .filter(Boolean);
+    const collectionResults = asArray(snapshot.smartCollections)
+      .map((candidate) => collectionResult(query, candidate))
+      .filter(Boolean);
 
     const deduped = new Map();
-    for (const result of [...baseResults, ...bookmarkResults]) {
+    for (const result of [...baseResults, ...collectionResults, ...bookmarkResults]) {
       const key = result.kind === "bookmark"
         ? `bookmark:${result.url}`
-        : `${result.kind}:${result.url || result.title}`;
+        : result.kind === "collection"
+          ? `collection:${result.collection?.id || result.title}`
+          : `${result.kind}:${result.url || result.title}`;
       const current = deduped.get(key);
       if (!current || result.score > current.score) deduped.set(key, result);
     }
@@ -89,18 +212,32 @@
       .slice(0, 10);
   };
 
-  function snapshotNeedsTags(value) {
+  executeResult = async function enhancedExecuteResult(result) {
+    if (result?.kind === "collection" && result.collection?.name) {
+      elements.search.value = `@${result.collection.name}`;
+      activeResult = 0;
+      renderSearchResults();
+      elements.search.focus();
+      return;
+    }
+    return originalExecuteResult(result);
+  };
+
+  function snapshotNeedsLibraryMetadata(value) {
     return Boolean(
-      value?.syncedAt &&
-      asArray(value.bookmarks).some((bookmark) => !Array.isArray(bookmark?.tags)),
+      value?.syncedAt && (
+        asArray(value.bookmarks).some((bookmark) => !Array.isArray(bookmark?.tags)) ||
+        !Array.isArray(value.smartCollections) ||
+        !Array.isArray(value.inboxBookmarkIds)
+      ),
     );
   }
 
-  async function hydrateBookmarkTags() {
-    if (syncingTags || !origin || !snapshot.syncedAt) return false;
+  async function hydrateLibraryMetadata() {
+    if (syncingLibraryMetadata || !origin || !snapshot.syncedAt) return false;
     if (!(await hasOriginPermission())) return false;
 
-    syncingTags = true;
+    syncingLibraryMetadata = true;
     try {
       const payload = await requestJson("/api/settings/browser");
       const bookmarkTags = payload?.bookmarkTags && typeof payload.bookmarkTags === "object"
@@ -112,32 +249,35 @@
           ...bookmark,
           tags: asArray(bookmarkTags[bookmark?.id]).filter((tag) => typeof tag === "string" && tag.trim()),
         })),
+        smartCollections: asArray(payload?.smartCollections),
+        inboxBookmarkIds: asArray(payload?.inboxBookmarkIds).filter((id) => typeof id === "string" && id.trim()),
       };
       await chrome.storage.local.set({ [LOCAL_CACHE_KEY]: snapshot });
       renderSnapshot();
+      renderSearchResults();
       return true;
     } catch {
-      // Tag hydration is additive. Keep the last-known-good snapshot if this optional read fails.
+      // Library metadata hydration is additive. Keep the last-known-good snapshot if this optional read fails.
       return false;
     } finally {
-      syncingTags = false;
+      syncingLibraryMetadata = false;
     }
   }
 
   refreshCloud = async function enhancedRefreshCloud(options = {}) {
     const refreshed = await originalRefreshCloud(options);
-    if (refreshed) await hydrateBookmarkTags();
+    if (refreshed) await hydrateLibraryMetadata();
     return refreshed;
   };
 
   chrome.storage.onChanged?.addListener((changes, areaName) => {
-    if (areaName !== "local" || syncingTags) return;
+    if (areaName !== "local" || syncingLibraryMetadata) return;
     const changed = changes[LOCAL_CACHE_KEY]?.newValue;
-    if (!snapshotNeedsTags(changed)) return;
-    void hydrateBookmarkTags();
+    if (!snapshotNeedsLibraryMetadata(changed)) return;
+    void hydrateLibraryMetadata();
   });
 
-  // Existing cached snapshots remain searchable by title/URL/description/category immediately.
-  // Tags are hydrated on the next successful cloud refresh; no legacy cache migration is required.
+  // Smart Collections and Inbox membership are cached only after a successful paired cloud refresh.
+  // Once cached, collection search and @Collection browsing remain local-first and work offline.
   queueMicrotask(() => renderSearchResults());
 })();
