@@ -10,7 +10,86 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const extensionPath = path.join(root, "apps/extension/.output/chrome-mv3-newtab");
 const userDataDir = await mkdtemp(path.join(tmpdir(), "dockmark-newtab-chromium-"));
 
+let settingsRequestCount = 0;
+let clickedTargetUrl = "";
 const targetServer = createServer((request, response) => {
+  const sendJson = (payload) => {
+    response.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "access-control-allow-origin": "*",
+    });
+    response.end(JSON.stringify(payload));
+  };
+
+  if (request.url === "/api/bookmarks") {
+    const now = new Date().toISOString();
+    sendJson({
+      bookmarks: [{
+        id: "online-bookmark",
+        categoryId: "online-category",
+        title: "Online Cached Example",
+        url: clickedTargetUrl,
+        description: "Fresh cloud bookmark for single-pass snapshot validation.",
+        healthPolicy: "normal",
+        healthStatus: "unknown",
+        position: 0,
+        createdAt: now,
+        updatedAt: now,
+      }],
+    });
+    return;
+  }
+  if (request.url === "/api/categories") {
+    const now = new Date().toISOString();
+    sendJson({ categories: [{ id: "online-category", name: "Online", position: 0, createdAt: now, updatedAt: now }] });
+    return;
+  }
+  if (request.url === "/api/workspaces") {
+    sendJson({ workspaces: [] });
+    return;
+  }
+  if (request.url === "/api/search-engines") {
+    sendJson({
+      engines: [{
+        id: "engine-online",
+        name: "Online Search",
+        keyword: "o",
+        searchUrl: "https://example.com/search?q=%s",
+        isDefault: true,
+        position: 0,
+      }],
+    });
+    return;
+  }
+  if (request.url === "/api/settings/browser") {
+    settingsRequestCount += 1;
+    sendJson({
+      settings: {
+        version: 1,
+        conflictPreference: "ask",
+        newTab: {
+          defaultSearchEngineId: "engine-online",
+          showOpenTabs: false,
+          bookmarkLimit: 12,
+          workspaceLimit: 8,
+          autoRefresh: false,
+        },
+        updatedAt: new Date().toISOString(),
+      },
+      bookmarkTags: { "online-bookmark": ["online", "dev"] },
+      smartCollections: [{
+        id: "online-collection",
+        name: "Online dev",
+        filters: { categoryId: "online-category", tags: ["dev"], inbox: "inbox" },
+        position: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }],
+      inboxBookmarkIds: ["online-bookmark"],
+    });
+    return;
+  }
+
   const isLive = request.url === "/live";
   const title = isLive ? "Live Only Marker" : "Dockmark clicked target";
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -19,8 +98,9 @@ const targetServer = createServer((request, response) => {
 await new Promise((resolve) => targetServer.listen(0, "127.0.0.1", resolve));
 const targetAddress = targetServer.address();
 if (!targetAddress || typeof targetAddress === "string") throw new Error("Could not start New Tab click target server.");
-const clickedTargetUrl = `http://127.0.0.1:${targetAddress.port}/clicked`;
-const liveTargetUrl = `http://127.0.0.1:${targetAddress.port}/live`;
+const targetOrigin = `http://127.0.0.1:${targetAddress.port}`;
+clickedTargetUrl = `${targetOrigin}/clicked`;
+const liveTargetUrl = `${targetOrigin}/live`;
 
 let context;
 try {
@@ -43,7 +123,7 @@ try {
   await page.waitForLoadState("domcontentloaded");
 
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "1.4.1");
+  assert.equal(manifest.version, "1.4.2");
   assert.equal(manifest.name, "Dockmark New Tab");
   assert.equal(manifest.icons?.[128], "icons/dockmark-128.png");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
@@ -55,6 +135,37 @@ try {
     return response.text();
   });
   assert.match(iconText, /prefers-color-scheme: dark/);
+
+  // Seed an online origin, grant it through a real click gesture, then verify one
+  // /api/settings/browser request produces the complete last-known-good snapshot.
+  await page.evaluate(async (origin) => {
+    await chrome.storage.local.remove(["dockmarkNewTabCacheV1", "dockmarkBrowserSettingsV1"]);
+    await chrome.storage.local.set({ dockmarkServerUrl: origin });
+  }, targetOrigin);
+  await page.reload();
+  await page.waitForLoadState("domcontentloaded");
+  await page.waitForFunction(() => document.querySelector("#connection-state")?.textContent?.includes("Offline"));
+  await page.evaluate((pattern) => {
+    const refresh = document.querySelector("#refresh");
+    refresh?.addEventListener("click", async (event) => {
+      event.stopImmediatePropagation();
+      const granted = await chrome.permissions.request({ origins: [pattern] });
+      if (!granted) throw new Error("New Tab smoke could not grant the mock Dockmark origin.");
+      await refreshCloud();
+    }, { capture: true, once: true });
+  }, `${targetOrigin}/*`);
+  await page.locator("#refresh").click();
+  await page.waitForFunction(() => document.querySelector("#connection-state")?.textContent?.includes("Online · synced"));
+  assert.equal(settingsRequestCount, 1, "A current New Tab refresh should read /api/settings/browser exactly once.");
+
+  const onlineSnapshot = await page.evaluate(async () => (await chrome.storage.local.get("dockmarkNewTabCacheV1")).dockmarkNewTabCacheV1);
+  assert.deepEqual(onlineSnapshot.bookmarks?.[0]?.tags, ["online", "dev"]);
+  assert.equal(onlineSnapshot.smartCollections?.[0]?.name, "Online dev");
+  assert.deepEqual(onlineSnapshot.inboxBookmarkIds, ["online-bookmark"]);
+  await page.locator("#search").fill("#dev");
+  await page.locator("#command-results .result-row").filter({ hasText: "Online Cached Example" }).first().waitFor();
+  await page.locator("#search").fill("Online dev");
+  await page.locator("#command-results .result-row").filter({ hasText: "Online dev" }).first().waitFor();
 
   const offlineOrigin = "https://offline.dockmark.invalid";
   await page.evaluate(async ({ offlineOrigin, clickedTargetUrl }) => {
@@ -275,6 +386,7 @@ try {
   console.log(`✓ Dockmark New Tab variant loaded: ${extensionId}`);
   console.log("✓ New Tab manifest override is isolated to the opt-in variant");
   console.log("✓ Transparent adaptive D dot favicon and manifest brand icons are packaged");
+  console.log("✓ Current cloud refresh reads browser settings once and persists tags, Smart Collections and Inbox membership together");
   console.log("✓ Cached bookmarks and Workspaces render without Dockmark host permission/network");
   console.log("✓ Offline search matches bookmark description, category, tags and combined #tag terms");
   console.log("✓ Cached Smart Collections are searchable and browse their matching bookmarks offline");
