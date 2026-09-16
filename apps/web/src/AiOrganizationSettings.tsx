@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
-import { updateBookmark } from "./api";
 import {
+  applyAiOrganizationPatches,
   generateAiOrganizationSuggestions,
   getAiProviderStatus,
   loadAiProviderSettings,
   MAX_AI_TIMEOUT_SECONDS,
   MIN_AI_TIMEOUT_SECONDS,
   saveAiProviderSettings,
+  type AiOrganizationPatch,
   type AiOrganizationSuggestion,
   type AiProviderSettings,
 } from "./ai-organization";
-import { listBookmarkTags, replaceBookmarkTags } from "./tag-api";
+import { listBookmarkTags } from "./tag-api";
 import "./ai-organization.css";
 
 interface Props {
@@ -19,6 +20,8 @@ interface Props {
   categories: Category[];
   onChanged: () => Promise<void>;
 }
+
+type QueueFilter = "pending" | "generated" | "all";
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
@@ -35,6 +38,8 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
   const [bookmarkTags, setBookmarkTags] = useState<Record<string, string[]>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [generatedIds, setGeneratedIds] = useState<Set<string>>(() => new Set());
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>("pending");
   const [suggestions, setSuggestions] = useState<AiOrganizationSuggestion[]>([]);
   const [acceptedIds, setAcceptedIds] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState("");
@@ -75,7 +80,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     [bookmarks],
   );
 
-  const filteredBookmarks = useMemo(() => {
+  const queryFilteredBookmarks = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     if (!needle) return bookmarks;
     return bookmarks.filter((bookmark) =>
@@ -83,9 +88,29 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     );
   }, [bookmarks, query]);
 
+  const filteredBookmarks = useMemo(() => queryFilteredBookmarks.filter((bookmark) => {
+    if (queueFilter === "pending") return bookmark.healthPolicy === "normal" && !generatedIds.has(bookmark.id);
+    if (queueFilter === "generated") return bookmark.healthPolicy === "normal" && generatedIds.has(bookmark.id);
+    return true;
+  }), [generatedIds, queryFilteredBookmarks, queueFilter]);
+
   const eligible = useMemo(
     () => filteredBookmarks.filter((bookmark) => bookmark.healthPolicy === "normal"),
     [filteredBookmarks],
+  );
+
+  const allEligible = useMemo(
+    () => bookmarks.filter((bookmark) => bookmark.healthPolicy === "normal"),
+    [bookmarks],
+  );
+  const generatedCount = useMemo(
+    () => allEligible.filter((bookmark) => generatedIds.has(bookmark.id)).length,
+    [allEligible, generatedIds],
+  );
+  const remainingCount = allEligible.length - generatedCount;
+  const selectedGeneratedCount = useMemo(
+    () => Array.from(selectedIds).filter((id) => generatedIds.has(id)).length,
+    [generatedIds, selectedIds],
   );
 
   function providerTimeoutValid() {
@@ -125,15 +150,49 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     });
   }
 
+  function nextPendingIds(progress: Set<string>) {
+    const needle = query.trim().toLocaleLowerCase();
+    return bookmarks
+      .filter((bookmark) => bookmark.healthPolicy === "normal" && !progress.has(bookmark.id))
+      .filter((bookmark) => !needle || bookmark.title.toLocaleLowerCase().includes(needle) || bookmark.url.toLocaleLowerCase().includes(needle))
+      .slice(0, 20)
+      .map((bookmark) => bookmark.id);
+  }
+
   function selectVisible() {
     setSelectedIds(new Set(eligible.slice(0, 20).map((bookmark) => bookmark.id)));
+  }
+
+  function selectNextPending() {
+    setQueueFilter("pending");
+    setSelectedIds(new Set(nextPendingIds(generatedIds)));
   }
 
   function clearSelection() {
     setSelectedIds(new Set());
   }
 
+  function resetSessionProgress() {
+    if (suggestions.length) return;
+    setGeneratedIds(new Set());
+    setQueueFilter("pending");
+    setSelectedIds(new Set());
+    setMessage("AI generation progress reset for this page session. No bookmark data was changed.");
+    setError(null);
+  }
+
+  function discardPreview() {
+    setSuggestions([]);
+    setAcceptedIds(new Set());
+    setMessage("Current AI preview discarded. Generated markers and the next queue selection were kept.");
+    setError(null);
+  }
+
   async function generate() {
+    if (suggestions.length) {
+      setError("Review, apply, or discard the current AI preview before generating another batch.");
+      return;
+    }
     const selected = bookmarks.filter((bookmark) => selectedIds.has(bookmark.id) && bookmark.healthPolicy === "normal");
     if (!selected.length) return;
     setGenerating(true);
@@ -144,12 +203,19 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     try {
       saveAiProviderSettings(provider);
       const next = await generateAiOrganizationSuggestions(provider, selected.map((bookmark) => bookmark.id));
+      const generatedAfter = new Set(generatedIds);
+      next.forEach((suggestion) => generatedAfter.add(suggestion.bookmarkId));
+      setGeneratedIds(generatedAfter);
       setSuggestions(next);
       setAcceptedIds(new Set(next.map((suggestion) => suggestion.bookmarkId)));
+      setQueueFilter("pending");
+      const nextBatch = nextPendingIds(generatedAfter);
+      setSelectedIds(new Set(nextBatch));
+      const remainingAfter = allEligible.filter((bookmark) => !generatedAfter.has(bookmark.id)).length;
       setMessage(
         next.length === selected.length
-          ? `Generated ${next.length} suggestion${next.length === 1 ? "" : "s"}. Review every field before applying.`
-          : `Generated ${next.length} of ${selected.length} requested suggestions. Missing rows were not applied or invented.`,
+          ? `Generated ${next.length} suggestions. ${remainingAfter} eligible bookmark${remainingAfter === 1 ? "" : "s"} remain; ${nextBatch.length} next queued for selection. Review the current preview before generating again.`
+          : `Generated ${next.length} of ${selected.length} requested suggestions. Missing rows remain pending and can be retried; ${nextBatch.length} bookmarks are queued next.`,
       );
     } catch (caught) {
       setError(messageFrom(caught));
@@ -173,11 +239,10 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     setApplying(true);
     setError(null);
     setMessage(null);
-    let applied = 0;
     let skipped = 0;
-    const failedIds = new Set<string>();
 
     try {
+      const patches: AiOrganizationPatch[] = [];
       for (const suggestion of accepted) {
         const current = bookmarkById.get(suggestion.bookmarkId);
         if (!current || current.healthPolicy !== "normal") {
@@ -185,31 +250,44 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
           continue;
         }
 
-        const categoryId = suggestion.categoryName
-          ? categoryByName.get(suggestion.categoryName.toLocaleLowerCase()) ?? null
-          : null;
-        try {
-          await updateBookmark(current.id, {
-            title: suggestion.title || current.title,
-            description: suggestion.description || null,
-            categoryId,
-          });
-          await replaceBookmarkTags(current.id, suggestion.tags);
-          setBookmarkTags((tags) => ({ ...tags, [current.id]: suggestion.tags }));
-          applied += 1;
-        } catch {
-          failedIds.add(suggestion.bookmarkId);
+        let categoryId: string | null = null;
+        if (suggestion.categoryName) {
+          const mapped = categoryByName.get(suggestion.categoryName.toLocaleLowerCase());
+          if (!mapped) {
+            throw new Error(`Suggested category “${suggestion.categoryName}” no longer exists. Refresh and regenerate before applying.`);
+          }
+          categoryId = mapped;
         }
+
+        patches.push({
+          bookmarkId: current.id,
+          title: suggestion.title || current.title,
+          description: suggestion.description || null,
+          categoryId,
+          tags: suggestion.tags,
+        });
       }
+
+      if (!patches.length) {
+        setMessage(`No reviewed AI patches were applied${skipped ? `; ${skipped} bookmarks are no longer AI-eligible` : ""}.`);
+        return;
+      }
+
+      const result = await applyAiOrganizationPatches(patches);
+      const appliedIds = new Set(result.bookmarkIds);
+      setBookmarkTags((current) => {
+        const next = { ...current };
+        for (const patch of patches) {
+          if (appliedIds.has(patch.bookmarkId)) next[patch.bookmarkId] = patch.tags;
+        }
+        return next;
+      });
       await onChanged();
-      setSuggestions((current) => current.filter((suggestion) =>
-        !acceptedIds.has(suggestion.bookmarkId) || failedIds.has(suggestion.bookmarkId),
-      ));
-      setAcceptedIds(new Set(failedIds));
+      setSuggestions((current) => current.filter((suggestion) => !appliedIds.has(suggestion.bookmarkId)));
+      setAcceptedIds((current) => new Set(Array.from(current).filter((id) => !appliedIds.has(id))));
       setMessage(
-        `Applied ${applied} reviewed AI suggestion${applied === 1 ? "" : "s"}` +
-        `${skipped ? `; ${skipped} skipped because the bookmark is no longer AI-eligible` : ""}` +
-        `${failedIds.size ? `; ${failedIds.size} failed and remain selected for review` : ""}. URLs and HealthPolicy were untouched.`,
+        `Applied ${result.applied} reviewed AI suggestion${result.applied === 1 ? "" : "s"} in one atomic batch` +
+        `${skipped ? `; ${skipped} skipped because the bookmark is no longer AI-eligible` : ""}. URLs and HealthPolicy were untouched.`,
       );
     } catch (caught) {
       setError(messageFrom(caught));
@@ -268,19 +346,34 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
 
         <article className="form-card settings-card ai-selection-card">
           <div className="card-heading">
-            <div><h3>Select bookmarks</h3><p>Only <strong>Normal</strong> HealthPolicy bookmarks are eligible in this first stage. Local-only, ignore and manual entries are excluded before the provider request.</p></div>
+            <div><h3>Select bookmarks</h3><p>Generation progress is tracked only for this page session. Generated rows can be filtered out while the next ungenerated batch is queued automatically.</p></div>
             <span>{selectedIds.size}/20</span>
           </div>
           <input className="ai-bookmark-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter title or URL…" aria-label="Filter bookmarks for AI organization" />
+          <div className="ai-queue-summary">
+            <div className="ai-queue-filters" role="group" aria-label="AI generation queue filter">
+              <button className={queueFilter === "pending" ? "active" : ""} type="button" onClick={() => setQueueFilter("pending")}>Pending {remainingCount}</button>
+              <button className={queueFilter === "generated" ? "active" : ""} type="button" onClick={() => setQueueFilter("generated")}>Generated {generatedCount}</button>
+              <button className={queueFilter === "all" ? "active" : ""} type="button" onClick={() => setQueueFilter("all")}>All {bookmarks.length}</button>
+            </div>
+            <span>{generatedCount} generated this session · {remainingCount} eligible remaining</span>
+          </div>
           <div className="ai-selection-actions">
             <button className="text-action" type="button" onClick={selectVisible} disabled={!eligible.length}>Select first {Math.min(20, eligible.length)} visible</button>
+            <button className="text-action" type="button" onClick={selectNextPending} disabled={!remainingCount}>Select next pending</button>
             <button className="text-action muted-action" type="button" onClick={clearSelection} disabled={!selectedIds.size}>Clear</button>
+            <button className="text-action muted-action" type="button" onClick={resetSessionProgress} disabled={!generatedIds.size || suggestions.length > 0}>Reset progress</button>
           </div>
+          {selectedGeneratedCount > 0 && (
+            <p className="ai-selection-warning">{selectedGeneratedCount} selected bookmark{selectedGeneratedCount === 1 ? " was" : "s were"} already generated in this session. Generate will intentionally refresh those suggestions.</p>
+          )}
           <div className="ai-bookmark-list">
             {filteredBookmarks.slice(0, 120).map((bookmark) => {
               const protectedPolicy = bookmark.healthPolicy !== "normal";
+              const generated = generatedIds.has(bookmark.id);
+              const category = categoryById.get(bookmark.categoryId ?? "") ?? "UNCATEGORIZED";
               return (
-                <label className={`ai-bookmark-row${protectedPolicy ? " is-protected" : ""}`} key={bookmark.id}>
+                <label className={`ai-bookmark-row${protectedPolicy ? " is-protected" : ""}${generated ? " is-generated" : ""}`} key={bookmark.id}>
                   <input
                     type="checkbox"
                     checked={selectedIds.has(bookmark.id)}
@@ -291,13 +384,20 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
                     <strong>{bookmark.title}</strong>
                     <small>{bookmark.url}</small>
                   </span>
-                  <em>{protectedPolicy ? bookmark.healthPolicy.toUpperCase() : categoryById.get(bookmark.categoryId ?? "") ?? "UNCATEGORIZED"}</em>
+                  <em>{protectedPolicy ? bookmark.healthPolicy.toUpperCase() : generated ? `GENERATED · ${category}` : category}</em>
                 </label>
               );
             })}
+            {!filteredBookmarks.length && <p className="ai-queue-empty">No bookmarks match this queue view.</p>}
           </div>
-          <button className="primary ai-generate-button" type="button" disabled={generating || applying || apiKeyConfigured !== true || !selectedIds.size || !provider.model.trim() || !provider.endpoint.trim() || !providerTimeoutValid()} onClick={() => void generate()}>
-            {generating ? "Generating suggestions…" : apiKeyConfigured === false ? "Configure Worker AI secret first" : `Generate suggestions ${selectedIds.size}`}
+          <button className="primary ai-generate-button" type="button" disabled={generating || applying || suggestions.length > 0 || apiKeyConfigured !== true || !selectedIds.size || !provider.model.trim() || !provider.endpoint.trim() || !providerTimeoutValid()} onClick={() => void generate()}>
+            {generating
+              ? "Generating suggestions…"
+              : suggestions.length
+                ? "Review or discard current suggestions first"
+                : apiKeyConfigured === false
+                  ? "Configure Worker AI secret first"
+                  : `Generate suggestions ${selectedIds.size}`}
           </button>
         </article>
       </div>
@@ -312,8 +412,9 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
             <div className="preview-actions">
               <button className="text-action" type="button" onClick={() => setAcceptedIds(new Set(suggestions.map((suggestion) => suggestion.bookmarkId)))}>Select all</button>
               <button className="text-action muted-action" type="button" onClick={() => setAcceptedIds(new Set())}>Clear</button>
+              <button className="text-action muted-action" type="button" disabled={applying} onClick={discardPreview}>Discard preview</button>
               <button className="primary" type="button" disabled={applying || !acceptedIds.size} onClick={() => void applySuggestions()}>
-                {applying ? "Applying…" : `Apply reviewed ${acceptedIds.size}`}
+                {applying ? "Applying batch…" : `Apply reviewed ${acceptedIds.size}`}
               </button>
             </div>
           </div>
@@ -345,7 +446,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
               );
             })}
           </div>
-          <p className="mapping-note">Apply patches title, description, category and tags only. URL, HealthPolicy, HealthStatus, browser mappings and health history are outside the AI write surface.</p>
+          <p className="mapping-note">Apply sends the reviewed title, description, category and tags once and commits them as one D1 batch. URL, HealthPolicy, HealthStatus, browser mappings and health history remain outside the AI write surface.</p>
         </section>
       )}
 
