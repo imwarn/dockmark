@@ -27,6 +27,9 @@ import {
   listSessions,
   listWorkspaces,
 } from "./api";
+import { listInbox } from "./inbox-api";
+import { matchesSmartCollection, smartCollectionFilterLabels } from "./smart-collection-match";
+import { listSmartCollections, type SmartCollection } from "./smart-collections-api";
 import { listBookmarkTags } from "./tag-api";
 import { BookmarkManager } from "./BookmarkManager";
 import { BrowserExtensionManager } from "./BrowserExtensionManager";
@@ -61,6 +64,10 @@ function hostLabel(url: string) {
   }
 }
 
+function collectionResultId(id: string) {
+  return `navigation:collection:${id}`;
+}
+
 export function App() {
   const [view, setView] = useState<View>("launcher");
   const [query, setQuery] = useState("");
@@ -68,6 +75,8 @@ export function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [bookmarkTags, setBookmarkTags] = useState<Record<string, string[]>>({});
   const [categories, setCategories] = useState<Category[]>([]);
+  const [smartCollections, setSmartCollections] = useState<SmartCollection[]>([]);
+  const [inboxIds, setInboxIds] = useState<Set<string>>(() => new Set());
   const [workspaces, setWorkspaces] = useState<WorkspaceWithItems[]>([]);
   const [sessions, setSessions] = useState<SessionWithItems[]>([]);
   const [searchEngines, setSearchEngines] = useState<SearchEngine[]>([]);
@@ -83,10 +92,21 @@ export function App() {
     setLoading(true);
     setDataError(null);
     try {
-      const [nextCategories, nextBookmarks, nextBookmarkTags, nextWorkspaces, nextSessions, nextSearchEngines] = await Promise.all([
+      const [
+        nextCategories,
+        nextBookmarks,
+        nextBookmarkTags,
+        nextInbox,
+        nextCollections,
+        nextWorkspaces,
+        nextSessions,
+        nextSearchEngines,
+      ] = await Promise.all([
         listCategories(),
         listBookmarks(),
         listBookmarkTags(),
+        listInbox(),
+        listSmartCollections(),
         listWorkspaces(),
         listSessions(),
         listSearchEngines(),
@@ -94,6 +114,8 @@ export function App() {
       setCategories(nextCategories);
       setBookmarks(nextBookmarks);
       setBookmarkTags(nextBookmarkTags);
+      setInboxIds(new Set(nextInbox.map((bookmark) => bookmark.id)));
+      setSmartCollections(nextCollections);
       setWorkspaces(nextWorkspaces);
       setSessions(nextSessions);
       setSearchEngines(nextSearchEngines);
@@ -208,6 +230,21 @@ export function App() {
       subtitle: `Restore session · ${session.items.length} tabs${session.sourceDevice ? ` · ${session.sourceDevice}` : ""}`,
       score: Math.max(0, 30 - index),
     }));
+    const collectionResults: CommandResult[] = smartCollections.flatMap((collection) => {
+      const labels = smartCollectionFilterLabels(collection.filters, categoryById);
+      const searchable = [collection.name, ...labels].join(" ").toLocaleLowerCase();
+      if (normalized && !searchable.includes(normalized)) return [];
+      const count = bookmarks.filter((bookmark) =>
+        matchesSmartCollection(bookmark, collection.filters, bookmarkTags[bookmark.id] ?? [], inboxIds),
+      ).length;
+      return [{
+        id: collectionResultId(collection.id),
+        source: "navigation" as const,
+        title: collection.name,
+        subtitle: `${count} bookmark${count === 1 ? "" : "s"}${labels.length ? ` · ${labels.slice(0, 4).join(" · ")}` : " · All bookmarks"}`,
+        score: 95,
+      }];
+    });
     const bookmarkResults: CommandResult[] = bookmarks.flatMap((bookmark) => {
       const tags = bookmarkTags[bookmark.id] ?? [];
       const category = bookmark.categoryId ? categoryById.get(bookmark.categoryId) ?? "" : "Uncategorized";
@@ -241,10 +278,17 @@ export function App() {
       score: 20,
     }];
 
-    const localCandidates = [...tabResults, ...workspaceResults, ...sessionResults, ...bookmarkResults, ...navigationResults];
+    const localCandidates = [
+      ...tabResults,
+      ...workspaceResults,
+      ...sessionResults,
+      ...collectionResults,
+      ...bookmarkResults,
+      ...navigationResults,
+    ];
     const filtered = normalized
       ? localCandidates.filter((item) =>
-          item.source === "bookmark" || `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
+          item.source === "bookmark" || item.id.startsWith("navigation:collection:") || `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
         )
       : localCandidates;
     const localResults = rankCommands(filtered).slice(0, trimmed && defaultEngine ? 7 : 8);
@@ -261,7 +305,20 @@ export function App() {
     }
 
     return localResults;
-  }, [bookmarkTags, bookmarks, bridgeConnected, categoryById, defaultEngine, openTabs, query, searchEngines, sessions, workspaces]);
+  }, [
+    bookmarkTags,
+    bookmarks,
+    bridgeConnected,
+    categoryById,
+    defaultEngine,
+    inboxIds,
+    openTabs,
+    query,
+    searchEngines,
+    sessions,
+    smartCollections,
+    workspaces,
+  ]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -284,6 +341,19 @@ export function App() {
 
     if (item.source === "navigation" && item.id === "navigation:extension") {
       setView("extension");
+      return;
+    }
+
+    if (item.id.startsWith("navigation:collection:")) {
+      const collectionId = item.id.slice("navigation:collection:".length);
+      const path = `/app/collections?collection=${encodeURIComponent(collectionId)}`;
+      if (forceNewTab) {
+        const opened = window.open(path, "_blank", "noopener,noreferrer");
+        if (opened) opened.opener = null;
+      } else {
+        window.history.pushState({}, "", path);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
       return;
     }
 
@@ -448,7 +518,7 @@ export function App() {
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => void refreshBridge()}
                 onKeyDown={onCommandKeyDown}
-                placeholder="Search tabs, bookmarks, descriptions or #tags; type !g, !gh, !ddg…"
+                placeholder="Search tabs, Smart Collections, bookmarks, descriptions or #tags; type !g, !gh, !ddg…"
                 aria-label="Search Dockmark"
                 aria-controls="dockmark-command-results"
                 aria-activedescendant={results[selectedIndex] ? `command-result-${selectedIndex}` : undefined}
@@ -472,25 +542,28 @@ export function App() {
               </div>
             ) : (
               <div className="results" id="dockmark-command-results" role="listbox">
-                {results.map((item, index) => (
-                  <button
-                    className={`result result-button ${selectedIndex === index ? "selected" : ""}`}
-                    type="button"
-                    role="option"
-                    aria-selected={selectedIndex === index}
-                    id={`command-result-${index}`}
-                    key={`${item.source}-${item.id}`}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => void executeResult(item)}
-                  >
-                    <span className="favicon">{item.source === "tab" ? "↗" : item.source === "session" ? "↺" : item.source === "search" ? "⌕" : item.source === "navigation" ? "＋" : item.title.slice(0, 1)}</span>
-                    <span className="result-copy">
-                      <strong>{item.title}</strong>
-                      <small>{item.subtitle}</small>
-                    </span>
-                    <span className="pill">{item.source === "search" && item.id.startsWith("search-shortcut:") ? <span className="bang-token">Bang</span> : sourceLabel[item.source]}</span>
-                  </button>
-                ))}
+                {results.map((item, index) => {
+                  const isCollection = item.id.startsWith("navigation:collection:");
+                  return (
+                    <button
+                      className={`result result-button ${selectedIndex === index ? "selected" : ""}`}
+                      type="button"
+                      role="option"
+                      aria-selected={selectedIndex === index}
+                      id={`command-result-${index}`}
+                      key={`${item.source}-${item.id}`}
+                      onMouseEnter={() => setSelectedIndex(index)}
+                      onClick={() => void executeResult(item)}
+                    >
+                      <span className="favicon">{isCollection ? "◇" : item.source === "tab" ? "↗" : item.source === "session" ? "↺" : item.source === "search" ? "⌕" : item.source === "navigation" ? "＋" : item.title.slice(0, 1)}</span>
+                      <span className="result-copy">
+                        <strong>{item.title}</strong>
+                        <small>{item.subtitle}</small>
+                      </span>
+                      <span className="pill">{isCollection ? "Collection" : item.source === "search" && item.id.startsWith("search-shortcut:") ? <span className="bang-token">Bang</span> : sourceLabel[item.source]}</span>
+                    </button>
+                  );
+                })}
                 {!loading && !results.length && <div className="empty-command">No matches. Configure a search engine or try another query.</div>}
               </div>
             )}

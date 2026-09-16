@@ -38,6 +38,19 @@ interface BookmarkTagRow {
   name: string;
 }
 
+interface SmartCollectionRow {
+  id: string;
+  name: string;
+  filters_json: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface InboxBookmarkRow {
+  id: string;
+}
+
 export class SettingsHttpError extends Error {
   constructor(
     readonly status: number,
@@ -159,6 +172,39 @@ async function loadBookmarkTags(db: SettingsDbLike) {
   return bookmarkTags;
 }
 
+async function loadSmartCollections(db: SettingsDbLike) {
+  const result = await db.prepare(
+    `SELECT id, name, filters_json, position, created_at, updated_at
+       FROM smart_collections
+      ORDER BY position ASC, name COLLATE NOCASE ASC`,
+  ).all<SmartCollectionRow>();
+
+  return result.results.map((row) => {
+    let filters: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(row.filters_json) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) filters = parsed as Record<string, unknown>;
+    } catch {
+      // Saved filters are validated on write. A malformed legacy row stays an empty, non-mutating view.
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      filters,
+      position: row.position,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
+}
+
+async function loadInboxBookmarkIds(db: SettingsDbLike) {
+  const result = await db.prepare(
+    "SELECT id FROM bookmarks WHERE inbox_at IS NOT NULL ORDER BY inbox_at DESC, id ASC",
+  ).all<InboxBookmarkRow>();
+  return result.results.map((row) => row.id);
+}
+
 export async function loadAppearanceSettings(db: SettingsDbLike): Promise<AppearanceSettings> {
   return loadSetting(db, "appearance", DEFAULT_APPEARANCE_SETTINGS, normalizeAppearanceSettings);
 }
@@ -183,11 +229,13 @@ export async function handleSettingsApi(
 ): Promise<Response | null> {
   if (pathname === "/api/settings/browser") {
     if (request.method === "GET") {
-      const [settings, bookmarkTags] = await Promise.all([
+      const [settings, bookmarkTags, smartCollections, inboxBookmarkIds] = await Promise.all([
         loadBrowserSettings(db),
         loadBookmarkTags(db),
+        loadSmartCollections(db),
+        loadInboxBookmarkIds(db),
       ]);
-      return json({ settings, bookmarkTags });
+      return json({ settings, bookmarkTags, smartCollections, inboxBookmarkIds });
     }
     if (request.method === "PATCH") {
       const current = await loadBrowserSettings(db);

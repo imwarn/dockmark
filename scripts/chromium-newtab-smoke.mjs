@@ -43,7 +43,7 @@ try {
   await page.waitForLoadState("domcontentloaded");
 
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "1.3.0");
+  assert.equal(manifest.version, "1.4.0");
   assert.equal(manifest.name, "Dockmark New Tab");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
   const iconHref = await page.locator('link[rel="icon"]').getAttribute("href");
@@ -112,6 +112,25 @@ try {
             updatedAt: now,
           },
         ],
+        smartCollections: [
+          {
+            id: "collection-1",
+            name: "Developer docs",
+            filters: { categoryId: "category-1", tags: ["dev"] },
+            position: 0,
+            createdAt: now,
+            updatedAt: now,
+          },
+          {
+            id: "collection-2",
+            name: "Inbox reading",
+            filters: { inbox: "inbox", tags: ["reading"] },
+            position: 1,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        inboxBookmarkIds: ["bookmark-2"],
         workspaces: [
           {
             id: "workspace-1",
@@ -200,6 +219,24 @@ try {
   await page.locator("#search").fill("documentation #dev");
   await page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).first().waitFor();
 
+  await page.locator("#search").fill("Developer docs");
+  const collectionResult = page.locator("#command-results .result-row").filter({ hasText: "Developer docs" }).first();
+  await collectionResult.waitFor();
+  assert.match(await collectionResult.innerText(), /collection/i);
+  assert.match(await collectionResult.innerText(), /1 bookmark/i);
+  await collectionResult.click();
+  assert.equal(await page.locator("#search").inputValue(), "@Developer docs");
+  await page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).first().waitFor();
+  assert.equal(await page.locator("#command-results .result-row").filter({ hasText: "Second Cached Bookmark" }).count(), 0);
+
+  await page.locator("#search").fill("Inbox reading");
+  const inboxCollection = page.locator("#command-results .result-row").filter({ hasText: "Inbox reading" }).first();
+  await inboxCollection.waitFor();
+  await inboxCollection.click();
+  assert.equal(await page.locator("#search").inputValue(), "@Inbox reading");
+  await page.locator("#command-results .result-row").filter({ hasText: "Second Cached Bookmark" }).first().waitFor();
+  assert.equal(await page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).count(), 0);
+
   await page.locator("#search").fill("offline query");
   await page.getByText("Search Secondary Search", { exact: true }).waitFor();
 
@@ -239,6 +276,8 @@ try {
   console.log("✓ Transparent adaptive D dot favicon is packaged and linked");
   console.log("✓ Cached bookmarks and Workspaces render without Dockmark host permission/network");
   console.log("✓ Offline search matches bookmark description, category, tags and combined #tag terms");
+  console.log("✓ Cached Smart Collections are searchable and browse their matching bookmarks offline");
+  console.log("✓ Inbox-state Smart Collections use cached Inbox membership offline");
   console.log("✓ Local-first settings control card limits, open tabs, default search and auto refresh");
   console.log("✓ Manual refresh remains available when automatic refresh is disabled");
   console.log("✓ Clearing the local snapshot preserves server connection and browser settings");
