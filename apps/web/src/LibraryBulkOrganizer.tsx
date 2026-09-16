@@ -10,6 +10,8 @@ interface Props {
   categories: Category[];
   bookmarkTags: Record<string, string[]>;
   onChanged: () => Promise<void>;
+  contextLabel?: string;
+  preselectMatches?: boolean;
 }
 
 const KEEP_CATEGORY = "__keep__";
@@ -27,16 +29,29 @@ function tagInputError(value: string) {
   }
 }
 
-export function LibraryBulkOrganizer({ bookmarks, categories, bookmarkTags, onChanged }: Props) {
+export function LibraryBulkOrganizer({
+  bookmarks,
+  categories,
+  bookmarkTags,
+  onChanged,
+  contextLabel,
+  preselectMatches = false,
+}: Props) {
   const [query, setQuery] = useState("");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(preselectMatches ? bookmarks.slice(0, MAX_LIBRARY_BATCH).map((bookmark) => bookmark.id) : []),
+  );
   const [categoryChoice, setCategoryChoice] = useState(KEEP_CATEGORY);
   const [addTagsText, setAddTagsText] = useState("");
   const [removeTagsText, setRemoveTagsText] = useState("");
   const [reviewing, setReviewing] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(
+    () => preselectMatches && bookmarks.length > MAX_LIBRARY_BATCH
+      ? `Selected the first ${MAX_LIBRARY_BATCH} of ${bookmarks.length} handed-off matches.`
+      : null,
+  );
 
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
@@ -150,7 +165,11 @@ export function LibraryBulkOrganizer({ bookmarks, categories, bookmarkTags, onCh
           <div>
             <p className="eyebrow">V5 · POWER LIBRARY</p>
             <h2>Bulk organize</h2>
-            <p>Explicit multi-select organization: review category and tag changes first, then commit the batch atomically.</p>
+            <p>
+              {contextLabel
+                ? <>Scoped from <strong>{contextLabel}</strong>. Review category and tag changes first, then commit the batch atomically.</>
+                : "Explicit multi-select organization: review category and tag changes first, then commit the batch atomically."}
+            </p>
           </div>
           <div className="library-bulk-selection">
             <strong>{selectedIds.size} selected</strong>
@@ -167,7 +186,9 @@ export function LibraryBulkOrganizer({ bookmarks, categories, bookmarkTags, onCh
             value={query}
             disabled={reviewing || applying}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter bulk candidates by title, URL, description, category or #tag…"
+            placeholder={contextLabel
+              ? "Narrow the handed-off collection by title, URL, description, category or #tag…"
+              : "Filter bulk candidates by title, URL, description, category or #tag…"}
             aria-label="Filter bookmarks for bulk organization"
           />
           <strong>{candidates.length} match{candidates.length === 1 ? "" : "es"}</strong>
