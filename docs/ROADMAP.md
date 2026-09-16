@@ -98,3 +98,7 @@
 - [x] Smart Collections are first-class Web Launcher results with live match counts/filter context and deep links into the selected collection
 - [x] New Tab caches Smart Collection definitions plus Inbox membership after paired refresh and supports offline collection search + local `@Collection` browsing
 - [x] reviewed Inbox AI triage: select up to 20 `normal` captures, generate title/description/category/tag suggestions, review whole rows, then apply + clear Inbox in the same atomic D1 batch; metadata URL/favicon review stays separate
+- [x] explicit tag validation: over-limit tags fail before mutation instead of being silently truncated or dropped
+- [x] manual bookmark create/edit commits bookmark fields and tags in one atomic D1 batch
+- [x] Quick Capture normalizes concurrent URL races back to duplicate review, and reviewed multi-tab inserts commit transactionally rather than partially
+- [x] bookmark search uses the same whitespace token-AND / `#tag` semantics across Library, Web Launcher and local-first New Tab

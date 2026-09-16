@@ -27,6 +27,7 @@ import {
   listSessions,
   listWorkspaces,
 } from "./api";
+import { bookmarkMatchesQuery, textMatchesQuery } from "./bookmark-search";
 import { listInbox } from "./inbox-api";
 import { matchesSmartCollection, smartCollectionFilterLabels } from "./smart-collection-match";
 import { listSmartCollections, type SmartCollection } from "./smart-collections-api";
@@ -232,8 +233,7 @@ export function App() {
     }));
     const collectionResults: CommandResult[] = smartCollections.flatMap((collection) => {
       const labels = smartCollectionFilterLabels(collection.filters, categoryById);
-      const searchable = [collection.name, ...labels].join(" ").toLocaleLowerCase();
-      if (normalized && !searchable.includes(normalized)) return [];
+      if (normalized && !textMatchesQuery(trimmed, [collection.name, ...labels])) return [];
       const count = bookmarks.filter((bookmark) =>
         matchesSmartCollection(bookmark, collection.filters, bookmarkTags[bookmark.id] ?? [], inboxIds),
       ).length;
@@ -249,15 +249,7 @@ export function App() {
       const tags = bookmarkTags[bookmark.id] ?? [];
       const category = bookmark.categoryId ? categoryById.get(bookmark.categoryId) ?? "" : "Uncategorized";
       const tagTokens = tags.map((tag) => `#${tag}`);
-      const searchable = [
-        bookmark.title,
-        bookmark.url,
-        bookmark.description ?? "",
-        category,
-        ...tags,
-        ...tagTokens,
-      ].join(" ").toLowerCase();
-      if (normalized && !searchable.includes(normalized)) return [];
+      if (normalized && !bookmarkMatchesQuery(bookmark, category, tags, trimmed)) return [];
       const subtitleParts = [hostLabel(bookmark.url)];
       if (category) subtitleParts.push(category);
       if (tagTokens.length) subtitleParts.push(tagTokens.slice(0, 3).join(" "));
