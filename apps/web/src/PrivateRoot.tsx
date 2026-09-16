@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { App } from "./App";
 import { InboxPage } from "./InboxPage";
 import { SettingsPage } from "./SettingsPage";
 import { SmartCollectionsPage } from "./SmartCollectionsPage";
 import { getAuthStatus, login, logout, type AuthStatus } from "./auth-client";
+import { getInboxCount, INBOX_CHANGED_EVENT } from "./inbox-api";
 import "./security.css";
 
 function targetView() {
@@ -20,6 +21,15 @@ function navigate(path: string) {
 
 function PrivateNavigation({ children, onLogout }: { children: ReactNode; onLogout: () => Promise<void> }) {
   const [path, setPath] = useState(window.location.pathname);
+  const [inboxCount, setInboxCount] = useState<number | null>(null);
+
+  const refreshInboxCount = useCallback(async () => {
+    try {
+      setInboxCount(await getInboxCount());
+    } catch {
+      // The badge is a convenience signal. Keep the last known count when a refresh fails.
+    }
+  }, []);
 
   useEffect(() => {
     const onPopState = () => setPath(window.location.pathname);
@@ -27,13 +37,48 @@ function PrivateNavigation({ children, onLogout }: { children: ReactNode; onLogo
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  useEffect(() => {
+    void refreshInboxCount();
+  }, [path, refreshInboxCount]);
+
+  useEffect(() => {
+    const onFocus = () => void refreshInboxCount();
+    const onInboxChanged = () => void refreshInboxCount();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshInboxCount();
+    };
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener(INBOX_CHANGED_EVENT, onInboxChanged);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener(INBOX_CHANGED_EVENT, onInboxChanged);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshInboxCount]);
+
+  const inboxLabel = inboxCount && inboxCount > 0
+    ? `Inbox, ${inboxCount} bookmark${inboxCount === 1 ? "" : "s"} waiting for review`
+    : "Inbox";
+
   return (
     <>
       <div className="private-utility-bar">
         <a href="/" className="private-utility-brand"><span>D·</span> Public page</a>
         <nav>
           <button className={path === "/app" ? "active" : ""} type="button" onClick={() => navigate("/app")}>Workspace</button>
-          <button className={path.startsWith("/app/inbox") ? "active" : ""} type="button" onClick={() => navigate("/app/inbox")}>Inbox</button>
+          <button
+            className={`${path.startsWith("/app/inbox") ? "active " : ""}private-inbox-nav`}
+            type="button"
+            aria-label={inboxLabel}
+            onClick={() => navigate("/app/inbox")}
+          >
+            <span>Inbox</span>
+            {inboxCount !== null && inboxCount > 0 && (
+              <span className="private-inbox-badge" aria-hidden="true">{inboxCount > 99 ? "99+" : inboxCount}</span>
+            )}
+          </button>
           <button className={path.startsWith("/app/collections") ? "active" : ""} type="button" onClick={() => navigate("/app/collections")}>Collections</button>
           <button className={path.startsWith("/app/settings") ? "active" : ""} type="button" onClick={() => navigate("/app/settings")}>Settings</button>
           <button type="button" onClick={() => void onLogout()}>Sign out</button>
