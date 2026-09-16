@@ -61,8 +61,10 @@ export async function resolveInboxBookmark(id: string, categoryId?: string | nul
 export async function reviewInboxBatch(patches: InboxReviewPatch[]) {
   if (!patches.length) throw new Error("Select at least one reviewed Inbox suggestion to file.");
   if (patches.length > 20) throw new Error("Reviewed Inbox filing is limited to 20 bookmarks per request.");
-  return request<{ applied: number; bookmarkIds: string[] }>("/api/inbox/review-batch", {
+  return request<{ applied: number; bookmarkIds: string[] }>("/api/ai/apply", {
     method: "POST",
-    body: JSON.stringify({ patches }),
+    body: JSON.stringify({
+      patches: patches.map((patch) => ({ ...patch, clearInbox: true })),
+    }),
   });
 }
