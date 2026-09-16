@@ -292,7 +292,7 @@ export function InboxPage() {
       next.forEach((suggestion) => generatedAfter.add(suggestion.bookmarkId));
       setAiGeneratedIds(generatedAfter);
       setAiSuggestions(next);
-      setAiAcceptedIds(new Set(next.map((suggestion) => suggestion.bookmarkId));
+      setAiAcceptedIds(new Set(next.map((suggestion) => suggestion.bookmarkId)));
       const nextBatch = nextAiIds(generatedAfter);
       setAiSelectedIds(new Set(nextBatch));
       setNotice(
