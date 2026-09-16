@@ -1,0 +1,297 @@
+:root {
+  --dm-input-bg: #0d1410;
+  --dm-input-hover: #111a15;
+  --dm-placeholder: #68766d;
+  --dm-hover-bg: #17201b;
+  --dm-selected-bg: #1d2a23;
+  --dm-focus-ring: rgba(145, 188, 159, .16);
+  --dm-success-bg: #101a14;
+  --dm-warning-bg: #1a170f;
+  --dm-danger-bg: #211413;
+
+  /* Shared aliases for newer focused views such as Inbox and Smart Collections. */
+  --bg: var(--dm-bg);
+  --panel: var(--dm-bg-card);
+  --line: var(--dm-border);
+  --text: var(--dm-text);
+  --muted: var(--dm-text-muted);
+  --accent: var(--dm-accent);
+}
+
+html[data-theme="light"] {
+  --dm-input-bg: #ffffff;
+  --dm-input-hover: #f8faf9;
+  --dm-placeholder: #82958a;
+  --dm-hover-bg: #edf2ef;
+  --dm-selected-bg: #dceae1;
+  --dm-focus-ring: rgba(79, 128, 99, .16);
+  --dm-success-bg: #eef8f1;
+  --dm-warning-bg: #fff8e9;
+  --dm-danger-bg: #fff3f2;
+}
+
+::selection {
+  color: var(--dm-text);
+  background: color-mix(in srgb, var(--dm-accent) 34%, transparent);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--dm-accent);
+  outline-offset: 2px;
+}
+
+/* Keep form controls on one visual system across Library, Settings, Workspaces,
+   Sessions, Search Engines, Smart Collections, Inbox and AI review. */
+.field-grid input,
+.field-grid select,
+.field-grid textarea,
+.compact-form input,
+.category-edit input,
+.settings-field input,
+.settings-field select,
+.search-engine-form input,
+.search-engine-edit input,
+.workspace-create-form input,
+.workspace-create-form textarea,
+.workspace-meta-form input,
+.workspace-meta-form textarea,
+.workspace-add-card input,
+.workspace-add-card select,
+.workspace-item-edit input,
+.workspace-item-edit select,
+.session-create-form input,
+.session-create-form textarea,
+.session-meta-form input,
+.session-add-fields input,
+.session-item-edit input,
+.smart-filter-grid input,
+.smart-filter-grid select,
+.inbox-review select,
+.auth-card input,
+.ai-bookmark-search {
+  border-color: var(--dm-border-strong);
+  color: var(--dm-text);
+  background: var(--dm-input-bg);
+  caret-color: var(--dm-accent);
+}
+
+.field-grid input::placeholder,
+.field-grid textarea::placeholder,
+.compact-form input::placeholder,
+.category-edit input::placeholder,
+.settings-field input::placeholder,
+.search-engine-form input::placeholder,
+.search-engine-edit input::placeholder,
+.workspace-create-form input::placeholder,
+.workspace-create-form textarea::placeholder,
+.workspace-meta-form input::placeholder,
+.workspace-meta-form textarea::placeholder,
+.workspace-add-card input::placeholder,
+.workspace-item-edit input::placeholder,
+.session-create-form input::placeholder,
+.session-create-form textarea::placeholder,
+.session-meta-form input::placeholder,
+.session-add-fields input::placeholder,
+.session-item-edit input::placeholder,
+.smart-filter-grid input::placeholder,
+.auth-card input::placeholder,
+.ai-bookmark-search::placeholder {
+  color: var(--dm-placeholder);
+  opacity: 1;
+}
+
+.field-grid input:hover,
+.field-grid select:hover,
+.field-grid textarea:hover,
+.compact-form input:hover,
+.category-edit input:hover,
+.settings-field input:hover,
+.settings-field select:hover,
+.search-engine-form input:hover,
+.search-engine-edit input:hover,
+.workspace-create-form input:hover,
+.workspace-create-form textarea:hover,
+.workspace-meta-form input:hover,
+.workspace-meta-form textarea:hover,
+.workspace-add-card input:hover,
+.workspace-add-card select:hover,
+.workspace-item-edit input:hover,
+.workspace-item-edit select:hover,
+.session-create-form input:hover,
+.session-create-form textarea:hover,
+.session-meta-form input:hover,
+.session-add-fields input:hover,
+.session-item-edit input:hover,
+.smart-filter-grid input:hover,
+.smart-filter-grid select:hover,
+.inbox-review select:hover,
+.auth-card input:hover,
+.ai-bookmark-search:hover {
+  border-color: color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border-strong));
+  background: var(--dm-input-hover);
+}
+
+.field-grid input:focus,
+.field-grid select:focus,
+.field-grid textarea:focus,
+.compact-form input:focus,
+.category-edit input:focus,
+.settings-field input:focus,
+.settings-field select:focus,
+.search-engine-form input:focus,
+.search-engine-edit input:focus,
+.workspace-create-form input:focus,
+.workspace-create-form textarea:focus,
+.workspace-meta-form input:focus,
+.workspace-meta-form textarea:focus,
+.workspace-add-card input:focus,
+.workspace-add-card select:focus,
+.workspace-item-edit input:focus,
+.workspace-item-edit select:focus,
+.session-create-form input:focus,
+.session-create-form textarea:focus,
+.session-meta-form input:focus,
+.session-add-fields input:focus,
+.session-item-edit input:focus,
+.smart-filter-grid input:focus,
+.smart-filter-grid select:focus,
+.inbox-review select:focus,
+.auth-card input:focus,
+.ai-bookmark-search:focus {
+  border-color: var(--dm-accent);
+  background: var(--dm-input-bg);
+  box-shadow: 0 0 0 3px var(--dm-focus-ring);
+  outline: 0;
+}
+
+.bang-input {
+  border-color: var(--dm-border-strong);
+  background: var(--dm-input-bg);
+}
+.bang-input:focus-within {
+  border-color: var(--dm-accent);
+  box-shadow: 0 0 0 3px var(--dm-focus-ring);
+}
+.bang-input > span { color: var(--dm-text-muted); }
+
+/* Navigation and command selection use the same accent-tinted surface instead
+   of several near-black/green values that previously varied per screen. */
+.ghost:hover,
+.ghost.active,
+.result:hover,
+.result.selected,
+.workspace-nav-item:hover,
+.workspace-nav-item.active,
+.session-nav-item:hover,
+.session-nav-item.active,
+.smart-list-row:hover,
+.smart-list-row.active {
+  color: var(--dm-text);
+  background: var(--dm-selected-bg);
+}
+.result.selected,
+.session-nav-item.active {
+  border-color: color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dm-accent) 18%, transparent);
+}
+
+.secondary,
+.settings,
+.library-count {
+  border-color: var(--dm-border);
+  background: var(--dm-bg-card);
+  color: var(--dm-text-soft);
+}
+.secondary:hover:not(:disabled),
+.settings:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border));
+  background: var(--dm-hover-bg);
+  color: var(--dm-text);
+}
+
+.form-card,
+.bookmark-card,
+.workspace-item-card,
+.session-item-card,
+.settings-heading,
+.settings-actions-row {
+  border-color: var(--dm-border);
+  background-color: color-mix(in srgb, var(--dm-bg-card) 88%, transparent);
+}
+
+.settings-segmented {
+  border-color: var(--dm-border);
+  background: var(--dm-bg-soft);
+}
+.settings-segmented button { color: var(--dm-text-muted); }
+.settings-segmented button:hover { color: var(--dm-text); background: var(--dm-hover-bg); }
+.settings-segmented button.active {
+  color: var(--dm-accent-strong);
+  background: var(--dm-selected-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border));
+}
+
+.settings-toggle,
+.ai-bookmark-row,
+.ai-suggestion-row {
+  border-color: var(--dm-border);
+  background: var(--dm-bg-soft);
+}
+.ai-bookmark-row:hover {
+  border-color: color-mix(in srgb, var(--dm-accent) 36%, var(--dm-border));
+  background: var(--dm-hover-bg);
+}
+.ai-queue-filters button.active,
+.ai-field-diffs > div.is-changed {
+  border-color: color-mix(in srgb, var(--dm-accent) 48%, var(--dm-border));
+  background: var(--dm-selected-bg);
+}
+
+.inbox-ai-select,
+.inbox-metadata-field.available {
+  border-color: color-mix(in srgb, var(--dm-accent) 38%, var(--dm-border));
+}
+.inbox-ai-suggestion:has(input:checked),
+.inbox-metadata-field:has(input:checked) {
+  border-color: color-mix(in srgb, var(--dm-accent) 52%, var(--dm-border));
+  background: var(--dm-selected-bg);
+}
+
+/* Light mode should stay genuinely light even for surfaces that inherited
+   dark hard-coded values from the original component CSS. */
+html[data-theme="light"] .workspace-nav-item,
+html[data-theme="light"] .session-nav-item,
+html[data-theme="light"] .search-engine-card,
+html[data-theme="light"] .workspace-item-card,
+html[data-theme="light"] .session-item-card,
+html[data-theme="light"] .ai-bookmark-row,
+html[data-theme="light"] .ai-suggestion-row,
+html[data-theme="light"] .inbox-panel,
+html[data-theme="light"] .inbox-ai-panel,
+html[data-theme="light"] .smart-summary,
+html[data-theme="light"] .smart-list,
+html[data-theme="light"] .smart-editor {
+  color: var(--dm-text);
+}
+
+html[data-theme="light"] .search-engine-icon,
+html[data-theme="light"] .workspace-nav-icon,
+html[data-theme="light"] .workspace-large-icon,
+html[data-theme="light"] .session-nav-icon,
+html[data-theme="light"] .session-large-icon {
+  border-color: var(--dm-border);
+  background: var(--dm-accent-bg);
+  color: var(--dm-accent-strong);
+}
+
+html[data-theme="light"] .inbox-notice.error,
+html[data-theme="light"] .error-banner,
+html[data-theme="light"] .public-error {
+  border-color: #e1b8b4;
+  background: var(--dm-danger-bg);
+  color: #9f4e49;
+}
