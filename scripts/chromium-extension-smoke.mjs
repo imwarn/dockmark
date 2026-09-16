@@ -56,7 +56,7 @@ try {
   await popup.waitForLoadState("domcontentloaded");
 
   const manifest = await popup.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "1.4.1");
+  assert.equal(manifest.version, "1.4.2");
   assert.equal(manifest.icons?.[16], "icons/dockmark-16.png");
   assert.equal(manifest.icons?.[32], "icons/dockmark-32.png");
   assert.equal(manifest.icons?.[48], "icons/dockmark-48.png");
@@ -72,7 +72,7 @@ try {
   );
   assert.equal(capabilities.connected, true);
   assert.equal(capabilities.protocolVersion, 1);
-  assert.equal(capabilities.extensionVersion, "1.4.1");
+  assert.equal(capabilities.extensionVersion, "1.4.2");
   assert.equal(capabilities.capabilities.openTabs, true);
   assert.equal(capabilities.capabilities.workspaceReuse, true);
   assert.equal(capabilities.capabilities.workspacePinned, true);
@@ -151,7 +151,7 @@ try {
   assert.equal(restored.pinned, true, "Session restore should preserve pinned state.");
 
   console.log(`✓ Dockmark Chromium extension loaded: ${extensionId}`);
-  console.log("✓ Capability handshake protocol 1 / extension 1.4.1");
+  console.log("✓ Capability handshake protocol 1 / extension 1.4.2");
   console.log("✓ Dockmark D dot mark is wired into manifest icon sizes");
   console.log("✓ Native bookmark import, mapping sync and explicit writeback capabilities advertised");
   console.log("✓ Native bookmark capability is optional and ungranted by default");
