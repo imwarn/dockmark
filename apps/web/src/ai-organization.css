@@ -3,16 +3,26 @@
 .ai-provider-actions, .ai-selection-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ai-bookmark-search { width: 100%; height: 42px; padding: 0 11px; border: 1px solid var(--dm-border-strong); border-radius: 10px; outline: 0; color: var(--dm-text); background: var(--dm-bg-soft); }
 .ai-bookmark-search:focus { border-color: var(--dm-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dm-accent) 15%, transparent); }
+.ai-queue-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ai-queue-summary > span { color: var(--dm-text-muted); font-size: 10px; }
+.ai-queue-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.ai-queue-filters button { min-height: 30px; padding: 0 10px; border: 1px solid var(--dm-border); border-radius: 999px; color: var(--dm-text-muted); background: var(--dm-bg-soft); font-size: 10px; cursor: pointer; }
+.ai-queue-filters button:hover { border-color: var(--dm-border-strong); color: var(--dm-text); }
+.ai-queue-filters button.active { border-color: color-mix(in srgb, var(--dm-accent) 58%, var(--dm-border)); color: var(--dm-accent); background: color-mix(in srgb, var(--dm-accent-bg) 58%, var(--dm-bg-soft)); }
+.ai-selection-warning { margin: -2px 0 0; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--dm-accent) 38%, var(--dm-border)); border-radius: 9px; color: var(--dm-text-soft); background: color-mix(in srgb, var(--dm-accent-bg) 35%, var(--dm-bg-soft)); font-size: 10px; line-height: 1.45; }
 .ai-bookmark-list { max-height: 360px; overflow: auto; display: grid; gap: 5px; padding-right: 4px; scrollbar-gutter: stable; }
 .ai-bookmark-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; min-height: 56px; padding: 8px 10px; border: 1px solid var(--dm-border); border-radius: 11px; background: var(--dm-bg-soft); cursor: pointer; }
 .ai-bookmark-row:hover { border-color: var(--dm-border-strong); background: var(--dm-bg-raised); }
+.ai-bookmark-row.is-generated { border-color: color-mix(in srgb, var(--dm-accent) 32%, var(--dm-border)); }
+.ai-bookmark-row.is-generated > em { color: var(--dm-accent); }
 .ai-bookmark-row > input, .ai-suggestion-heading > input { accent-color: var(--dm-accent); }
 .ai-bookmark-row > span, .ai-suggestion-heading > span { display: grid; gap: 3px; min-width: 0; }
 .ai-bookmark-row strong, .ai-bookmark-row small, .ai-suggestion-heading strong, .ai-suggestion-heading small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-bookmark-row strong, .ai-suggestion-heading strong { color: var(--dm-text); font-size: 12px; }
 .ai-bookmark-row small, .ai-suggestion-heading small { color: var(--dm-text-muted); font-size: 10px; }
-.ai-bookmark-row em, .ai-suggestion-heading em { color: var(--dm-text-muted); font-size: 9px; font-style: normal; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
+.ai-bookmark-row em, .ai-suggestion-heading em { max-width: 190px; overflow: hidden; text-overflow: ellipsis; color: var(--dm-text-muted); font-size: 9px; font-style: normal; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
 .ai-bookmark-row.is-protected { opacity: .55; cursor: not-allowed; }
+.ai-queue-empty { margin: 0; padding: 24px 12px; color: var(--dm-text-muted); font-size: 11px; text-align: center; }
 .ai-generate-button { justify-self: start; }
 .ai-preview { overflow: hidden; border: 1px solid var(--dm-border); border-radius: 18px; background: color-mix(in srgb, var(--dm-bg-card) 86%, transparent); }
 .ai-preview-list { display: grid; gap: 8px; max-height: 720px; overflow: auto; padding: 8px; scrollbar-gutter: stable; }
@@ -28,7 +38,8 @@
 .ai-field-diffs .is-changed strong:last-child { color: var(--dm-text); }
 
 @media (max-width: 760px) {
+  .ai-queue-summary { align-items: flex-start; flex-direction: column; }
   .ai-field-diffs { grid-template-columns: 1fr; }
   .ai-suggestion-heading { grid-template-columns: auto minmax(0,1fr); }
-  .ai-suggestion-heading em { grid-column: 2; white-space: normal; }
+  .ai-suggestion-heading em { grid-column: 2; max-width: none; white-space: normal; }
 }
