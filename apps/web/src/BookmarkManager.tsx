@@ -2,15 +2,18 @@ import { useMemo, useState, type DragEvent, type FormEvent } from "react";
 import type { Bookmark, Category, CreateBookmarkInput, HealthPolicy, HealthStatus } from "@dockmark/core";
 import {
   checkBookmarkHealth,
-  createBookmark,
   createCategory,
   deleteBookmark,
   deleteCategory,
-  updateBookmark,
   updateCategory,
 } from "./api";
+import {
+  createBookmarkWithTags,
+  parseBookmarkTags,
+  updateBookmarkWithTags,
+} from "./bookmark-details-api";
+import { bookmarkMatchesQuery } from "./bookmark-search";
 import { reorderBookmarks, reorderCategories } from "./reorder-api";
-import { replaceBookmarkTags } from "./tag-api";
 import "./health.css";
 
 interface Props {
@@ -64,51 +67,6 @@ const healthLabels: Record<HealthStatus, string> = {
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
-}
-
-function parseTagInput(value: string) {
-  const tags: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of value.split(/[;,\n]/)) {
-    const tag = raw.trim().replace(/\s+/g, " ");
-    if (!tag) continue;
-    const key = tag.toLocaleLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    tags.push(tag.slice(0, 40));
-    if (tags.length >= 12) break;
-  }
-  return tags;
-}
-
-function queryTokens(value: string) {
-  return value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-}
-
-function bookmarkMatchesQuery(
-  bookmark: Bookmark,
-  categoryName: string,
-  tags: string[],
-  query: string,
-) {
-  const tokens = queryTokens(query);
-  if (!tokens.length) return true;
-  const normalizedTags = tags.map((tag) => tag.toLocaleLowerCase());
-  const haystack = [
-    bookmark.title,
-    bookmark.url,
-    bookmark.description ?? "",
-    categoryName,
-    ...tags,
-  ].join("\n").toLocaleLowerCase();
-
-  return tokens.every((token) => {
-    if (token.startsWith("#") && token.length > 1) {
-      const tagNeedle = token.slice(1);
-      return normalizedTags.some((tag) => tag.includes(tagNeedle));
-    }
-    return haystack.includes(token);
-  });
 }
 
 function moveId(ids: string[], movingId: string, targetId: string) {
@@ -196,7 +154,7 @@ function BookmarkFields({
       <label className="field-span-2">
         <span>Tags</span>
         <input value={draft.tagsText} onChange={(event) => onChange({ ...draft, tagsText: event.target.value })} placeholder="dev, docs, self-hosted" />
-        <small className="field-help">Comma, semicolon or newline separated · up to 12 tags · 40 characters each.</small>
+        <small className="field-help">Comma, semicolon or newline separated · up to 12 tags · 40 characters each. Invalid input is rejected instead of truncated.</small>
       </label>
     </div>
   );
@@ -394,10 +352,10 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
       ...(draft.healthPolicy !== "auto" ? { healthPolicy: draft.healthPolicy } : {}),
     };
     await refreshAfter(async () => {
-      const bookmark = await createBookmark(input);
-      await replaceBookmarkTags(bookmark.id, parseTagInput(draft.tagsText));
+      const tags = parseBookmarkTags(draft.tagsText);
+      await createBookmarkWithTags(input, tags);
       setDraft(emptyDraft);
-      setNotice("Bookmark added.");
+      setNotice("Bookmark and tags added atomically.");
     });
   }
 
@@ -406,16 +364,17 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
     const healthPolicy = editDraft.healthPolicy;
     if (healthPolicy === "auto") return;
     await refreshAfter(async () => {
-      await updateBookmark(id, {
+      const tags = parseBookmarkTags(editDraft.tagsText);
+      await updateBookmarkWithTags(id, {
         title: editDraft.title,
         url: editDraft.url,
         description: editDraft.description.trim() || null,
         categoryId: editDraft.categoryId || null,
         healthPolicy,
+        tags,
       });
-      await replaceBookmarkTags(id, parseTagInput(editDraft.tagsText));
       setEditingId(null);
-      setNotice("Bookmark details and tags saved.");
+      setNotice("Bookmark details and tags saved atomically.");
     });
   }
 
@@ -550,7 +509,7 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
               <span>⌕</span>
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, URL, description, category or #tag…" aria-label="Search bookmark library" />
             </div>
-            <p className="bookmark-search-help">Space-separated terms are combined. Example: <code>github #dev</code>. Reordering is paused while a filter is active.</p>
+            <p className="bookmark-search-help">Space-separated terms use AND matching across Library, Launcher and New Tab. Example: <code>github #dev</code>. Reordering is paused while a filter is active.</p>
           </div>
 
           <form className="form-card bookmark-form" onSubmit={submitBookmark}>
