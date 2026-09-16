@@ -18,6 +18,9 @@
 .inbox-title-line a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 700; text-decoration: none; }
 .inbox-title-line a:hover { color: var(--accent); }
 .inbox-title-line > span { flex: 0 0 auto; padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.inbox-ai-select { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 999px; color: var(--accent); cursor: pointer; font-size: 9px; font-weight: 700; letter-spacing: .06em; }
+.inbox-ai-select input { margin: 0; accent-color: var(--accent); }
+.inbox-ai-select.disabled { border-color: var(--line); color: var(--muted); cursor: not-allowed; opacity: .62; }
 .inbox-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 7px; color: var(--muted); font-size: 11px; }
 .inbox-copy p { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .inbox-review { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; align-items: end; }
@@ -47,6 +50,29 @@
 .inbox-notice { margin: 0 0 14px; padding: 12px 14px; border-radius: 12px; font-size: 12px; }
 .inbox-notice.success { border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
 .inbox-notice.error { border: 1px solid #71423e; background: #261716; color: #e4aaa5; }
+.inbox-ai-panel { display: grid; gap: 14px; margin-bottom: 16px; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 18px; background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.inbox-ai-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.inbox-ai-heading h2 { margin: 2px 0 7px; font-size: 20px; letter-spacing: -.025em; }
+.inbox-ai-heading p:not(.eyebrow) { max-width: 760px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.inbox-ai-heading code { color: var(--text); }
+.inbox-ai-summary { display: grid; gap: 4px; min-width: 190px; text-align: right; }
+.inbox-ai-summary strong { font-size: 12px; }
+.inbox-ai-summary span { color: var(--muted); font-size: 10px; }
+.inbox-ai-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.inbox-ai-note { margin: -2px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.inbox-ai-preview { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.inbox-ai-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.inbox-ai-preview-heading > div:first-child { display: grid; gap: 3px; }
+.inbox-ai-preview-heading strong { font-size: 12px; }
+.inbox-ai-preview-heading span { color: var(--muted); font-size: 10px; }
+.inbox-ai-preview-heading > div:last-child { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.inbox-ai-preview-list { display: grid; gap: 7px; max-height: 430px; overflow: auto; padding-right: 3px; }
+.inbox-ai-suggestion { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--panel) 82%, var(--bg)); cursor: pointer; }
+.inbox-ai-suggestion input { margin: 0; accent-color: var(--accent); }
+.inbox-ai-suggestion > span { display: grid; gap: 2px; min-width: 0; }
+.inbox-ai-suggestion strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.inbox-ai-suggestion small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.inbox-ai-suggestion em { color: var(--accent); font-size: 9px; font-style: normal; text-align: right; white-space: nowrap; }
 
 @media (max-width: 760px) {
   .inbox-shell { width: min(100% - 24px, 1120px); padding-top: 28px; }
@@ -59,4 +85,9 @@
   .inbox-metadata-field, .inbox-metadata-info { grid-template-columns: auto minmax(0, 1fr); }
   .inbox-metadata-field em, .inbox-metadata-info em { grid-column: 2; text-align: left; white-space: normal; }
   .inbox-metadata-info { padding-left: 10px; }
+  .inbox-ai-heading, .inbox-ai-preview-heading { align-items: stretch; flex-direction: column; }
+  .inbox-ai-summary { min-width: 0; text-align: left; }
+  .inbox-ai-preview-heading > div:last-child { justify-content: flex-start; }
+  .inbox-ai-suggestion { grid-template-columns: auto minmax(0, 1fr); }
+  .inbox-ai-suggestion em { grid-column: 2; text-align: left; white-space: normal; }
 }

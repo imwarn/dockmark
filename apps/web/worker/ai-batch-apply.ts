@@ -17,6 +17,7 @@ interface D1BatchDatabaseLike extends D1DatabaseLike {
 interface BookmarkRow {
   id: string;
   health_policy: string;
+  inbox_at: string | null;
 }
 
 interface CategoryRow {
@@ -34,6 +35,7 @@ interface AiPatch {
   description: string | null;
   categoryId: string | null;
   tags: string[];
+  clearInbox: boolean;
 }
 
 export class AiBatchApplyHttpError extends Error {
@@ -48,7 +50,7 @@ export class AiBatchApplyHttpError extends Error {
 
 const MAX_PATCHES = 20;
 const MAX_TAGS = 12;
-const ALLOWED_PATCH_FIELDS = new Set(["bookmarkId", "title", "description", "categoryId", "tags"]);
+const ALLOWED_PATCH_FIELDS = new Set(["bookmarkId", "title", "description", "categoryId", "tags", "clearInbox"]);
 
 function json(data: unknown, init: ResponseInit = {}) {
   const headers = new Headers(init.headers);
@@ -107,7 +109,7 @@ function normalizePatch(value: unknown, index: number): AiPatch {
       throw new AiBatchApplyHttpError(
         400,
         "invalid_patch_field",
-        `patches[${index}] contains unsupported field “${key}”. AI apply only accepts title, description, categoryId and tags.`,
+        `patches[${index}] contains unsupported field “${key}”. AI apply accepts title, description, categoryId, tags and an explicit Inbox-clear flag only.`,
       );
     }
   }
@@ -147,12 +149,21 @@ function normalizePatch(value: unknown, index: number): AiPatch {
     throw new AiBatchApplyHttpError(400, "invalid_patch", `patches[${index}].categoryId must be a string or null.`);
   }
 
+  let clearInbox = false;
+  if (Object.prototype.hasOwnProperty.call(row, "clearInbox")) {
+    if (typeof row.clearInbox !== "boolean") {
+      throw new AiBatchApplyHttpError(400, "invalid_patch", `patches[${index}].clearInbox must be a boolean.`);
+    }
+    clearInbox = row.clearInbox;
+  }
+
   return {
     bookmarkId,
     title,
     description,
     categoryId,
     tags: normalizeTags(row.tags, index),
+    clearInbox,
   };
 }
 
@@ -179,7 +190,7 @@ async function validateTargets(db: D1DatabaseLike, patches: AiPatch[]) {
   const ids = patches.map((patch) => patch.bookmarkId);
   const placeholders = ids.map(() => "?").join(", ");
   const bookmarks = await db.prepare(
-    `SELECT id, health_policy FROM bookmarks WHERE id IN (${placeholders})`,
+    `SELECT id, health_policy, inbox_at FROM bookmarks WHERE id IN (${placeholders})`,
   )
     .bind(...ids)
     .all<BookmarkRow>();
@@ -195,6 +206,13 @@ async function validateTargets(db: D1DatabaseLike, patches: AiPatch[]) {
         409,
         "protected_health_policy",
         "One or more reviewed bookmarks are no longer AI-eligible. No patches were applied.",
+      );
+    }
+    if (patch.clearInbox && !bookmark.inbox_at) {
+      throw new AiBatchApplyHttpError(
+        409,
+        "inbox_changed",
+        "One or more reviewed bookmarks are no longer waiting in Inbox. No patches were applied.",
       );
     }
   }
@@ -231,9 +249,11 @@ async function applyPatches(request: Request, db: D1DatabaseLike) {
     statements.push(
       db.prepare(
         `UPDATE bookmarks
-            SET title = ?, description = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP
+            SET title = ?, description = ?, category_id = ?,
+                inbox_at = CASE WHEN ? = 1 THEN NULL ELSE inbox_at END,
+                updated_at = CURRENT_TIMESTAMP
           WHERE id = ?`,
-      ).bind(patch.title, patch.description, patch.categoryId, patch.bookmarkId),
+      ).bind(patch.title, patch.description, patch.categoryId, patch.clearInbox ? 1 : 0, patch.bookmarkId),
     );
     statements.push(
       db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").bind(patch.bookmarkId),
@@ -266,6 +286,7 @@ async function applyPatches(request: Request, db: D1DatabaseLike) {
   return json({
     applied: patches.length,
     bookmarkIds: patches.map((patch) => patch.bookmarkId),
+    inboxFiled: patches.filter((patch) => patch.clearInbox).length,
   });
 }
 
