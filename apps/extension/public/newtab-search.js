@@ -257,7 +257,7 @@
       renderSearchResults();
       return true;
     } catch {
-      // Library metadata hydration is additive. Keep the last-known-good snapshot if this optional read fails.
+      // Legacy cache hydration is additive. Keep the last-known-good snapshot if this optional read fails.
       return false;
     } finally {
       syncingLibraryMetadata = false;
@@ -266,7 +266,7 @@
 
   refreshCloud = async function enhancedRefreshCloud(options = {}) {
     const refreshed = await originalRefreshCloud(options);
-    if (refreshed) await hydrateLibraryMetadata();
+    if (refreshed && snapshotNeedsLibraryMetadata(snapshot)) await hydrateLibraryMetadata();
     return refreshed;
   };
 
@@ -277,7 +277,18 @@
     void hydrateLibraryMetadata();
   });
 
-  // Smart Collections and Inbox membership are cached only after a successful paired cloud refresh.
-  // Once cached, collection search and @Collection browsing remain local-first and work offline.
+  function hydrateLegacySnapshotWhenReady(attempt = 0) {
+    if (snapshotNeedsLibraryMetadata(snapshot)) {
+      void hydrateLibraryMetadata();
+      return;
+    }
+    if (!snapshot.syncedAt && attempt < 10) {
+      setTimeout(() => hydrateLegacySnapshotWhenReady(attempt + 1), 50);
+    }
+  }
+
+  // Current refreshes persist tags, Smart Collections and Inbox membership with the base snapshot.
+  // Only an older last-known-good cache should need this one-time additive hydration path.
+  setTimeout(() => hydrateLegacySnapshotWhenReady(), 0);
   queueMicrotask(() => renderSearchResults());
 })();
