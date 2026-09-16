@@ -16,6 +16,9 @@ interface D1PreparedStatementLike {
 
 interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatementLike;
+}
+
+interface D1BatchDatabaseLike extends D1DatabaseLike {
   batch(statements: D1PreparedStatementLike[]): Promise<unknown[]>;
 }
 
@@ -240,6 +243,14 @@ function isBookmarkUrlUniqueViolation(error: unknown) {
   return normalized.includes("unique") && normalized.includes("bookmarks.url");
 }
 
+function batchDb(db: D1DatabaseLike) {
+  const candidate = db as D1BatchDatabaseLike;
+  if (typeof candidate.batch !== "function") {
+    throw new BookmarkDetailsHttpError(500, "batch_unavailable", "D1 batch execution is unavailable in this runtime.");
+  }
+  return candidate;
+}
+
 async function tagStatements(db: D1DatabaseLike, bookmarkId: string, tags: string[]) {
   const existingTags = await db.prepare("SELECT id, name FROM tags").all<TagRow>();
   const tagIdByName = new Map(existingTags.results.map((row) => [row.name.toLocaleLowerCase(), row.id]));
@@ -283,8 +294,9 @@ async function createWithTags(request: Request, db: D1DatabaseLike) {
   statements.push(...await tagStatements(db, id, input.tags));
 
   try {
-    await db.batch(statements);
+    await batchDb(db).batch(statements);
   } catch (error) {
+    if (error instanceof BookmarkDetailsHttpError) throw error;
     if (isBookmarkUrlUniqueViolation(error)) {
       throw new BookmarkDetailsHttpError(409, "bookmark_exists", "This URL is already bookmarked.");
     }
@@ -319,8 +331,9 @@ async function updateWithTags(request: Request, db: D1DatabaseLike, id: string) 
   statements.push(...await tagStatements(db, id, input.tags));
 
   try {
-    await db.batch(statements);
+    await batchDb(db).batch(statements);
   } catch (error) {
+    if (error instanceof BookmarkDetailsHttpError) throw error;
     if (isBookmarkUrlUniqueViolation(error)) {
       throw new BookmarkDetailsHttpError(409, "bookmark_exists", "This URL is already bookmarked.");
     }
