@@ -43,7 +43,7 @@ try {
   await page.waitForLoadState("domcontentloaded");
 
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "1.4.1");
+  assert.equal(manifest.version, "1.4.2");
   assert.equal(manifest.name, "Dockmark New Tab");
   assert.equal(manifest.icons?.[128], "icons/dockmark-128.png");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
@@ -55,6 +55,92 @@ try {
     return response.text();
   });
   assert.match(iconText, /prefers-color-scheme: dark/);
+
+  // Exercise the final refresh wrapper without a live Dockmark server. The request
+  // shim lets us count endpoint reads while still running the real cache assembly,
+  // storage write, render and enhanced-search wrappers inside the extension page.
+  const refreshProbe = await page.evaluate(async (clickedTargetUrl) => {
+    const now = new Date().toISOString();
+    const counts = {};
+    origin = "https://snapshot-smoke.dockmark.invalid";
+    hasOriginPermission = async () => true;
+    requestJson = async (path) => {
+      counts[path] = (counts[path] || 0) + 1;
+      if (path === "/api/bookmarks") {
+        return {
+          bookmarks: [{
+            id: "online-bookmark",
+            categoryId: "online-category",
+            title: "Online Cached Example",
+            url: clickedTargetUrl,
+            description: "Fresh cloud bookmark for single-pass snapshot validation.",
+            healthPolicy: "normal",
+            healthStatus: "unknown",
+            position: 0,
+            createdAt: now,
+            updatedAt: now,
+          }],
+        };
+      }
+      if (path === "/api/categories") {
+        return { categories: [{ id: "online-category", name: "Online", position: 0, createdAt: now, updatedAt: now }] };
+      }
+      if (path === "/api/workspaces") return { workspaces: [] };
+      if (path === "/api/search-engines") {
+        return {
+          engines: [{
+            id: "engine-online",
+            name: "Online Search",
+            keyword: "o",
+            searchUrl: "https://example.com/search?q=%s",
+            isDefault: true,
+            position: 0,
+          }],
+        };
+      }
+      if (path === "/api/settings/browser") {
+        return {
+          settings: {
+            version: 1,
+            conflictPreference: "ask",
+            newTab: {
+              defaultSearchEngineId: "engine-online",
+              showOpenTabs: false,
+              bookmarkLimit: 12,
+              workspaceLimit: 8,
+              autoRefresh: false,
+            },
+            updatedAt: now,
+          },
+          bookmarkTags: { "online-bookmark": ["online", "dev"] },
+          smartCollections: [{
+            id: "online-collection",
+            name: "Online dev",
+            filters: { categoryId: "online-category", tags: ["dev"], inbox: "inbox" },
+            position: 0,
+            createdAt: now,
+            updatedAt: now,
+          }],
+          inboxBookmarkIds: ["online-bookmark"],
+        };
+      }
+      throw new Error(`Unexpected New Tab smoke endpoint: ${path}`);
+    };
+
+    await chrome.storage.local.remove(["dockmarkNewTabCacheV1", "dockmarkBrowserSettingsV1"]);
+    const refreshed = await refreshCloud();
+    const stored = await chrome.storage.local.get("dockmarkNewTabCacheV1");
+    return { refreshed, counts, snapshot: stored.dockmarkNewTabCacheV1 };
+  }, clickedTargetUrl);
+  assert.equal(refreshProbe.refreshed, true);
+  assert.equal(refreshProbe.counts["/api/settings/browser"], 1, "A current New Tab refresh should read /api/settings/browser exactly once.");
+  assert.deepEqual(refreshProbe.snapshot.bookmarks?.[0]?.tags, ["online", "dev"]);
+  assert.equal(refreshProbe.snapshot.smartCollections?.[0]?.name, "Online dev");
+  assert.deepEqual(refreshProbe.snapshot.inboxBookmarkIds, ["online-bookmark"]);
+  await page.locator("#search").fill("#dev");
+  await page.locator("#command-results .result-row").filter({ hasText: "Online Cached Example" }).first().waitFor();
+  await page.locator("#search").fill("Online dev");
+  await page.locator("#command-results .result-row").filter({ hasText: "Online dev" }).first().waitFor();
 
   const offlineOrigin = "https://offline.dockmark.invalid";
   await page.evaluate(async ({ offlineOrigin, clickedTargetUrl }) => {
@@ -275,6 +361,7 @@ try {
   console.log(`✓ Dockmark New Tab variant loaded: ${extensionId}`);
   console.log("✓ New Tab manifest override is isolated to the opt-in variant");
   console.log("✓ Transparent adaptive D dot favicon and manifest brand icons are packaged");
+  console.log("✓ Current refresh reads browser settings once and persists tags, Smart Collections and Inbox membership atomically");
   console.log("✓ Cached bookmarks and Workspaces render without Dockmark host permission/network");
   console.log("✓ Offline search matches bookmark description, category, tags and combined #tag terms");
   console.log("✓ Cached Smart Collections are searchable and browse their matching bookmarks offline");
