@@ -27,6 +27,53 @@
   line-height: 1.4;
   text-transform: none;
 }
+.bookmark-field-grid .field-error > span { color: var(--dm-danger); }
+.bookmark-field-grid .field-error input {
+  border-color: color-mix(in srgb, var(--dm-danger) 72%, var(--dm-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dm-danger) 12%, transparent);
+}
+.bookmark-field-grid .field-error input:focus {
+  border-color: var(--dm-danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dm-danger) 12%, transparent);
+}
+.field-error-message {
+  color: var(--dm-danger);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.45;
+  text-transform: none;
+}
+.inline-form-feedback {
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--dm-border);
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.inline-form-feedback.error {
+  border-color: color-mix(in srgb, var(--dm-danger) 45%, var(--dm-border));
+  background: color-mix(in srgb, var(--dm-danger) 8%, var(--dm-bg-soft));
+  color: var(--dm-danger);
+}
+.inline-form-feedback.success {
+  border-color: color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border));
+  background: var(--dm-accent-bg);
+  color: var(--dm-accent-strong);
+}
+.bookmark-save-confirmation {
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border));
+  border-radius: 999px;
+  background: var(--dm-accent-bg);
+  color: var(--dm-accent-strong);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 
 .tag-browser-card { display: grid; gap: 12px; }
 .tag-browser-card .card-heading { margin-bottom: 0; }
