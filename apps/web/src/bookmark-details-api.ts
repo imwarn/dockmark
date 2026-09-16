@@ -10,6 +10,17 @@ interface ErrorEnvelope {
 export const MAX_BOOKMARK_TAGS = 12;
 export const MAX_BOOKMARK_TAG_LENGTH = 40;
 
+export class BookmarkDetailsApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "BookmarkDetailsApiError";
+  }
+}
+
 export interface BookmarkDetailsInput {
   title: string;
   url: string;
@@ -25,7 +36,11 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers, cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as T & ErrorEnvelope;
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? `Request failed with status ${response.status}.`);
+    throw new BookmarkDetailsApiError(
+      response.status,
+      payload.error?.code,
+      payload.error?.message ?? `Request failed with status ${response.status}.`,
+    );
   }
   return payload;
 }
