@@ -102,3 +102,6 @@
 - [x] manual bookmark create/edit commits bookmark fields and tags in one atomic D1 batch
 - [x] Quick Capture normalizes concurrent URL races back to duplicate review, and reviewed multi-tab inserts commit transactionally rather than partially
 - [x] bookmark search uses the same whitespace token-AND / `#tag` semantics across Library, Web Launcher and local-first New Tab
+- [x] bookmark add/edit keeps tag and duplicate-URL validation beside the affected field, shows saving state locally, and reserves the page-level banner for non-field/system errors
+- [x] private navigation surfaces a lightweight live Inbox waiting count that refreshes after reviewed filing and when the Web app regains focus after extension capture
+- [x] V4 closeout complete: Capture → Inbox → metadata/AI review → filing → Smart Collections is review-gated, duplicate-safe, locally searchable, and visibly actionable without silent bookmark mutation

@@ -26,6 +26,21 @@
 }
 .private-utility-bar nav button:hover,
 .private-utility-bar nav button.active { color: #edf3ef; background: #151b18; }
+.private-inbox-nav { display: inline-flex; align-items: center; gap: 6px; }
+.private-inbox-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--dm-accent) 45%, transparent);
+  border-radius: 999px;
+  background: var(--dm-accent-bg);
+  color: var(--dm-accent-strong);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
 
 .auth-shell { position: relative; display: grid; place-items: center; min-height: 100vh; padding: 32px 18px; }
 .auth-brand { position: absolute; top: 28px; left: 32px; display: inline-flex; align-items: center; gap: 10px; }

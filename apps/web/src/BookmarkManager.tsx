@@ -8,6 +8,7 @@ import {
   updateCategory,
 } from "./api";
 import {
+  BookmarkDetailsApiError,
   createBookmarkWithTags,
   parseBookmarkTags,
   updateBookmarkWithTags,
@@ -69,6 +70,21 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
+function tagValidationMessage(value: string) {
+  try {
+    parseBookmarkTags(value);
+    return null;
+  } catch (error) {
+    return messageFrom(error);
+  }
+}
+
+function duplicateUrlMessage(error: unknown) {
+  return error instanceof BookmarkDetailsApiError && error.code === "bookmark_exists"
+    ? error.message
+    : null;
+}
+
 function moveId(ids: string[], movingId: string, targetId: string) {
   if (movingId === targetId) return ids;
   const sourceIndex = ids.indexOf(movingId);
@@ -114,21 +130,40 @@ function BookmarkFields({
   categories,
   onChange,
   allowAuto,
+  idPrefix,
+  urlError,
+  tagsError,
 }: {
   draft: BookmarkDraft;
   categories: Category[];
   onChange: (draft: BookmarkDraft) => void;
   allowAuto: boolean;
+  idPrefix: string;
+  urlError?: string | null;
+  tagsError?: string | null;
 }) {
+  const tagsHelpId = `${idPrefix}-tags-help`;
+  const tagsErrorId = `${idPrefix}-tags-error`;
+  const urlErrorId = `${idPrefix}-url-error`;
+
   return (
     <div className="field-grid bookmark-field-grid">
       <label>
         <span>Title</span>
         <input required maxLength={200} value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} placeholder="GitHub" />
       </label>
-      <label>
+      <label className={urlError ? "field-error" : undefined}>
         <span>URL</span>
-        <input required value={draft.url} onChange={(event) => onChange({ ...draft, url: event.target.value })} placeholder="github.com" inputMode="url" />
+        <input
+          required
+          value={draft.url}
+          onChange={(event) => onChange({ ...draft, url: event.target.value })}
+          placeholder="github.com"
+          inputMode="url"
+          aria-invalid={Boolean(urlError)}
+          aria-describedby={urlError ? urlErrorId : undefined}
+        />
+        {urlError && <small id={urlErrorId} className="field-error-message" role="alert">{urlError}</small>}
       </label>
       <label>
         <span>Category</span>
@@ -151,10 +186,17 @@ function BookmarkFields({
         <span>Description</span>
         <textarea maxLength={2000} value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} placeholder="Optional notes or a concise description used by search." />
       </label>
-      <label className="field-span-2">
+      <label className={`field-span-2${tagsError ? " field-error" : ""}`}>
         <span>Tags</span>
-        <input value={draft.tagsText} onChange={(event) => onChange({ ...draft, tagsText: event.target.value })} placeholder="dev, docs, self-hosted" />
-        <small className="field-help">Comma, semicolon or newline separated · up to 12 tags · 40 characters each. Invalid input is rejected instead of truncated.</small>
+        <input
+          value={draft.tagsText}
+          onChange={(event) => onChange({ ...draft, tagsText: event.target.value })}
+          placeholder="dev, docs, self-hosted"
+          aria-invalid={Boolean(tagsError)}
+          aria-describedby={`${tagsHelpId}${tagsError ? ` ${tagsErrorId}` : ""}`}
+        />
+        <small id={tagsHelpId} className="field-help">Comma, semicolon or newline separated · up to 12 tags · 40 characters each. Invalid input is rejected instead of truncated.</small>
+        {tagsError && <small id={tagsErrorId} className="field-error-message" role="alert">{tagsError}</small>}
       </label>
     </div>
   );
@@ -170,6 +212,14 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [creatingBookmark, setCreatingBookmark] = useState(false);
+  const [savingEditId, setSavingEditId] = useState<string | null>(null);
+  const [createUrlError, setCreateUrlError] = useState<string | null>(null);
+  const [editUrlError, setEditUrlError] = useState<string | null>(null);
+  const [createSubmitError, setCreateSubmitError] = useState<string | null>(null);
+  const [editSubmitError, setEditSubmitError] = useState<string | null>(null);
+  const [createStatus, setCreateStatus] = useState<string | null>(null);
+  const [savedBookmarkId, setSavedBookmarkId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
   const [bulkChecking, setBulkChecking] = useState(false);
@@ -177,6 +227,9 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
   const [notice, setNotice] = useState<string | null>(null);
   const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
   const [draggedBookmark, setDraggedBookmark] = useState<{ id: string; categoryId: string | null } | null>(null);
+
+  const createTagError = useMemo(() => tagValidationMessage(draft.tagsText), [draft.tagsText]);
+  const editTagError = useMemo(() => tagValidationMessage(editDraft.tagsText), [editDraft.tagsText]);
 
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
@@ -280,8 +333,24 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
     }
   }
 
+  function changeCreateDraft(next: BookmarkDraft) {
+    if (next.url !== draft.url) setCreateUrlError(null);
+    setCreateSubmitError(null);
+    setCreateStatus(null);
+    setDraft(next);
+  }
+
+  function changeEditDraft(next: BookmarkDraft) {
+    if (next.url !== editDraft.url) setEditUrlError(null);
+    setEditSubmitError(null);
+    setEditDraft(next);
+  }
+
   function beginEdit(bookmark: Bookmark) {
     setEditingId(bookmark.id);
+    setEditUrlError(null);
+    setEditSubmitError(null);
+    setSavedBookmarkId(null);
     setEditDraft({
       title: bookmark.title,
       url: bookmark.url,
@@ -344,6 +413,8 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
 
   async function submitBookmark(event: FormEvent) {
     event.preventDefault();
+    if (createTagError || createUrlError) return;
+
     const input: CreateBookmarkInput = {
       title: draft.title,
       url: draft.url,
@@ -351,19 +422,42 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
       ...(draft.description.trim() ? { description: draft.description.trim() } : {}),
       ...(draft.healthPolicy !== "auto" ? { healthPolicy: draft.healthPolicy } : {}),
     };
-    await refreshAfter(async () => {
+
+    setCreatingBookmark(true);
+    setCreateSubmitError(null);
+    setCreateStatus(null);
+    setError(null);
+    setNotice(null);
+    try {
       const tags = parseBookmarkTags(draft.tagsText);
-      await createBookmarkWithTags(input, tags);
+      const result = await createBookmarkWithTags(input, tags);
       setDraft(emptyDraft);
-      setNotice("Bookmark and tags added atomically.");
-    });
+      setCreateUrlError(null);
+      setCreateStatus(`Saved “${result.bookmark.title}”.`);
+      try {
+        await onChanged();
+      } catch (refreshError) {
+        setCreateSubmitError(`Saved, but the library could not refresh: ${messageFrom(refreshError)}`);
+      }
+    } catch (caught) {
+      const urlMessage = duplicateUrlMessage(caught);
+      if (urlMessage) setCreateUrlError(urlMessage);
+      else setCreateSubmitError(messageFrom(caught));
+    } finally {
+      setCreatingBookmark(false);
+    }
   }
 
   async function submitEdit(event: FormEvent, id: string) {
     event.preventDefault();
     const healthPolicy = editDraft.healthPolicy;
-    if (healthPolicy === "auto") return;
-    await refreshAfter(async () => {
+    if (healthPolicy === "auto" || editTagError || editUrlError) return;
+
+    setSavingEditId(id);
+    setEditSubmitError(null);
+    setError(null);
+    setNotice(null);
+    try {
       const tags = parseBookmarkTags(editDraft.tagsText);
       await updateBookmarkWithTags(id, {
         title: editDraft.title,
@@ -373,9 +467,22 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
         healthPolicy,
         tags,
       });
+      setSavedBookmarkId(id);
       setEditingId(null);
-      setNotice("Bookmark details and tags saved atomically.");
-    });
+      setEditUrlError(null);
+      setEditSubmitError(null);
+      try {
+        await onChanged();
+      } catch (refreshError) {
+        setError(`Bookmark was saved, but the library could not refresh: ${messageFrom(refreshError)}`);
+      }
+    } catch (caught) {
+      const urlMessage = duplicateUrlMessage(caught);
+      if (urlMessage) setEditUrlError(urlMessage);
+      else setEditSubmitError(messageFrom(caught));
+    } finally {
+      setSavingEditId(null);
+    }
   }
 
   async function submitCategory(event: FormEvent) {
@@ -515,9 +622,21 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
           <form className="form-card bookmark-form" onSubmit={submitBookmark}>
             <div className="card-heading">
               <div><h2>Add bookmark</h2><p>Bare local URLs are automatically protected as local-only. Description and tags become searchable immediately.</p></div>
-              <button className="primary" disabled={busy || loading}>Add bookmark</button>
+              <button className="primary" disabled={busy || creatingBookmark || loading || Boolean(createTagError) || Boolean(createUrlError)}>
+                {creatingBookmark ? "Saving…" : createTagError || createUrlError ? "Fix errors" : "Add bookmark"}
+              </button>
             </div>
-            <BookmarkFields draft={draft} categories={categories} onChange={setDraft} allowAuto />
+            <BookmarkFields
+              draft={draft}
+              categories={categories}
+              onChange={changeCreateDraft}
+              allowAuto
+              idPrefix="bookmark-create"
+              urlError={createUrlError}
+              tagsError={createTagError}
+            />
+            {createSubmitError && <div className="inline-form-feedback error" role="alert">{createSubmitError}</div>}
+            {createStatus && <div className="inline-form-feedback success" role="status">{createStatus}</div>}
           </form>
 
           <div className="bookmark-list grouped-bookmark-list">
@@ -532,6 +651,7 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
                   <div className="bookmark-group-items">
                     {group.bookmarks.map((bookmark, index) => {
                       const tags = bookmarkTags[bookmark.id] ?? [];
+                      const savingThisBookmark = savingEditId === bookmark.id;
                       return (
                         <article
                           className={`bookmark-card reorder-row${draggedBookmark?.id === bookmark.id ? " is-dragging" : ""}`}
@@ -544,10 +664,32 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
                         >
                           {editingId === bookmark.id ? (
                             <form onSubmit={(event) => submitEdit(event, bookmark.id)}>
-                              <BookmarkFields draft={editDraft} categories={categories} onChange={setEditDraft} allowAuto={false} />
+                              <BookmarkFields
+                                draft={editDraft}
+                                categories={categories}
+                                onChange={changeEditDraft}
+                                allowAuto={false}
+                                idPrefix={`bookmark-edit-${bookmark.id}`}
+                                urlError={editUrlError}
+                                tagsError={editTagError}
+                              />
+                              {editSubmitError && <div className="inline-form-feedback error" role="alert">{editSubmitError}</div>}
                               <div className="edit-actions">
-                                <button className="primary" disabled={busy}>Save changes</button>
-                                <button className="secondary" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                                <button className="primary" disabled={busy || savingThisBookmark || Boolean(editTagError) || Boolean(editUrlError)}>
+                                  {savingThisBookmark ? "Saving…" : editTagError || editUrlError ? "Fix errors" : "Save changes"}
+                                </button>
+                                <button
+                                  className="secondary"
+                                  type="button"
+                                  disabled={savingThisBookmark}
+                                  onClick={() => {
+                                    setEditingId(null);
+                                    setEditUrlError(null);
+                                    setEditSubmitError(null);
+                                  }}
+                                >
+                                  Cancel
+                                </button>
                               </div>
                             </form>
                           ) : (
@@ -558,6 +700,7 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
                                 <div className="bookmark-title-line">
                                   <a href={bookmark.url} target="_blank" rel="noreferrer"><strong>{bookmark.title}</strong></a>
                                   <HealthBadge bookmark={bookmark} />
+                                  {savedBookmarkId === bookmark.id && <span className="bookmark-save-confirmation" role="status">Saved</span>}
                                 </div>
                                 <small>{bookmark.url}</small>
                                 {bookmark.description && <p className="bookmark-description">{bookmark.description}</p>}
