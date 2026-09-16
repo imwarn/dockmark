@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Bookmark, Category, HealthStatus } from "@dockmark/core";
 import { listBookmarks, listCategories } from "./api";
 import { listInbox } from "./inbox-api";
+import { LibraryBulkOrganizer } from "./LibraryBulkOrganizer";
+import { MAX_LIBRARY_BATCH } from "./library-batch-api";
 import { listBookmarkTags } from "./tag-api";
 import { matchesSmartCollection } from "./smart-collection-match";
 import {
@@ -80,6 +82,16 @@ function filtersFromDraft(draft: Draft): SmartCollectionFilters {
   return filters;
 }
 
+function filterSignature(filters: SmartCollectionFilters) {
+  return JSON.stringify({
+    category: Object.prototype.hasOwnProperty.call(filters, "categoryId") ? filters.categoryId : "__any__",
+    tags: filters.tags ?? [],
+    domain: filters.domain ?? "",
+    healthStatus: filters.healthStatus ?? "",
+    inbox: filters.inbox ?? "any",
+  });
+}
+
 function draftFromCollection(collection: SmartCollection): Draft {
   const { filters } = collection;
   return {
@@ -118,6 +130,7 @@ export function SmartCollectionsPage() {
   const [collections, setCollections] = useState<SmartCollection[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(() => selectedCollectionFromLocation());
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [showBulkOrganizer, setShowBulkOrganizer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +147,22 @@ export function SmartCollectionsPage() {
     () => bookmarks.filter((bookmark) => matchesSmartCollection(bookmark, draftFilters, bookmarkTags[bookmark.id] ?? [], inboxIds)),
     [bookmarkTags, bookmarks, draftFilters, inboxIds],
   );
+
+  const selectedMatches = useMemo(
+    () => selected
+      ? bookmarks.filter((bookmark) => matchesSmartCollection(bookmark, selected.filters, bookmarkTags[bookmark.id] ?? [], inboxIds))
+      : [],
+    [bookmarkTags, bookmarks, inboxIds, selected],
+  );
+
+  const draftMatchesSaved = useMemo(() => {
+    if (!selected || draft.name.trim() !== selected.name) return false;
+    try {
+      return filterSignature(filtersFromDraft(draft)) === filterSignature(selected.filters);
+    } catch {
+      return false;
+    }
+  }, [draft, selected]);
 
   const counts = useMemo(() => new Map(collections.map((collection) => [
     collection.id,
@@ -158,6 +187,7 @@ export function SmartCollectionsPage() {
         else {
           setSelectedId(null);
           setDraft(emptyDraft);
+          setShowBulkOrganizer(false);
           syncCollectionLocation(null);
         }
       }
@@ -170,9 +200,14 @@ export function SmartCollectionsPage() {
 
   useEffect(() => { void refresh(); }, []);
 
+  useEffect(() => {
+    if (showBulkOrganizer && !draftMatchesSaved) setShowBulkOrganizer(false);
+  }, [draftMatchesSaved, showBulkOrganizer]);
+
   function choose(collection: SmartCollection) {
     setSelectedId(collection.id);
     setDraft(draftFromCollection(collection));
+    setShowBulkOrganizer(false);
     syncCollectionLocation(collection.id);
     setError(null);
     setNotice(null);
@@ -181,6 +216,7 @@ export function SmartCollectionsPage() {
   function newCollection() {
     setSelectedId(null);
     setDraft(emptyDraft);
+    setShowBulkOrganizer(false);
     syncCollectionLocation(null);
     setError(null);
     setNotice(null);
@@ -204,6 +240,7 @@ export function SmartCollectionsPage() {
       await refresh();
       setSelectedId(saved.id);
       setDraft(draftFromCollection(saved));
+      setShowBulkOrganizer(false);
       syncCollectionLocation(saved.id);
       setNotice(selected ? "Smart Collection updated." : "Smart Collection saved.");
     } catch (caught) {
@@ -222,6 +259,7 @@ export function SmartCollectionsPage() {
       await deleteSmartCollection(selected.id);
       setSelectedId(null);
       setDraft(emptyDraft);
+      setShowBulkOrganizer(false);
       syncCollectionLocation(null);
       await refresh();
       setNotice("Smart Collection deleted. Bookmarks were untouched.");
@@ -231,6 +269,16 @@ export function SmartCollectionsPage() {
       setBusy(false);
     }
   }
+
+  const bulkButtonLabel = !selected
+    ? "Bulk organize matches"
+    : !draftMatchesSaved
+      ? "Save changes before bulk organize"
+      : showBulkOrganizer
+        ? "Close bulk organizer"
+        : selectedMatches.length > MAX_LIBRARY_BATCH
+          ? `Bulk organize first ${MAX_LIBRARY_BATCH}`
+          : `Bulk organize ${selectedMatches.length} match${selectedMatches.length === 1 ? "" : "es"}`;
 
   return (
     <main className="smart-shell">
@@ -265,7 +313,23 @@ export function SmartCollectionsPage() {
             </div>
           </form>
 
-          <div className="smart-preview-heading"><div><strong>Live preview</strong><span>{preview.length} of {bookmarks.length} bookmarks</span></div><button className="text-action" type="button" disabled={loading} onClick={() => void refresh()}>Refresh data</button></div>
+          <div className="smart-preview-heading">
+            <div><strong>Live preview</strong><span>{preview.length} of {bookmarks.length} bookmarks</span></div>
+            <div className="smart-preview-actions">
+              {selected && (
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={loading || !draftMatchesSaved || !selectedMatches.length}
+                  title={!draftMatchesSaved ? "Save the collection before handing its matches into bulk organization." : undefined}
+                  onClick={() => setShowBulkOrganizer((current) => !current)}
+                >
+                  {bulkButtonLabel}
+                </button>
+              )}
+              <button className="text-action" type="button" disabled={loading} onClick={() => void refresh()}>Refresh data</button>
+            </div>
+          </div>
           <div className="smart-preview-list">
             {preview.slice(0, 100).map((bookmark) => (
               <article className="smart-bookmark" key={bookmark.id}>
@@ -278,6 +342,27 @@ export function SmartCollectionsPage() {
           </div>
         </section>
       </div>
+
+      {showBulkOrganizer && selected && draftMatchesSaved && (
+        <div className="smart-bulk-handoff">
+          <div className="smart-bulk-handoff-heading">
+            <div>
+              <p className="eyebrow">COLLECTION → BULK REVIEW</p>
+              <h2>{selected.name}</h2>
+            </div>
+            <span>{selectedMatches.length} live match{selectedMatches.length === 1 ? "" : "es"} · up to {MAX_LIBRARY_BATCH} selected per batch</span>
+          </div>
+          <LibraryBulkOrganizer
+            key={selected.id}
+            bookmarks={selectedMatches}
+            categories={categories}
+            bookmarkTags={bookmarkTags}
+            onChanged={refresh}
+            contextLabel={`Smart Collection “${selected.name}”`}
+            preselectMatches
+          />
+        </div>
+      )}
     </main>
   );
 }
