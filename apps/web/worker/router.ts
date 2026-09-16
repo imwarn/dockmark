@@ -1,5 +1,9 @@
 import baseWorker from "./index";
 import {
+  AiBatchApplyHttpError,
+  handleAiBatchApplyApi,
+} from "./ai-batch-apply";
+import {
   AiOrganizationHttpError,
   handleAiOrganizationApi,
 } from "./ai-organization";
@@ -138,6 +142,17 @@ export default {
         } catch (error) {
           if (error instanceof AiOrganizationHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark AI Organization API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
+      }
+
+      if (pathname === "/api/ai/apply") {
+        try {
+          const response = await handleAiBatchApplyApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof AiBatchApplyHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark AI Batch Apply API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
       }
