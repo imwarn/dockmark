@@ -27,7 +27,7 @@ export interface InboxReviewPatch {
   bookmarkId: string;
   title: string;
   description: string | null;
-  categoryId: string | null;
+  categoryId?: string | null;
   tags: string[];
 }
 
@@ -64,7 +64,11 @@ export async function reviewInboxBatch(patches: InboxReviewPatch[]) {
   return request<{ applied: number; bookmarkIds: string[] }>("/api/ai/apply", {
     method: "POST",
     body: JSON.stringify({
-      patches: patches.map((patch) => ({ ...patch, clearInbox: true })),
+      patches: patches.map((patch) => ({
+        ...patch,
+        categoryId: patch.categoryId ?? null,
+        clearInbox: true,
+      })),
     }),
   });
 }
