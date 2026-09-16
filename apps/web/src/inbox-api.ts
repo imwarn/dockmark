@@ -7,6 +7,8 @@ interface ErrorEnvelope {
   };
 }
 
+export const INBOX_CHANGED_EVENT = "dockmark:inbox-changed";
+
 export interface InboxBookmark {
   id: string;
   categoryId?: string;
@@ -42,9 +44,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload;
 }
 
+function notifyInboxChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(INBOX_CHANGED_EVENT));
+  }
+}
+
 export async function listInbox() {
   const response = await request<{ bookmarks: InboxBookmark[] }>("/api/inbox");
   return response.bookmarks;
+}
+
+export async function getInboxCount() {
+  const response = await request<{ count: number }>("/api/inbox/count");
+  return Math.max(0, Number(response.count) || 0);
 }
 
 export async function resolveInboxBookmark(id: string, categoryId?: string | null) {
@@ -55,13 +68,14 @@ export async function resolveInboxBookmark(id: string, categoryId?: string | nul
       body: JSON.stringify(categoryId === undefined ? {} : { categoryId }),
     },
   );
+  notifyInboxChanged();
   return response.bookmark;
 }
 
 export async function reviewInboxBatch(patches: InboxReviewPatch[]) {
   if (!patches.length) throw new Error("Select at least one reviewed Inbox suggestion to file.");
   if (patches.length > 20) throw new Error("Reviewed Inbox filing is limited to 20 bookmarks per request.");
-  return request<{ applied: number; bookmarkIds: string[] }>("/api/ai/apply", {
+  const response = await request<{ applied: number; bookmarkIds: string[] }>("/api/ai/apply", {
     method: "POST",
     body: JSON.stringify({
       patches: patches.map((patch) => ({
@@ -71,4 +85,6 @@ export async function reviewInboxBatch(patches: InboxReviewPatch[]) {
       })),
     }),
   });
+  notifyInboxChanged();
+  return response;
 }
