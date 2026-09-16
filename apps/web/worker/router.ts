@@ -28,6 +28,10 @@ import {
   handleCaptureWriteApi,
 } from "./capture-write";
 import {
+  LibraryBatchOrganizeHttpError,
+  handleLibraryBatchOrganizeApi,
+} from "./library-batch-organize";
+import {
   handleLocalHealthResultApi,
   LocalHealthHttpError,
 } from "./local-health-result";
@@ -160,6 +164,17 @@ export default {
         } catch (error) {
           if (error instanceof BookmarkDetailsHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Bookmark Details API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
+      }
+
+      if (pathname === "/api/bookmarks/batch-organize") {
+        try {
+          const response = await handleLibraryBatchOrganizeApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof LibraryBatchOrganizeHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Library Batch Organize API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
       }

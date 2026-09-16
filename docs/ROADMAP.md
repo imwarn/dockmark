@@ -105,3 +105,15 @@
 - [x] bookmark add/edit keeps tag and duplicate-URL validation beside the affected field, shows saving state locally, and reserves the page-level banner for non-field/system errors
 - [x] private navigation surfaces a lightweight live Inbox waiting count that refreshes after reviewed filing and when the Web app regains focus after extension capture
 - [x] V4 closeout complete: Capture → Inbox → metadata/AI review → filing → Smart Collections is review-gated, duplicate-safe, locally searchable, and visibly actionable without silent bookmark mutation
+
+## V5 — power library workflows
+
+- [x] reviewed multi-select Library organization for up to 50 bookmarks: search candidates, select explicitly, preview category/tag changes, then apply atomically
+- [x] category moves append selected bookmarks deterministically at the destination while preserving reviewed selection order
+- [x] bulk tag add/remove validates the final per-bookmark 12-tag limit before any mutation; overlap and over-limit reviews fail closed
+- [x] bulk organization remains Web-session-only and never changes title, URL, description, HealthPolicy, browser mappings or health history
+- [ ] Smart Collection → reviewed bulk workflow handoff without duplicating the Collection filter manually
+- [ ] duplicate-review workspace for near duplicates / canonical-equivalent URLs; recommendations only, never silent merge/delete
+- [ ] reviewed bulk maintenance actions for health policy and explicit archive/delete workflows with clear destructive confirmation
+- [ ] change journal for high-impact bulk operations with enough before/after context to support safe manual recovery
+- [ ] reassess optional reviewed two-way browser synchronization only after Library bulk/recovery semantics are stable
