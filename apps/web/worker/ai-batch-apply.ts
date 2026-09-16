@@ -8,6 +8,9 @@ interface D1PreparedStatementLike {
 
 interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatementLike;
+}
+
+interface D1BatchDatabaseLike extends D1DatabaseLike {
   batch(statements: D1PreparedStatementLike[]): Promise<unknown[]>;
 }
 
@@ -254,7 +257,11 @@ async function applyPatches(request: Request, db: D1DatabaseLike) {
   }
 
   statements.push(db.prepare("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)"));
-  await db.batch(statements);
+  const batchDb = db as D1BatchDatabaseLike;
+  if (typeof batchDb.batch !== "function") {
+    throw new AiBatchApplyHttpError(500, "batch_unavailable", "D1 batch execution is unavailable in this runtime.");
+  }
+  await batchDb.batch(statements);
 
   return json({
     applied: patches.length,
