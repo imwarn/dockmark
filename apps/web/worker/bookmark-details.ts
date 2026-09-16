@@ -173,12 +173,13 @@ function normalizeTags(value: unknown) {
 }
 
 function parseInput(body: Record<string, unknown>, requirePolicy: boolean): BookmarkDetailsInput {
+  const healthPolicy = parseHealthPolicy(body, requirePolicy);
   return {
     title: requiredString(body, "title", 200),
     url: parseBookmarkUrl(requiredString(body, "url", 4096)),
     description: nullableString(body, "description", 2000),
     categoryId: parseCategoryId(body),
-    healthPolicy: parseHealthPolicy(body, requirePolicy),
+    ...(healthPolicy ? { healthPolicy } : {}),
     tags: normalizeTags(body.tags),
   };
 }
