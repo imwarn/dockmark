@@ -97,3 +97,4 @@
 - [x] saved filters / Smart Collections built from category, tags, domain, health and Inbox state, persisted in D1 as non-mutating live views
 - [x] Smart Collections are first-class Web Launcher results with live match counts/filter context and deep links into the selected collection
 - [x] New Tab caches Smart Collection definitions plus Inbox membership after paired refresh and supports offline collection search + local `@Collection` browsing
+- [x] reviewed Inbox AI triage: select up to 20 `normal` captures, generate title/description/category/tag suggestions, review whole rows, then apply + clear Inbox in the same atomic D1 batch; metadata URL/favicon review stays separate
