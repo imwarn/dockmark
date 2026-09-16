@@ -78,6 +78,8 @@
 - [x] configurable provider timeout stored browser-locally, default 90 seconds with Worker-enforced 15–180 second bounds
 - [x] classification into existing categories, tags, title cleanup and descriptions as suggestions
 - [x] preview/diff/apply workflow for reviewed bulk AI edits (20 bookmarks/request)
+- [x] session-local generation queue with Pending / Generated / All filters, generated markers and automatic next-batch selection
+- [x] reviewed AI apply uses one session-only API request and one atomic D1 batch instead of per-bookmark bookmark/tag round trips
 - [x] never allow AI to override URL or HealthPolicy safety exclusions; only `normal` bookmarks enter the provider request/write surface
 - [x] preserve tags in Dockmark JSON export/import
 - [x] richer tag browsing/search surfaces outside the AI review workflow

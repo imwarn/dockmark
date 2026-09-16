@@ -16,6 +16,14 @@ export interface AiOrganizationSuggestion {
   tags: string[];
 }
 
+export interface AiOrganizationPatch {
+  bookmarkId: string;
+  title: string;
+  description: string | null;
+  categoryId: string | null;
+  tags: string[];
+}
+
 interface ErrorEnvelope {
   error?: {
     code?: string;
@@ -101,4 +109,13 @@ export async function generateAiOrganizationSuggestions(
     }),
   });
   return Array.isArray(response.suggestions) ? response.suggestions : [];
+}
+
+export async function applyAiOrganizationPatches(patches: AiOrganizationPatch[]) {
+  if (!patches.length) throw new Error("Select at least one reviewed AI suggestion to apply.");
+  if (patches.length > 20) throw new Error("AI apply is limited to 20 bookmarks per request.");
+  return request<{ applied: number; bookmarkIds: string[] }>("/api/ai/apply", {
+    method: "POST",
+    body: JSON.stringify({ patches }),
+  });
 }
