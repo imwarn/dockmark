@@ -75,6 +75,7 @@
 - [x] OpenAI-compatible Chat Completions endpoint/model configuration in the Web UI
 - [x] API key stored as the self-hosted `DOCKMARK_AI_API_KEY` Worker secret; never persisted to browser localStorage or D1
 - [x] Worker-side provider proxy with public-HTTPS endpoint validation, same-origin redirect review, timeout and response-size limits
+- [x] configurable provider timeout stored browser-locally, default 90 seconds with Worker-enforced 15–180 second bounds
 - [x] classification into existing categories, tags, title cleanup and descriptions as suggestions
 - [x] preview/diff/apply workflow for reviewed bulk AI edits (20 bookmarks/request)
 - [x] never allow AI to override URL or HealthPolicy safety exclusions; only `normal` bookmarks enter the provider request/write surface
@@ -91,4 +92,4 @@
 - [x] paired device scope remains append-only for Quick Capture; it cannot edit/delete existing Dockmark bookmarks
 - [x] reviewed multi-tab capture from current-window tabs: read-only preflight, explicit selection, final duplicate recheck, then append selected new URLs to Inbox
 - [x] optional metadata suggestion refresh for newly captured public URLs: title, description, canonical URL and favicon remain separate until individually selected during Inbox review; local-only stays server-disabled
-- [ ] saved filters / Smart Collections built from category, tags, domain, health and Inbox state
+- [x] saved filters / Smart Collections built from category, tags, domain, health and Inbox state, persisted in D1 as non-mutating live views
