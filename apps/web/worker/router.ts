@@ -8,6 +8,10 @@ import {
   handleAiOrganizationApi,
 } from "./ai-organization";
 import {
+  BookmarkDetailsHttpError,
+  handleBookmarkDetailsApi,
+} from "./bookmark-details";
+import {
   AuthHttpError,
   authenticateRequest,
   authConfigured,
@@ -19,6 +23,10 @@ import {
   CaptureInboxHttpError,
   handleCaptureInboxApi,
 } from "./capture-inbox";
+import {
+  CaptureWriteHttpError,
+  handleCaptureWriteApi,
+} from "./capture-write";
 import {
   handleLocalHealthResultApi,
   LocalHealthHttpError,
@@ -120,9 +128,18 @@ export default {
         return problem(403, "device_scope_denied", "This paired extension token is not allowed to perform that operation.");
       }
 
-      if (pathname === "/api/capture/bookmark" ||
-          pathname === "/api/capture/review" ||
-          pathname === "/api/capture/batch" ||
+      if (pathname === "/api/capture/bookmark" || pathname === "/api/capture/batch") {
+        try {
+          const response = await handleCaptureWriteApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof CaptureWriteHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Capture Write API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
+      }
+
+      if (pathname === "/api/capture/review" ||
           pathname === "/api/inbox" ||
           /^\/api\/inbox\/[^/]+$/.test(pathname)) {
         try {
@@ -131,6 +148,17 @@ export default {
         } catch (error) {
           if (error instanceof CaptureInboxHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Capture/Inbox API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
+      }
+
+      if (pathname === "/api/bookmarks/with-tags" || /^\/api\/bookmarks\/[^/]+\/with-tags$/.test(pathname)) {
+        try {
+          const response = await handleBookmarkDetailsApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof BookmarkDetailsHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Bookmark Details API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
       }
