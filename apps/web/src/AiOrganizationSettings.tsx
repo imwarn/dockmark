@@ -5,6 +5,8 @@ import {
   generateAiOrganizationSuggestions,
   getAiProviderStatus,
   loadAiProviderSettings,
+  MAX_AI_TIMEOUT_SECONDS,
+  MIN_AI_TIMEOUT_SECONDS,
   saveAiProviderSettings,
   type AiOrganizationSuggestion,
   type AiProviderSettings,
@@ -86,10 +88,21 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     [filteredBookmarks],
   );
 
+  function providerTimeoutValid() {
+    return Number.isInteger(provider.timeoutSeconds) &&
+      provider.timeoutSeconds >= MIN_AI_TIMEOUT_SECONDS &&
+      provider.timeoutSeconds <= MAX_AI_TIMEOUT_SECONDS;
+  }
+
   function saveProvider() {
     setError(null);
+    setMessage(null);
+    if (!providerTimeoutValid()) {
+      setError(`Provider timeout must be between ${MIN_AI_TIMEOUT_SECONDS} and ${MAX_AI_TIMEOUT_SECONDS} seconds.`);
+      return;
+    }
     saveAiProviderSettings(provider);
-    setMessage("Provider endpoint and model saved in this browser. The API key stays in the Worker secret store.");
+    setMessage("Provider endpoint, model and timeout saved in this browser. The API key stays in the Worker secret store.");
   }
 
   async function refreshKeyStatus() {
@@ -222,7 +235,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
       <div className="settings-grid">
         <article className="form-card settings-card ai-provider-card">
           <div className="card-heading">
-            <div><h3>OpenAI-compatible provider</h3><p>Endpoint and model are browser-local preferences. The API key is never stored in Web localStorage or D1; the Worker reads it from <code>DOCKMARK_AI_API_KEY</code>.</p></div>
+            <div><h3>OpenAI-compatible provider</h3><p>Endpoint, model and timeout are browser-local preferences. The API key is never stored in Web localStorage or D1; the Worker reads it from <code>DOCKMARK_AI_API_KEY</code>.</p></div>
           </div>
           <label className="settings-field">
             <span>Chat completions endpoint</span>
@@ -232,8 +245,20 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
             <span>Model</span>
             <input value={provider.model} onChange={(event) => setProvider({ ...provider, model: event.target.value })} placeholder="Provider model id" autoComplete="off" />
           </label>
+          <label className="settings-field">
+            <span>Provider timeout · seconds</span>
+            <input
+              type="number"
+              min={MIN_AI_TIMEOUT_SECONDS}
+              max={MAX_AI_TIMEOUT_SECONDS}
+              step={5}
+              value={provider.timeoutSeconds}
+              onChange={(event) => setProvider({ ...provider, timeoutSeconds: Number(event.target.value) })}
+            />
+            <small className="field-help">Default 90 seconds · allowed {MIN_AI_TIMEOUT_SECONDS}–{MAX_AI_TIMEOUT_SECONDS}. Slower self-hosted models can use a longer request window.</small>
+          </label>
           <div className="ai-provider-actions">
-            <button className="secondary" type="button" onClick={saveProvider}>Save endpoint + model locally</button>
+            <button className="secondary" type="button" onClick={saveProvider}>Save provider locally</button>
             <button className="text-action" type="button" onClick={() => void refreshKeyStatus()}>Refresh secret status</button>
           </div>
           <p className="settings-footnote">
@@ -271,7 +296,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
               );
             })}
           </div>
-          <button className="primary ai-generate-button" type="button" disabled={generating || applying || apiKeyConfigured !== true || !selectedIds.size || !provider.model.trim() || !provider.endpoint.trim()} onClick={() => void generate()}>
+          <button className="primary ai-generate-button" type="button" disabled={generating || applying || apiKeyConfigured !== true || !selectedIds.size || !provider.model.trim() || !provider.endpoint.trim() || !providerTimeoutValid()} onClick={() => void generate()}>
             {generating ? "Generating suggestions…" : apiKeyConfigured === false ? "Configure Worker AI secret first" : `Generate suggestions ${selectedIds.size}`}
           </button>
         </article>
