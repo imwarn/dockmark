@@ -43,8 +43,9 @@ try {
   await page.waitForLoadState("domcontentloaded");
 
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "1.4.0");
+  assert.equal(manifest.version, "1.4.1");
   assert.equal(manifest.name, "Dockmark New Tab");
+  assert.equal(manifest.icons?.[128], "icons/dockmark-128.png");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
   const iconHref = await page.locator('link[rel="icon"]').getAttribute("href");
   assert.equal(iconHref, "newtab-icon.svg");
@@ -273,7 +274,7 @@ try {
 
   console.log(`✓ Dockmark New Tab variant loaded: ${extensionId}`);
   console.log("✓ New Tab manifest override is isolated to the opt-in variant");
-  console.log("✓ Transparent adaptive D dot favicon is packaged and linked");
+  console.log("✓ Transparent adaptive D dot favicon and manifest brand icons are packaged");
   console.log("✓ Cached bookmarks and Workspaces render without Dockmark host permission/network");
   console.log("✓ Offline search matches bookmark description, category, tags and combined #tag terms");
   console.log("✓ Cached Smart Collections are searchable and browse their matching bookmarks offline");
