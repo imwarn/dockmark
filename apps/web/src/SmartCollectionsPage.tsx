@@ -3,6 +3,7 @@ import type { Bookmark, Category, HealthStatus } from "@dockmark/core";
 import { listBookmarks, listCategories } from "./api";
 import { listInbox } from "./inbox-api";
 import { listBookmarkTags } from "./tag-api";
+import { matchesSmartCollection } from "./smart-collection-match";
 import {
   createSmartCollection,
   deleteSmartCollection,
@@ -97,29 +98,16 @@ function hostLabel(url: string) {
   try { return new URL(url).hostname; } catch { return url; }
 }
 
-function matchesCollection(
-  bookmark: Bookmark,
-  filters: SmartCollectionFilters,
-  tags: string[],
-  inboxIds: Set<string>,
-) {
-  if (Object.prototype.hasOwnProperty.call(filters, "categoryId")) {
-    if (filters.categoryId === null ? Boolean(bookmark.categoryId) : bookmark.categoryId !== filters.categoryId) return false;
-  }
-  if (filters.tags?.length) {
-    const normalized = new Set(tags.map((tag) => tag.toLocaleLowerCase()));
-    if (!filters.tags.every((tag) => normalized.has(tag.toLocaleLowerCase()))) return false;
-  }
-  if (filters.domain) {
-    let host = "";
-    try { host = new URL(bookmark.url).hostname.toLocaleLowerCase(); } catch { return false; }
-    const domain = filters.domain.toLocaleLowerCase();
-    if (host !== domain && !host.endsWith(`.${domain}`)) return false;
-  }
-  if (filters.healthStatus && bookmark.healthStatus !== filters.healthStatus) return false;
-  if (filters.inbox === "inbox" && !inboxIds.has(bookmark.id)) return false;
-  if (filters.inbox === "library" && inboxIds.has(bookmark.id)) return false;
-  return true;
+function selectedCollectionFromLocation() {
+  const value = new URLSearchParams(window.location.search).get("collection");
+  return value?.trim() || null;
+}
+
+function syncCollectionLocation(id: string | null) {
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set("collection", id);
+  else url.searchParams.delete("collection");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}`);
 }
 
 export function SmartCollectionsPage() {
@@ -128,7 +116,7 @@ export function SmartCollectionsPage() {
   const [bookmarkTags, setBookmarkTags] = useState<Record<string, string[]>>({});
   const [inboxIds, setInboxIds] = useState<Set<string>>(() => new Set());
   const [collections, setCollections] = useState<SmartCollection[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => selectedCollectionFromLocation());
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -143,13 +131,13 @@ export function SmartCollectionsPage() {
   }, [draft]);
 
   const preview = useMemo(
-    () => bookmarks.filter((bookmark) => matchesCollection(bookmark, draftFilters, bookmarkTags[bookmark.id] ?? [], inboxIds)),
+    () => bookmarks.filter((bookmark) => matchesSmartCollection(bookmark, draftFilters, bookmarkTags[bookmark.id] ?? [], inboxIds)),
     [bookmarkTags, bookmarks, draftFilters, inboxIds],
   );
 
   const counts = useMemo(() => new Map(collections.map((collection) => [
     collection.id,
-    bookmarks.filter((bookmark) => matchesCollection(bookmark, collection.filters, bookmarkTags[bookmark.id] ?? [], inboxIds)).length,
+    bookmarks.filter((bookmark) => matchesSmartCollection(bookmark, collection.filters, bookmarkTags[bookmark.id] ?? [], inboxIds)).length,
   ])), [bookmarkTags, bookmarks, collections, inboxIds]);
 
   async function refresh() {
@@ -167,7 +155,11 @@ export function SmartCollectionsPage() {
       if (selectedId) {
         const current = nextCollections.find((collection) => collection.id === selectedId);
         if (current) setDraft(draftFromCollection(current));
-        else { setSelectedId(null); setDraft(emptyDraft); }
+        else {
+          setSelectedId(null);
+          setDraft(emptyDraft);
+          syncCollectionLocation(null);
+        }
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load Smart Collections.");
@@ -181,6 +173,7 @@ export function SmartCollectionsPage() {
   function choose(collection: SmartCollection) {
     setSelectedId(collection.id);
     setDraft(draftFromCollection(collection));
+    syncCollectionLocation(collection.id);
     setError(null);
     setNotice(null);
   }
@@ -188,6 +181,7 @@ export function SmartCollectionsPage() {
   function newCollection() {
     setSelectedId(null);
     setDraft(emptyDraft);
+    syncCollectionLocation(null);
     setError(null);
     setNotice(null);
   }
@@ -210,6 +204,7 @@ export function SmartCollectionsPage() {
       await refresh();
       setSelectedId(saved.id);
       setDraft(draftFromCollection(saved));
+      syncCollectionLocation(saved.id);
       setNotice(selected ? "Smart Collection updated." : "Smart Collection saved.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save Smart Collection.");
@@ -227,6 +222,7 @@ export function SmartCollectionsPage() {
       await deleteSmartCollection(selected.id);
       setSelectedId(null);
       setDraft(emptyDraft);
+      syncCollectionLocation(null);
       await refresh();
       setNotice("Smart Collection deleted. Bookmarks were untouched.");
     } catch (caught) {
