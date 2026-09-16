@@ -141,6 +141,7 @@ export default {
 
       if (pathname === "/api/capture/review" ||
           pathname === "/api/inbox" ||
+          pathname === "/api/inbox/count" ||
           /^\/api\/inbox\/[^/]+$/.test(pathname)) {
         try {
           const response = await handleCaptureInboxApi(request, env.DB, pathname);
