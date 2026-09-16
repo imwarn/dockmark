@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
 import { parseBookmarkTags } from "./bookmark-details-api";
+import { bookmarkMatchesQuery } from "./bookmark-search";
 import { MAX_LIBRARY_BATCH, organizeLibraryBatch } from "./library-batch-api";
 import "./library-bulk.css";
 
 interface Props {
   bookmarks: Bookmark[];
   categories: Category[];
+  bookmarkTags: Record<string, string[]>;
   onChanged: () => Promise<void>;
 }
 
@@ -25,7 +27,8 @@ function tagInputError(value: string) {
   }
 }
 
-export function LibraryBulkOrganizer({ bookmarks, categories, onChanged }: Props) {
+export function LibraryBulkOrganizer({ bookmarks, categories, bookmarkTags, onChanged }: Props) {
+  const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [categoryChoice, setCategoryChoice] = useState(KEEP_CATEGORY);
   const [addTagsText, setAddTagsText] = useState("");
@@ -35,7 +38,18 @@ export function LibraryBulkOrganizer({ bookmarks, categories, onChanged }: Props
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const visibleIds = useMemo(() => new Set(bookmarks.map((bookmark) => bookmark.id)), [bookmarks]);
+  const categoryNameById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+  const candidates = useMemo(
+    () => bookmarks.filter((bookmark) => {
+      const category = bookmark.categoryId ? categoryNameById.get(bookmark.categoryId) ?? "" : "Uncategorized";
+      return bookmarkMatchesQuery(bookmark, category, bookmarkTags[bookmark.id] ?? [], query);
+    }),
+    [bookmarkTags, bookmarks, categoryNameById, query],
+  );
+  const visibleIds = useMemo(() => new Set(candidates.map((bookmark) => bookmark.id)), [candidates]);
   const selectedBookmarks = useMemo(
     () => bookmarks.filter((bookmark) => selectedIds.has(bookmark.id)),
     [bookmarks, selectedIds],
@@ -79,8 +93,8 @@ export function LibraryBulkOrganizer({ bookmarks, categories, onChanged }: Props
 
   function selectVisible() {
     if (reviewing || applying) return;
-    setSelectedIds(new Set(bookmarks.slice(0, MAX_LIBRARY_BATCH).map((bookmark) => bookmark.id)));
-    setNotice(bookmarks.length > MAX_LIBRARY_BATCH ? `Selected the first ${MAX_LIBRARY_BATCH} visible bookmarks.` : null);
+    setSelectedIds(new Set(candidates.slice(0, MAX_LIBRARY_BATCH).map((bookmark) => bookmark.id)));
+    setNotice(candidates.length > MAX_LIBRARY_BATCH ? `Selected the first ${MAX_LIBRARY_BATCH} matching bookmarks.` : null);
     setError(null);
   }
 
@@ -130,110 +144,125 @@ export function LibraryBulkOrganizer({ bookmarks, categories, onChanged }: Props
   const removeTags = !removeTagsError ? parseBookmarkTags(removeTagsText) : [];
 
   return (
-    <section className="form-card library-bulk-card" aria-label="Reviewed bulk organization">
-      <div className="library-bulk-heading">
-        <div>
-          <h2>Bulk organize</h2>
-          <p>V5 starts with explicit multi-select organization. Category and tag changes are reviewed first, then committed atomically.</p>
-        </div>
-        <div className="library-bulk-selection">
-          <strong>{selectedIds.size} selected</strong>
-          <button className="text-action" type="button" disabled={reviewing || applying || !bookmarks.length} onClick={selectVisible}>
-            {bookmarks.length > MAX_LIBRARY_BATCH ? `Select first ${MAX_LIBRARY_BATCH}` : "Select visible"}
-          </button>
-          <button className="text-action muted-action" type="button" disabled={applying || !selectedIds.size} onClick={clearSelection}>Clear</button>
-        </div>
-      </div>
-
-      {hiddenSelectedCount > 0 && (
-        <div className="inline-form-feedback" role="status">
-          {hiddenSelectedCount} selected bookmark{hiddenSelectedCount === 1 ? " is" : "s are"} outside the current filter. Clear selection before changing filters if you want the batch to stay visible-only.
-        </div>
-      )}
-
-      <div className="library-bulk-picker" aria-label="Bookmarks available for bulk organization">
-        {bookmarks.slice(0, 100).map((bookmark) => (
-          <label className={`library-bulk-bookmark${selectedIds.has(bookmark.id) ? " selected" : ""}`} key={bookmark.id}>
-            <input
-              type="checkbox"
-              checked={selectedIds.has(bookmark.id)}
-              disabled={reviewing || applying || (!selectedIds.has(bookmark.id) && selectedIds.size >= MAX_LIBRARY_BATCH)}
-              onChange={() => toggleBookmark(bookmark.id)}
-            />
-            <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
-          </label>
-        ))}
-        {!bookmarks.length && <p className="empty-copy">No bookmarks are visible under the current Library filter.</p>}
-        {bookmarks.length > 100 && <p className="library-bulk-help">Showing the first 100 visible bookmarks in the picker. Narrow the Library filter to target a different set.</p>}
-      </div>
-
-      <div className="library-bulk-grid">
-        <label>
-          <span>Category</span>
-          <select value={categoryChoice} disabled={reviewing || applying} onChange={(event) => { setCategoryChoice(event.target.value); resetReview(); }}>
-            <option value={KEEP_CATEGORY}>Keep current categories</option>
-            <option value="">Move to Uncategorized</option>
-            {categories.map((category) => <option key={category.id} value={category.id}>Move to {category.name}</option>)}
-          </select>
-        </label>
-        <label className={addTagsError ? "field-error" : undefined}>
-          <span>Add tags</span>
-          <input
-            value={addTagsText}
-            disabled={reviewing || applying}
-            onChange={(event) => { setAddTagsText(event.target.value); resetReview(); }}
-            placeholder="dev, docs"
-            aria-invalid={Boolean(addTagsError)}
-          />
-          {addTagsError && <small className="library-bulk-error" role="alert">{addTagsError}</small>}
-        </label>
-        <label className={removeTagsError ? "field-error" : undefined}>
-          <span>Remove tags</span>
-          <input
-            value={removeTagsText}
-            disabled={reviewing || applying}
-            onChange={(event) => { setRemoveTagsText(event.target.value); resetReview(); }}
-            placeholder="old, later"
-            aria-invalid={Boolean(removeTagsError)}
-          />
-          {removeTagsError && <small className="library-bulk-error" role="alert">{removeTagsError}</small>}
-        </label>
-      </div>
-
-      {overlapError && <div className="inline-form-feedback error" role="alert">{overlapError}</div>}
-      {error && <div className="inline-form-feedback error" role="alert">{error}</div>}
-      {notice && <div className="inline-form-feedback success" role="status">{notice}</div>}
-
-      {!reviewing ? (
-        <div className="library-bulk-actions">
-          <button className="primary" type="button" disabled={!canReview} onClick={() => setReviewing(true)}>
-            Review {selectedIds.size || ""} change{selectedIds.size === 1 ? "" : "s"}
-          </button>
-          <span className="library-bulk-help">Maximum {MAX_LIBRARY_BATCH} bookmarks per reviewed batch. Titles, URLs, descriptions and HealthPolicy are never changed here.</span>
-        </div>
-      ) : (
-        <div className="library-bulk-review">
+    <section className="management library-bulk-management" aria-label="Reviewed bulk organization">
+      <div className="form-card library-bulk-card">
+        <div className="library-bulk-heading">
           <div>
-            <strong>Review before apply</strong>
-            <p>{selectedIds.size} bookmark{selectedIds.size === 1 ? "" : "s"} will be updated in one D1 batch. If validation fails, none are changed.</p>
+            <p className="eyebrow">V5 · POWER LIBRARY</p>
+            <h2>Bulk organize</h2>
+            <p>Explicit multi-select organization: review category and tag changes first, then commit the batch atomically.</p>
           </div>
-          <div className="library-bulk-review-summary">
-            <span>{categoryLabel()}</span>
-            {addTags.length > 0 && <span>Add {addTags.map((tag) => `#${tag}`).join(" ")}</span>}
-            {removeTags.length > 0 && <span>Remove {removeTags.map((tag) => `#${tag}`).join(" ")}</span>}
-          </div>
-          <div className="library-bulk-review-list">
-            {selectedBookmarks.slice(0, 8).map((bookmark) => <span key={bookmark.id}>{bookmark.title}</span>)}
-            {selectedIds.size > 8 && <span>+{selectedIds.size - 8} more</span>}
-          </div>
-          <div className="library-bulk-actions">
-            <button className="primary" type="button" disabled={applying} onClick={() => void applyReviewedChanges()}>
-              {applying ? "Applying…" : `Apply to ${selectedIds.size}`}
+          <div className="library-bulk-selection">
+            <strong>{selectedIds.size} selected</strong>
+            <button className="text-action" type="button" disabled={reviewing || applying || !candidates.length} onClick={selectVisible}>
+              {candidates.length > MAX_LIBRARY_BATCH ? `Select first ${MAX_LIBRARY_BATCH}` : "Select matches"}
             </button>
-            <button className="secondary" type="button" disabled={applying} onClick={() => setReviewing(false)}>Back</button>
+            <button className="text-action muted-action" type="button" disabled={applying || !selectedIds.size} onClick={clearSelection}>Clear</button>
           </div>
         </div>
-      )}
+
+        <div className="library-bulk-search">
+          <span>⌕</span>
+          <input
+            value={query}
+            disabled={reviewing || applying}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter bulk candidates by title, URL, description, category or #tag…"
+            aria-label="Filter bookmarks for bulk organization"
+          />
+          <strong>{candidates.length} match{candidates.length === 1 ? "" : "es"}</strong>
+        </div>
+
+        {hiddenSelectedCount > 0 && (
+          <div className="inline-form-feedback" role="status">
+            {hiddenSelectedCount} selected bookmark{hiddenSelectedCount === 1 ? " is" : "s are"} outside the current bulk filter. Clear selection if you want this review to stay filter-only.
+          </div>
+        )}
+
+        <div className="library-bulk-picker" aria-label="Bookmarks available for bulk organization">
+          {candidates.slice(0, 100).map((bookmark) => (
+            <label className={`library-bulk-bookmark${selectedIds.has(bookmark.id) ? " selected" : ""}`} key={bookmark.id}>
+              <input
+                type="checkbox"
+                checked={selectedIds.has(bookmark.id)}
+                disabled={reviewing || applying || (!selectedIds.has(bookmark.id) && selectedIds.size >= MAX_LIBRARY_BATCH)}
+                onChange={() => toggleBookmark(bookmark.id)}
+              />
+              <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
+            </label>
+          ))}
+          {!candidates.length && <p className="empty-copy">No bookmarks match this bulk filter.</p>}
+          {candidates.length > 100 && <p className="library-bulk-help">Showing the first 100 matches in the picker. Narrow the filter to target another set.</p>}
+        </div>
+
+        <div className="library-bulk-grid">
+          <label>
+            <span>Category</span>
+            <select value={categoryChoice} disabled={reviewing || applying} onChange={(event) => { setCategoryChoice(event.target.value); resetReview(); }}>
+              <option value={KEEP_CATEGORY}>Keep current categories</option>
+              <option value="">Move to Uncategorized</option>
+              {categories.map((category) => <option key={category.id} value={category.id}>Move to {category.name}</option>)}
+            </select>
+          </label>
+          <label className={addTagsError ? "field-error" : undefined}>
+            <span>Add tags</span>
+            <input
+              value={addTagsText}
+              disabled={reviewing || applying}
+              onChange={(event) => { setAddTagsText(event.target.value); resetReview(); }}
+              placeholder="dev, docs"
+              aria-invalid={Boolean(addTagsError)}
+            />
+            {addTagsError && <small className="library-bulk-error" role="alert">{addTagsError}</small>}
+          </label>
+          <label className={removeTagsError ? "field-error" : undefined}>
+            <span>Remove tags</span>
+            <input
+              value={removeTagsText}
+              disabled={reviewing || applying}
+              onChange={(event) => { setRemoveTagsText(event.target.value); resetReview(); }}
+              placeholder="old, later"
+              aria-invalid={Boolean(removeTagsError)}
+            />
+            {removeTagsError && <small className="library-bulk-error" role="alert">{removeTagsError}</small>}
+          </label>
+        </div>
+
+        {overlapError && <div className="inline-form-feedback error" role="alert">{overlapError}</div>}
+        {error && <div className="inline-form-feedback error" role="alert">{error}</div>}
+        {notice && <div className="inline-form-feedback success" role="status">{notice}</div>}
+
+        {!reviewing ? (
+          <div className="library-bulk-actions">
+            <button className="primary" type="button" disabled={!canReview} onClick={() => setReviewing(true)}>
+              Review {selectedIds.size || ""} change{selectedIds.size === 1 ? "" : "s"}
+            </button>
+            <span className="library-bulk-help">Maximum {MAX_LIBRARY_BATCH} bookmarks per reviewed batch. Titles, URLs, descriptions and HealthPolicy are never changed here.</span>
+          </div>
+        ) : (
+          <div className="library-bulk-review">
+            <div>
+              <strong>Review before apply</strong>
+              <p>{selectedIds.size} bookmark{selectedIds.size === 1 ? "" : "s"} will be updated in one D1 batch. If validation fails, none are changed.</p>
+            </div>
+            <div className="library-bulk-review-summary">
+              <span>{categoryLabel()}</span>
+              {addTags.length > 0 && <span>Add {addTags.map((tag) => `#${tag}`).join(" ")}</span>}
+              {removeTags.length > 0 && <span>Remove {removeTags.map((tag) => `#${tag}`).join(" ")}</span>}
+            </div>
+            <div className="library-bulk-review-list">
+              {selectedBookmarks.slice(0, 8).map((bookmark) => <span key={bookmark.id}>{bookmark.title}</span>)}
+              {selectedIds.size > 8 && <span>+{selectedIds.size - 8} more</span>}
+            </div>
+            <div className="library-bulk-actions">
+              <button className="primary" type="button" disabled={applying} onClick={() => void applyReviewedChanges()}>
+                {applying ? "Applying…" : `Apply to ${selectedIds.size}`}
+              </button>
+              <button className="secondary" type="button" disabled={applying} onClick={() => setReviewing(false)}>Back</button>
+            </div>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
