@@ -2,12 +2,14 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { App } from "./App";
 import { InboxPage } from "./InboxPage";
 import { SettingsPage } from "./SettingsPage";
+import { SmartCollectionsPage } from "./SmartCollectionsPage";
 import { getAuthStatus, login, logout, type AuthStatus } from "./auth-client";
 import "./security.css";
 
 function targetView() {
   if (window.location.pathname.startsWith("/app/settings")) return "settings";
   if (window.location.pathname.startsWith("/app/inbox")) return "inbox";
+  if (window.location.pathname.startsWith("/app/collections")) return "collections";
   return "app";
 }
 
@@ -32,6 +34,7 @@ function PrivateNavigation({ children, onLogout }: { children: ReactNode; onLogo
         <nav>
           <button className={path === "/app" ? "active" : ""} type="button" onClick={() => navigate("/app")}>Workspace</button>
           <button className={path.startsWith("/app/inbox") ? "active" : ""} type="button" onClick={() => navigate("/app/inbox")}>Inbox</button>
+          <button className={path.startsWith("/app/collections") ? "active" : ""} type="button" onClick={() => navigate("/app/collections")}>Collections</button>
           <button className={path.startsWith("/app/settings") ? "active" : ""} type="button" onClick={() => navigate("/app/settings")}>Settings</button>
           <button type="button" onClick={() => void onLogout()}>Sign out</button>
         </nav>
@@ -158,10 +161,18 @@ export function PrivateRoot() {
     ? "settings"
     : path.startsWith("/app/inbox")
       ? "inbox"
-      : targetView();
+      : path.startsWith("/app/collections")
+        ? "collections"
+        : targetView();
   return (
     <PrivateNavigation onLogout={signOut}>
-      {view === "settings" ? <SettingsPage /> : view === "inbox" ? <InboxPage /> : <App />}
+      {view === "settings"
+        ? <SettingsPage />
+        : view === "inbox"
+          ? <InboxPage />
+          : view === "collections"
+            ? <SmartCollectionsPage />
+            : <App />}
     </PrivateNavigation>
   );
 }

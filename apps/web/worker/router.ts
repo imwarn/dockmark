@@ -31,6 +31,7 @@ import { handleReorderApi, ReorderHttpError } from "./reorder";
 import { handleSearchEngineApi, SearchEngineHttpError } from "./search-engines";
 import { handleSessionApi, SessionHttpError } from "./sessions";
 import { handleSettingsApi, SettingsHttpError } from "./settings";
+import { handleSmartCollectionApi, SmartCollectionHttpError } from "./smart-collections";
 import { handleTagApi, TagHttpError } from "./tags";
 
 type BaseEnv = Parameters<typeof baseWorker.fetch>[1];
@@ -170,6 +171,17 @@ export default {
         } catch (error) {
           if (error instanceof TagHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Tag API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
+      }
+
+      if (pathname === "/api/smart-collections" || /^\/api\/smart-collections\/[^/]+$/.test(pathname)) {
+        try {
+          const response = await handleSmartCollectionApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof SmartCollectionHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Smart Collection API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
       }

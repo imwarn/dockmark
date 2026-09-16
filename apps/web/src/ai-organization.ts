@@ -1,6 +1,7 @@
 export interface AiProviderSettings {
   endpoint: string;
   model: string;
+  timeoutSeconds: number;
 }
 
 export interface AiProviderStatus {
@@ -24,10 +25,20 @@ interface ErrorEnvelope {
 
 const STORAGE_KEY = "dockmarkAiProviderV1";
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+export const MIN_AI_TIMEOUT_SECONDS = 15;
+export const MAX_AI_TIMEOUT_SECONDS = 180;
+export const DEFAULT_AI_TIMEOUT_SECONDS = 90;
+
+function normalizedTimeout(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= MIN_AI_TIMEOUT_SECONDS && value <= MAX_AI_TIMEOUT_SECONDS
+    ? value
+    : DEFAULT_AI_TIMEOUT_SECONDS;
+}
 
 export const DEFAULT_AI_PROVIDER: AiProviderSettings = {
   endpoint: DEFAULT_ENDPOINT,
   model: "",
+  timeoutSeconds: DEFAULT_AI_TIMEOUT_SECONDS,
 };
 
 export function loadAiProviderSettings(): AiProviderSettings {
@@ -38,6 +49,7 @@ export function loadAiProviderSettings(): AiProviderSettings {
     return {
       endpoint: typeof parsed.endpoint === "string" && parsed.endpoint.trim() ? parsed.endpoint : DEFAULT_ENDPOINT,
       model: typeof parsed.model === "string" ? parsed.model : "",
+      timeoutSeconds: normalizedTimeout(parsed.timeoutSeconds),
     };
   } catch {
     return DEFAULT_AI_PROVIDER;
@@ -45,7 +57,10 @@ export function loadAiProviderSettings(): AiProviderSettings {
 }
 
 export function saveAiProviderSettings(settings: AiProviderSettings) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    ...settings,
+    timeoutSeconds: normalizedTimeout(settings.timeoutSeconds),
+  }));
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -70,6 +85,9 @@ export async function generateAiOrganizationSuggestions(
 ): Promise<AiOrganizationSuggestion[]> {
   if (!settings.endpoint.trim()) throw new Error("Choose an AI provider endpoint before generating suggestions.");
   if (!settings.model.trim()) throw new Error("Choose an AI model before generating suggestions.");
+  if (!Number.isInteger(settings.timeoutSeconds) || settings.timeoutSeconds < MIN_AI_TIMEOUT_SECONDS || settings.timeoutSeconds > MAX_AI_TIMEOUT_SECONDS) {
+    throw new Error(`AI provider timeout must be between ${MIN_AI_TIMEOUT_SECONDS} and ${MAX_AI_TIMEOUT_SECONDS} seconds.`);
+  }
   if (!bookmarkIds.length) throw new Error("Select at least one bookmark.");
   if (bookmarkIds.length > 20) throw new Error("AI organization is limited to 20 bookmarks per request.");
 
@@ -78,6 +96,7 @@ export async function generateAiOrganizationSuggestions(
     body: JSON.stringify({
       endpoint: settings.endpoint.trim(),
       model: settings.model.trim(),
+      timeoutSeconds: settings.timeoutSeconds,
       bookmarkIds,
     }),
   });

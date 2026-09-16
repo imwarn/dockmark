@@ -56,7 +56,9 @@ export class AiOrganizationHttpError extends Error {
 
 const MAX_BOOKMARKS = 20;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
-const FETCH_TIMEOUT_MS = 30_000;
+const DEFAULT_FETCH_TIMEOUT_SECONDS = 90;
+const MIN_FETCH_TIMEOUT_SECONDS = 15;
+const MAX_FETCH_TIMEOUT_SECONDS = 180;
 const MAX_PROVIDER_REDIRECTS = 3;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -90,6 +92,23 @@ function requiredString(body: Record<string, unknown>, key: string, maxLength: n
     throw new AiOrganizationHttpError(400, "invalid_field", `${key} is too long.`);
   }
   return trimmed;
+}
+
+function providerTimeoutSeconds(value: unknown) {
+  if (value === undefined) return DEFAULT_FETCH_TIMEOUT_SECONDS;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < MIN_FETCH_TIMEOUT_SECONDS ||
+    value > MAX_FETCH_TIMEOUT_SECONDS
+  ) {
+    throw new AiOrganizationHttpError(
+      400,
+      "invalid_timeout",
+      `timeoutSeconds must be an integer between ${MIN_FETCH_TIMEOUT_SECONDS} and ${MAX_FETCH_TIMEOUT_SECONDS}.`,
+    );
+  }
+  return value;
 }
 
 function bookmarkIds(value: unknown) {
@@ -343,9 +362,9 @@ async function fetchProviderResponse(endpoint: string, apiKey: string, body: str
   throw new AiOrganizationHttpError(502, "provider_redirect_limit", "AI provider redirected too many times.");
 }
 
-function providerNetworkError(error: unknown, endpoint: string) {
+function providerNetworkError(error: unknown, endpoint: string, timeoutSeconds: number) {
   if (error instanceof Error && error.name === "AbortError") {
-    return new AiOrganizationHttpError(504, "provider_timeout", "AI provider request timed out after 30 seconds.");
+    return new AiOrganizationHttpError(504, "provider_timeout", `AI provider request timed out after ${timeoutSeconds} seconds.`);
   }
 
   const detail = error instanceof Error && error.message.trim()
@@ -368,9 +387,10 @@ async function callProvider(
   model: string,
   apiKey: string,
   input: Awaited<ReturnType<typeof loadOrganizationInput>>,
+  timeoutSeconds: number,
 ) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
   const body = providerRequestBody(model, input);
 
   try {
@@ -406,7 +426,7 @@ async function callProvider(
     return payload;
   } catch (error) {
     if (error instanceof AiOrganizationHttpError) throw error;
-    throw providerNetworkError(error, endpoint);
+    throw providerNetworkError(error, endpoint, timeoutSeconds);
   } finally {
     clearTimeout(timeout);
   }
@@ -425,9 +445,10 @@ async function organize(request: Request, env: AiOrganizationEnv) {
   const body = await readBody(request);
   const endpoint = providerEndpoint(requiredString(body, "endpoint", 4096));
   const model = requiredString(body, "model", 200);
+  const timeoutSeconds = providerTimeoutSeconds(body.timeoutSeconds);
   const ids = bookmarkIds(body.bookmarkIds);
   const input = await loadOrganizationInput(env.DB, ids);
-  const payload = await callProvider(endpoint, model, apiKey, input);
+  const payload = await callProvider(endpoint, model, apiKey, input, timeoutSeconds);
   const text = extractText(payload);
   if (!text) {
     throw new AiOrganizationHttpError(502, "provider_missing_output", "AI provider response did not contain a supported text result.");
