@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const extensionPackage = JSON.parse(await readFile(path.join(root, "apps/extension/package.json"), "utf8"));
+const expectedExtensionVersion = extensionPackage.version;
 const extensionPath = path.join(root, "apps/extension/.output/chrome-mv3");
 const userDataDir = await mkdtemp(path.join(tmpdir(), "dockmark-chromium-"));
 
@@ -56,7 +58,7 @@ try {
   await popup.waitForLoadState("domcontentloaded");
 
   const manifest = await popup.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "1.5.0");
+  assert.equal(manifest.version, expectedExtensionVersion);
   assert.equal(manifest.icons?.[16], "icons/dockmark-16.png");
   assert.equal(manifest.icons?.[32], "icons/dockmark-32.png");
   assert.equal(manifest.icons?.[48], "icons/dockmark-48.png");
@@ -79,7 +81,7 @@ try {
   );
   assert.equal(capabilities.connected, true);
   assert.equal(capabilities.protocolVersion, 1);
-  assert.equal(capabilities.extensionVersion, "1.5.0");
+  assert.equal(capabilities.extensionVersion, expectedExtensionVersion);
   assert.equal(capabilities.capabilities.openTabs, true);
   assert.equal(capabilities.capabilities.workspaceReuse, true);
   assert.equal(capabilities.capabilities.workspacePinned, true);
@@ -158,7 +160,7 @@ try {
   assert.equal(restored.pinned, true, "Session restore should preserve pinned state.");
 
   console.log(`✓ Dockmark Chromium extension loaded: ${extensionId}`);
-  console.log("✓ Capability handshake protocol 1 / extension 1.5.0");
+  console.log(`✓ Capability handshake protocol 1 / extension ${expectedExtensionVersion}`);
   console.log("✓ Dockmark D dot mark is wired into manifest icon sizes");
   console.log("✓ Alt+Shift+D launcher command and d + Space omnibox entry are registered");
   console.log("✓ Native bookmark import, mapping sync and explicit writeback capabilities advertised");
