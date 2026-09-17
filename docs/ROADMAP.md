@@ -114,6 +114,6 @@
 - [x] bulk organization remains Web-session-only and never changes title, URL, description, HealthPolicy, browser mappings or health history
 - [x] Smart Collection → reviewed bulk workflow handoff without duplicating the Collection filter manually; saved live matches become the scoped bulk candidate set and up to 50 are preselected for review
 - [x] duplicate-review workspace surfaces canonical-target, resolved-target and conservative normalized-URL candidate pairs from existing private bookmark/metadata reads; filters and per-visit hiding are review-only and never merge, edit or delete bookmarks
-- [ ] reviewed bulk maintenance actions for health policy and explicit archive/delete workflows with clear destructive confirmation
+- [x] reviewed bulk maintenance for HealthPolicy plus persistent archive/restore and archive-only permanent delete, with explicit review gates and exact destructive confirmation
 - [ ] change journal for high-impact bulk operations with enough before/after context to support safe manual recovery
 - [ ] reassess optional reviewed two-way browser synchronization only after Library bulk/recovery semantics are stable

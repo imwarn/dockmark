@@ -98,7 +98,7 @@ async function reorderBookmarks(request: Request, db: D1DatabaseLike) {
   }
 
   const current = await db.prepare(
-    "SELECT id FROM bookmarks WHERE category_id IS ? ORDER BY position ASC, title COLLATE NOCASE ASC",
+    "SELECT id FROM bookmarks WHERE category_id IS ? AND archived_at IS NULL ORDER BY position ASC, title COLLATE NOCASE ASC",
   ).bind(categoryId).all<{ id: string }>();
   const actualIds = current.results.map((row) => row.id);
   if (!sameMembers(actualIds, ids)) {

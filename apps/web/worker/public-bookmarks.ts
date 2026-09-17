@@ -49,6 +49,7 @@ export async function listPublicBookmarks(db: PublicBookmarkDatabaseLike) {
        FROM public_bookmarks p
        JOIN bookmarks b ON b.id = p.bookmark_id
        LEFT JOIN categories c ON c.id = b.category_id
+      WHERE b.archived_at IS NULL
       ORDER BY COALESCE(c.position, 2147483647) ASC, c.name COLLATE NOCASE ASC,
                b.position ASC, b.title COLLATE NOCASE ASC`,
   ).all<PublicBookmarkRow>();
@@ -69,16 +70,20 @@ export async function listPublicBookmarks(db: PublicBookmarkDatabaseLike) {
 
 export async function listPublicSelection(db: PublicBookmarkDatabaseLike) {
   const result = await db.prepare(
-    "SELECT bookmark_id FROM public_bookmarks ORDER BY published_at ASC",
+    `SELECT p.bookmark_id
+       FROM public_bookmarks p
+       JOIN bookmarks b ON b.id = p.bookmark_id
+      WHERE b.archived_at IS NULL
+      ORDER BY p.published_at ASC`,
   ).all<{ bookmark_id: string }>();
   return result.results.map((row) => row.bookmark_id);
 }
 
 async function publishBookmark(db: PublicBookmarkDatabaseLike, id: string) {
-  const bookmark = await db.prepare("SELECT id FROM bookmarks WHERE id = ? LIMIT 1")
+  const bookmark = await db.prepare("SELECT id FROM bookmarks WHERE id = ? AND archived_at IS NULL LIMIT 1")
     .bind(id)
     .first<{ id: string }>();
-  if (!bookmark) throw new PublicBookmarkHttpError(404, "bookmark_not_found", "Bookmark not found.");
+  if (!bookmark) throw new PublicBookmarkHttpError(404, "bookmark_not_found", "Active bookmark not found.");
   await db.prepare(
     "INSERT INTO public_bookmarks (bookmark_id, published_at) VALUES (?, CURRENT_TIMESTAMP) ON CONFLICT(bookmark_id) DO NOTHING",
   )

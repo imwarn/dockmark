@@ -148,11 +148,11 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
 
   const placeholders = bookmarkIds.map(() => "?").join(", ");
   const bookmarkRows = await db.prepare(
-    `SELECT id, category_id, position FROM bookmarks WHERE id IN (${placeholders})`,
+    `SELECT id, category_id, position FROM bookmarks WHERE id IN (${placeholders}) AND archived_at IS NULL`,
   ).bind(...bookmarkIds).all<BookmarkRow>();
   const bookmarkById = new Map(bookmarkRows.results.map((row) => [row.id, row]));
   if (bookmarkById.size !== bookmarkIds.length) {
-    throw new LibraryBatchOrganizeHttpError(409, "bookmark_changed", "One or more selected bookmarks no longer exist. Refresh the Library and review again.");
+    throw new LibraryBatchOrganizeHttpError(409, "bookmark_changed", "One or more selected bookmarks no longer exist in the active Library. Refresh and review again.");
   }
 
   if (categorySpecified && categoryId) {
@@ -198,8 +198,8 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
   let nextPosition = 0;
   if (categorySpecified) {
     const maxPosition = categoryId
-      ? await db.prepare("SELECT COALESCE(MAX(position), -1) AS value FROM bookmarks WHERE category_id = ?").bind(categoryId).first<{ value: number }>()
-      : await db.prepare("SELECT COALESCE(MAX(position), -1) AS value FROM bookmarks WHERE category_id IS NULL").first<{ value: number }>();
+      ? await db.prepare("SELECT COALESCE(MAX(position), -1) AS value FROM bookmarks WHERE category_id = ? AND archived_at IS NULL").bind(categoryId).first<{ value: number }>()
+      : await db.prepare("SELECT COALESCE(MAX(position), -1) AS value FROM bookmarks WHERE category_id IS NULL AND archived_at IS NULL").first<{ value: number }>();
     nextPosition = Number(maxPosition?.value ?? -1) + 1;
   }
 
@@ -207,12 +207,12 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
   for (const id of bookmarkIds) {
     if (categorySpecified) {
       statements.push(
-        db.prepare("UPDATE bookmarks SET category_id = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        db.prepare("UPDATE bookmarks SET category_id = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND archived_at IS NULL")
           .bind(categoryId, nextPosition, id),
       );
       nextPosition += 1;
     } else if (tagsChanged) {
-      statements.push(db.prepare("UPDATE bookmarks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(id));
+      statements.push(db.prepare("UPDATE bookmarks SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND archived_at IS NULL").bind(id));
     }
 
     if (!tagsChanged) continue;
