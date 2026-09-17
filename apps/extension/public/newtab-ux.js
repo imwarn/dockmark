@@ -141,6 +141,16 @@
     await chrome.tabs.create({ url, active });
   }
 
+  function focusLauncher(query, select = false) {
+    if (typeof query === "string") {
+      elements.search.value = query;
+      activeResult = 0;
+      renderSearchResults();
+    }
+    elements.search.focus();
+    if (select) elements.search.select();
+  }
+
   elements.search.addEventListener("keydown", (event) => {
     const result = selectedResult();
 
@@ -178,9 +188,20 @@
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable) return;
     event.preventDefault();
-    elements.search.focus();
-    elements.search.select();
+    focusLauncher(undefined, true);
   });
+
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type !== "dockmark:focus-launcher") return undefined;
+    focusLauncher(typeof message.query === "string" ? message.query : undefined, typeof message.query !== "string");
+    return { ok: true };
+  });
+
+  const initialQuery = new URL(window.location.href).searchParams.get("q");
+  if (initialQuery) {
+    focusLauncher(initialQuery);
+    window.history.replaceState({}, "", window.location.pathname);
+  }
 
   // Existing local snapshots remain valid. Sessions are additive and appear after the
   // next successful refresh; cached sessions remain available when Dockmark is offline.

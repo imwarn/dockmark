@@ -16,6 +16,13 @@ export default defineConfig({
     permissions: ["storage", "tabs", "scripting"],
     optional_permissions: ["bookmarks"],
     optional_host_permissions: ["http://*/*", "https://*/*"],
+    commands: {
+      "open-dockmark-launcher": {
+        suggested_key: { default: "Alt+Shift+D" },
+        description: "Open or focus the Dockmark launcher",
+      },
+    },
+    omnibox: { keyword: "d" },
     ...(browser === "firefox"
       ? {
           browser_specific_settings: {

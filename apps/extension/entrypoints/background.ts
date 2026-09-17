@@ -1,5 +1,6 @@
 import { browser } from "wxt/browser";
 import { checkLocalHealth } from "../lib/local-health";
+import { registerLauncherAccess } from "../lib/launcher-access";
 
 const SERVER_KEY = "dockmarkServerUrl";
 const NATIVE_BOOKMARK_MAPPINGS_KEY = "dockmarkNativeBookmarkMappingsV1";
@@ -399,6 +400,7 @@ async function syncBookmarkListeners() {
 }
 
 export default defineBackground(() => {
+  registerLauncherAccess();
   void syncBridgeRegistration();
   void syncBookmarkListeners();
 
