@@ -177,17 +177,21 @@ function addMetadataPairs(
     const group = Array.from(combined.values()).slice(0, MAX_BUCKET_MEMBERS);
     if (group.length < 2) continue;
     for (let left = 0; left < group.length; left += 1) {
+      const leftRow = group[left];
+      if (!leftRow) continue;
       for (let right = left + 1; right < group.length; right += 1) {
-        const leftHasEvidence = evidenceRows.some((row) => row.id === group[left].id);
-        const rightHasEvidence = evidenceRows.some((row) => row.id === group[right].id);
+        const rightRow = group[right];
+        if (!rightRow) continue;
+        const leftHasEvidence = evidenceRows.some((row) => row.id === leftRow.id);
+        const rightHasEvidence = evidenceRows.some((row) => row.id === rightRow.id);
         if (!leftHasEvidence && !rightHasEvidence) continue;
         const rawEvidence = kind === "canonical"
-          ? (group[left].canonical_url ?? group[right].canonical_url)
-          : (group[left].final_url ?? group[right].final_url);
+          ? (leftRow.canonical_url ?? rightRow.canonical_url)
+          : (leftRow.final_url ?? rightRow.final_url);
         addCandidate(
           candidates,
-          group[left],
-          group[right],
+          leftRow,
+          rightRow,
           kind,
           kind === "canonical"
             ? "Saved page metadata points these bookmarks at the same canonical target."
@@ -205,11 +209,15 @@ function addNormalizedPairs(candidates: Map<string, DuplicateReviewCandidate>, r
   for (const group of groups.values()) {
     if (group.length < 2) continue;
     for (let left = 0; left < group.length; left += 1) {
+      const leftRow = group[left];
+      if (!leftRow) continue;
       for (let right = left + 1; right < group.length; right += 1) {
+        const rightRow = group[right];
+        if (!rightRow) continue;
         addCandidate(
           candidates,
-          group[left],
-          group[right],
+          leftRow,
+          rightRow,
           "normalized",
           "The URLs become equivalent after ignoring protocol/www, fragments, trailing slashes and known tracking parameters.",
         );
