@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Bookmark, HealthPolicy } from "@dockmark/core";
-import { listBookmarks } from "./api";
 import { bookmarkMatchesQuery } from "./bookmark-search";
 import {
+  listArchivedBookmarks,
   maintainLibraryBatch,
   MAX_LIBRARY_MAINTENANCE_BATCH,
   type LibraryMaintenanceAction,
@@ -36,7 +36,7 @@ export function LibraryBulkMaintenance({ bookmarks, bookmarkTags, categoryNameBy
   const [notice, setNotice] = useState<string | null>(null);
 
   async function refreshArchived() {
-    setArchived(await listBookmarks("archived"));
+    setArchived(await listArchivedBookmarks());
   }
 
   useEffect(() => {
