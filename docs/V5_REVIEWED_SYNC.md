@@ -21,8 +21,8 @@ The active Library intentionally hides archived bookmarks. Therefore a mapped bo
 Recovery is reviewed instead:
 
 1. If the bookmark was archived intentionally, restore it from the Library and refresh the browser snapshot. The original mapping can become healthy again because the bookmark id is preserved by archive/restore.
-2. If the Dockmark bookmark was deliberately deleted, unlink the stale mapping or re-link the browser bookmark to an existing Dockmark bookmark.
-3. If the user truly wants the browser bookmark imported again after deletion, unlink first and use the normal reviewed import/map flow. This makes recreation an explicit new decision rather than a side effect of Safe Apply.
+2. If the Dockmark bookmark was deliberately deleted, unlink the stale mapping. If the browser bookmark should point at Dockmark again, use the normal reviewed import/map flow after unlinking.
+3. If the user truly wants the browser bookmark imported again after deletion, that import/map step is an explicit new decision rather than a side effect of Safe Apply.
 
 ## Safety invariants
 

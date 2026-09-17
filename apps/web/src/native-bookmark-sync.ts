@@ -252,7 +252,7 @@ export function nativeMappingStateLabel(state: NativeMappingState) {
 export function nativeMappingReviewDescription(state: NativeMappingState) {
   switch (state) {
     case "cloud-missing":
-      return "The mapped Dockmark bookmark is not in the active Library. It may be archived or deliberately deleted, so Safe Apply will not recreate it. Restore it in Library, re-link this browser bookmark, or unlink the stale mapping.";
+      return "The mapped Dockmark bookmark is not in the active Library. It may be archived or deliberately deleted, so Safe Apply will not recreate it. Restore it in Library, or unlink the stale mapping and use the normal reviewed import/map flow if you want to create a new mapping.";
     case "cloud-changed":
       return "Dockmark changed after this mapping baseline. Keep the Dockmark version, replace it with the browser version, or re-link the browser bookmark.";
     case "conflict":
