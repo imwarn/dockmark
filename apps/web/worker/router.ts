@@ -28,6 +28,10 @@ import {
   handleCaptureWriteApi,
 } from "./capture-write";
 import {
+  ChangeJournalHttpError,
+  handleChangeJournalApi,
+} from "./change-journal";
+import {
   DuplicateReviewHttpError,
   handleDuplicateReviewApi,
 } from "./duplicate-review";
@@ -196,6 +200,17 @@ export default {
         } catch (error) {
           if (error instanceof LibraryBatchOrganizeHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Library Batch Organize API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
+      }
+
+      if (pathname === "/api/library/change-journal") {
+        try {
+          const response = await handleChangeJournalApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof ChangeJournalHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Change Journal API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
       }
