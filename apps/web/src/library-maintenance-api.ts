@@ -1,4 +1,4 @@
-import type { HealthPolicy } from "@dockmark/core";
+import type { Bookmark, HealthPolicy } from "@dockmark/core";
 
 interface ErrorEnvelope {
   error?: {
@@ -28,6 +28,24 @@ export interface LibraryMaintenanceInput {
   confirmation?: string;
 }
 
+async function readResponse<T>(response: Response): Promise<T> {
+  const body = await response.json().catch(() => ({})) as T & ErrorEnvelope;
+  if (!response.ok) {
+    throw new LibraryMaintenanceApiError(
+      response.status,
+      body.error?.code,
+      body.error?.message ?? `Request failed with status ${response.status}.`,
+    );
+  }
+  return body;
+}
+
+export async function listArchivedBookmarks() {
+  const response = await fetch("/api/bookmarks/archived", { cache: "no-store" });
+  const body = await readResponse<{ bookmarks?: Bookmark[] }>(response);
+  return body.bookmarks ?? [];
+}
+
 export async function maintainLibraryBatch(input: LibraryMaintenanceInput) {
   const bookmarkIds = Array.from(new Set(input.bookmarkIds.filter(Boolean)));
   if (!bookmarkIds.length) throw new Error("Select at least one bookmark to maintain.");
@@ -52,17 +70,10 @@ export async function maintainLibraryBatch(input: LibraryMaintenanceInput) {
       ...(input.confirmation ? { confirmation: input.confirmation } : {}),
     }),
   });
-  const body = await response.json().catch(() => ({})) as ErrorEnvelope & {
+  const body = await readResponse<{
     applied?: number;
     bookmarkIds?: string[];
-  };
-  if (!response.ok) {
-    throw new LibraryMaintenanceApiError(
-      response.status,
-      body.error?.code,
-      body.error?.message ?? `Request failed with status ${response.status}.`,
-    );
-  }
+  }>(response);
   return {
     applied: body.applied ?? bookmarkIds.length,
     bookmarkIds: body.bookmarkIds ?? bookmarkIds,
