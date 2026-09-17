@@ -219,7 +219,7 @@ try {
   await page.getByText("GitHub", { exact: true }).waitFor();
   const renderedKinds = (await page.locator("#command-results .result-kind").allInnerTexts())
     .map((value) => value.toLocaleLowerCase());
-  assert.deepEqual(renderedKinds, ["search-shortcut", "search-shortcut"]);
+  assert.deepEqual(renderedKinds, ["bang", "bang"], "Search-engine shortcuts should use the shared Bang result label.");
 
   await search.fill("!gh");
   await page.getByText("GitHub", { exact: true }).waitFor();

@@ -218,7 +218,7 @@ export interface UpdateSearchEngineInput {
   position?: number;
 }
 
-export type CommandSource = "tab" | "workspace" | "session" | "bookmark" | "navigation" | "search";
+export type CommandSource = "tab" | "workspace" | "session" | "collection" | "bookmark" | "navigation" | "search";
 
 export interface CommandResult {
   id: string;
