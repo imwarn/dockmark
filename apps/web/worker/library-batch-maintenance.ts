@@ -1,4 +1,9 @@
 import type { HealthPolicy, HealthStatus } from "@dockmark/core";
+import {
+  createJournalItems,
+  journalInsertStatement,
+  loadBookmarkJournalSnapshots,
+} from "./change-journal";
 
 type BindValue = string | number | null;
 
@@ -6,6 +11,7 @@ interface D1PreparedStatementLike {
   bind(...values: BindValue[]): D1PreparedStatementLike;
   first<T = unknown>(): Promise<T | null>;
   all<T = unknown>(): Promise<{ results: T[] }>;
+  run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
 }
 
 interface D1DatabaseLike {
@@ -172,7 +178,12 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
     throw new LibraryBatchMaintenanceHttpError(409, "bookmark_state_changed", "Restore and permanent delete apply only to archived bookmarks. Refresh and review again.");
   }
 
+  const before = await loadBookmarkJournalSnapshots(db, bookmarkIds);
   const statements: D1PreparedStatementLike[] = [];
+  let operation = "bulk-maintenance";
+  let summary = `Maintained ${bookmarkIds.length} bookmarks`;
+  let journalItems;
+
   if (action === "set-health-policy" && healthPolicy) {
     const status = healthStatusForPolicy(healthPolicy);
     for (const id of bookmarkIds) {
@@ -181,6 +192,13 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
           .bind(healthPolicy, status, id),
       );
     }
+    operation = "bulk-health-policy";
+    summary = `Set HealthPolicy to ${healthPolicy} for ${bookmarkIds.length} bookmark${bookmarkIds.length === 1 ? "" : "s"}`;
+    journalItems = createJournalItems(bookmarkIds, before, (snapshot) => ({
+      ...snapshot,
+      healthPolicy,
+      healthStatus: status,
+    }));
   } else if (action === "archive") {
     for (const id of bookmarkIds) {
       statements.push(db.prepare("DELETE FROM public_bookmarks WHERE bookmark_id = ?").bind(id));
@@ -189,6 +207,14 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
           .bind(id),
       );
     }
+    operation = "bulk-archive";
+    summary = `Archived ${bookmarkIds.length} bookmark${bookmarkIds.length === 1 ? "" : "s"}`;
+    journalItems = createJournalItems(bookmarkIds, before, (snapshot) => ({
+      ...snapshot,
+      archived: true,
+      inbox: false,
+      published: false,
+    }));
   } else if (action === "restore") {
     for (const id of bookmarkIds) {
       statements.push(
@@ -196,12 +222,23 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
           .bind(id),
       );
     }
-  } else if (action === "delete") {
+    operation = "bulk-restore";
+    summary = `Restored ${bookmarkIds.length} bookmark${bookmarkIds.length === 1 ? "" : "s"}`;
+    journalItems = createJournalItems(bookmarkIds, before, (snapshot) => ({
+      ...snapshot,
+      archived: false,
+    }));
+  } else {
     for (const id of bookmarkIds) {
       statements.push(db.prepare("DELETE FROM bookmarks WHERE id = ? AND archived_at IS NOT NULL").bind(id));
     }
     statements.push(db.prepare("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)"));
+    operation = "bulk-delete";
+    summary = `Permanently deleted ${bookmarkIds.length} archived bookmark${bookmarkIds.length === 1 ? "" : "s"}`;
+    journalItems = createJournalItems(bookmarkIds, before, () => null);
   }
+
+  statements.push(journalInsertStatement(db, operation, summary, journalItems) as D1PreparedStatementLike);
 
   const batchDb = db as D1BatchDatabaseLike;
   if (typeof batchDb.batch !== "function") {
