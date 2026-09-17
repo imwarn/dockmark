@@ -242,6 +242,7 @@ async function duplicateReview(db: DuplicateReviewDatabase) {
        FROM bookmarks b
        LEFT JOIN categories c ON c.id = b.category_id
        LEFT JOIN bookmark_metadata m ON m.bookmark_id = b.id
+      WHERE b.archived_at IS NULL
       ORDER BY b.updated_at DESC, b.id ASC`,
   ).all<DuplicateRow>();
   const rows = result.results ?? [];
