@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
 import { BookmarkManager as ExistingBookmarkManager } from "./BookmarkManagerLegacy";
+import { ChangeJournal } from "./ChangeJournal";
 import { LibraryBulkMaintenance } from "./LibraryBulkMaintenance";
 import { LibraryBulkOrganizer } from "./LibraryBulkOrganizer";
 
@@ -13,10 +14,16 @@ interface Props {
 }
 
 export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, onChanged }: Props) {
+  const [journalRevision, setJournalRevision] = useState(0);
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
   );
+
+  async function onBulkChanged() {
+    await onChanged();
+    setJournalRevision((current) => current + 1);
+  }
 
   return (
     <>
@@ -24,14 +31,15 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
         bookmarks={bookmarks}
         categories={categories}
         bookmarkTags={bookmarkTags}
-        onChanged={onChanged}
+        onChanged={onBulkChanged}
       />
       <LibraryBulkMaintenance
         bookmarks={bookmarks}
         bookmarkTags={bookmarkTags}
         categoryNameById={categoryNameById}
-        onChanged={onChanged}
+        onChanged={onBulkChanged}
       />
+      <ChangeJournal revision={String(journalRevision)} />
       <ExistingBookmarkManager
         bookmarks={bookmarks}
         categories={categories}
