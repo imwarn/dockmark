@@ -244,15 +244,17 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
   }
   if (tagsChanged) statements.push(db.prepare("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)"));
 
-  const journalItems = createJournalItems(bookmarkIds, before, (snapshot) => ({
-    ...snapshot,
-    ...(categorySpecified ? {
-      categoryId,
-      ...(destinationCategoryName ? { categoryName: destinationCategoryName } : { categoryName: undefined }),
-      position: finalPositions.get(snapshot.id) ?? snapshot.position,
-    } : {}),
-    ...(tagsChanged ? { tags: finalTags.get(snapshot.id) ?? snapshot.tags } : {}),
-  }));
+  const journalItems = createJournalItems(bookmarkIds, before, (snapshot) => {
+    const after = { ...snapshot };
+    if (categorySpecified) {
+      after.categoryId = categoryId;
+      after.position = finalPositions.get(snapshot.id) ?? snapshot.position;
+      if (destinationCategoryName) after.categoryName = destinationCategoryName;
+      else delete after.categoryName;
+    }
+    if (tagsChanged) after.tags = finalTags.get(snapshot.id) ?? snapshot.tags;
+    return after;
+  });
   const changeParts = [
     categorySpecified ? (categoryId ? `category → ${destinationCategoryName ?? categoryId}` : "category → Uncategorized") : null,
     addTags.length ? `add ${addTags.map((tag) => `#${tag}`).join(" ")}` : null,
