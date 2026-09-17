@@ -134,7 +134,10 @@ export function buildNativeMappingRows(
         safeToApply: true,
       };
     }
-    if (!cloud) return { mapping, native, state: "cloud-missing", safeToApply: true };
+    // An absent active Dockmark target may be archived, deliberately deleted, or
+    // otherwise unavailable. Never recreate it through Safe Apply: recovery must be
+    // an explicit Library restore or mapping decision so archive/delete semantics win.
+    if (!cloud) return { mapping, native, state: "cloud-missing", safeToApply: false };
 
     const nativeUrl = normalized(native.url);
     const mappedUrl = normalized(mapping.url);
@@ -248,6 +251,8 @@ export function nativeMappingStateLabel(state: NativeMappingState) {
 
 export function nativeMappingReviewDescription(state: NativeMappingState) {
   switch (state) {
+    case "cloud-missing":
+      return "The mapped Dockmark bookmark is not in the active Library. It may be archived or deliberately deleted, so Safe Apply will not recreate it. Restore it in Library, re-link this browser bookmark, or unlink the stale mapping.";
     case "cloud-changed":
       return "Dockmark changed after this mapping baseline. Keep the Dockmark version, replace it with the browser version, or re-link the browser bookmark.";
     case "conflict":
