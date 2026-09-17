@@ -40,7 +40,7 @@
 ## V2 — browser bridge
 
 - [x] reviewed browser-native bookmark import with URL de-duplication and extension-local mapping
-- [ ] optional two-way browser bookmark synchronization (intentionally deferred beyond v1.0: current model uses reviewed Browser→Dockmark plus explicit per-item Dockmark→Browser writeback; no silent background mutation)
+- [x] reviewed two-way browser bookmark synchronization with explicit Browser→Dockmark Safe Apply, explicit Dockmark→Browser title/URL writeback, per-item true-conflict resolution, and no silent background mutation; archived/deleted Dockmark targets are never auto-recreated
 - [x] save current browser window as a cloud Session
 - [x] restore a Session from the extension with pinned state preserved
 - [x] inject live open tabs into the Web Command Palette
@@ -116,4 +116,4 @@
 - [x] duplicate-review workspace surfaces canonical-target, resolved-target and conservative normalized-URL candidate pairs from existing private bookmark/metadata reads; filters and per-visit hiding are review-only and never merge, edit or delete bookmarks
 - [x] reviewed bulk maintenance for HealthPolicy plus persistent archive/restore and archive-only permanent delete, with explicit review gates and exact destructive confirmation
 - [x] change journal for high-impact bulk operations with enough before/after context to support safe manual recovery
-- [ ] reassess optional reviewed two-way browser synchronization only after Library bulk/recovery semantics are stable
+- [x] reassessed reviewed two-way browser synchronization after Library recovery semantics stabilized: retain explicit directional review/writeback, keep true conflicts manual, and treat missing Dockmark targets as recovery decisions rather than Safe Apply recreation
