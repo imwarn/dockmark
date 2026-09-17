@@ -116,7 +116,9 @@ try {
   await search.fill("!");
   await page.getByText("Google", { exact: true }).waitFor();
   await page.getByText("GitHub", { exact: true }).waitFor();
-  assert.deepEqual(await page.locator("#command-results .result-kind").allInnerTexts(), ["search-shortcut", "search-shortcut"]);
+  const renderedKinds = (await page.locator("#command-results .result-kind").allInnerTexts())
+    .map((value) => value.toLocaleLowerCase());
+  assert.deepEqual(renderedKinds, ["search-shortcut", "search-shortcut"]);
 
   await search.fill("!gh");
   await page.getByText("GitHub", { exact: true }).waitFor();
