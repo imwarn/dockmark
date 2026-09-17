@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   buildSearchUrl,
+  launcherTextScore,
   matchingBangEngines,
   parseBangQuery,
   rankCommands,
@@ -27,7 +28,7 @@ import {
   listSessions,
   listWorkspaces,
 } from "./api";
-import { bookmarkMatchesQuery, textMatchesQuery } from "./bookmark-search";
+import { bookmarkMatchesQuery } from "./bookmark-search";
 import { listInbox } from "./inbox-api";
 import { matchesSmartCollection, smartCollectionFilterLabels } from "./smart-collection-match";
 import { listSmartCollections, type SmartCollection } from "./smart-collections-api";
@@ -43,6 +44,7 @@ const sourceLabel: Record<CommandResult["source"], string> = {
   tab: "Open tab",
   workspace: "Workspace",
   session: "Session",
+  collection: "Collection",
   bookmark: "Bookmark",
   navigation: "Navigation",
   search: "Search",
@@ -158,13 +160,22 @@ export function App() {
   }, [refreshBridge]);
 
   useEffect(() => {
+    const focusLauncher = () => {
+      setView("launcher");
+      void refreshBridge();
+      requestAnimationFrame(() => commandInputRef.current?.focus());
+    };
     const onGlobalKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setView("launcher");
-        void refreshBridge();
-        requestAnimationFrame(() => commandInputRef.current?.focus());
+        focusLauncher();
+        return;
       }
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return;
+      event.preventDefault();
+      focusLauncher();
     };
     window.addEventListener("keydown", onGlobalKeyDown);
     return () => window.removeEventListener("keydown", onGlobalKeyDown);
@@ -182,7 +193,7 @@ export function App() {
 
   const results = useMemo(() => {
     const trimmed = query.trim();
-    const normalized = trimmed.toLowerCase();
+    const normalized = trimmed.toLocaleLowerCase();
     const bang = parseBangQuery(trimmed, searchEngines);
 
     if (bang) {
@@ -209,40 +220,59 @@ export function App() {
     }
 
     const tabCandidates = normalized ? openTabs : openTabs.slice(0, 4);
-    const tabResults: CommandResult[] = tabCandidates.map((tab) => ({
-      id: `tab:${tab.id}`,
-      source: "tab",
-      title: tab.title,
-      subtitle: `${hostLabel(tab.url)}${tab.pinned ? " · Pinned" : ""}${tab.active ? " · Active" : ""}`,
-      url: tab.url,
-      score: 40 + (tab.pinned ? 4 : 0) + (tab.active ? 2 : 0),
-    }));
-    const workspaceResults: CommandResult[] = workspaces.map((workspace) => ({
-      id: workspace.id,
-      source: "workspace",
-      title: workspace.name,
-      subtitle: `Open workspace · ${workspace.items.length} tabs`,
-      score: 30,
-    }));
-    const sessionResults: CommandResult[] = sessions.map((session, index) => ({
-      id: session.id,
-      source: "session",
-      title: session.name,
-      subtitle: `Restore session · ${session.items.length} tabs${session.sourceDevice ? ` · ${session.sourceDevice}` : ""}`,
-      score: Math.max(0, 30 - index),
-    }));
+    const tabResults: CommandResult[] = tabCandidates.flatMap((tab) => {
+      const subtitle = `${hostLabel(tab.url)}${tab.pinned ? " · Pinned" : ""}${tab.active ? " · Active" : ""}`;
+      const score = launcherTextScore(trimmed, tab.title, [tab.url, subtitle], 40 + (tab.pinned ? 4 : 0) + (tab.active ? 2 : 0));
+      if (normalized && score < 0) return [];
+      return [{
+        id: `tab:${tab.id}`,
+        source: "tab" as const,
+        title: tab.title,
+        subtitle,
+        url: tab.url,
+        score,
+      }];
+    });
+    const workspaceResults: CommandResult[] = workspaces.flatMap((workspace) => {
+      const subtitle = `Open workspace · ${workspace.items.length} tabs`;
+      const itemText = workspace.items.flatMap((item) => [item.title, item.url]);
+      const score = launcherTextScore(trimmed, workspace.name, [workspace.description ?? "", subtitle, ...itemText], 30);
+      if (normalized && score < 0) return [];
+      return [{
+        id: workspace.id,
+        source: "workspace" as const,
+        title: workspace.name,
+        subtitle,
+        score,
+      }];
+    });
+    const sessionResults: CommandResult[] = sessions.flatMap((session, index) => {
+      const subtitle = `Restore session · ${session.items.length} tabs${session.sourceDevice ? ` · ${session.sourceDevice}` : ""}`;
+      const itemText = session.items.flatMap((item) => [item.title, item.url]);
+      const score = launcherTextScore(trimmed, session.name, [session.sourceDevice ?? "", subtitle, ...itemText], Math.max(0, 30 - index));
+      if (normalized && score < 0) return [];
+      return [{
+        id: session.id,
+        source: "session" as const,
+        title: session.name,
+        subtitle,
+        score,
+      }];
+    });
     const collectionResults: CommandResult[] = smartCollections.flatMap((collection) => {
       const labels = smartCollectionFilterLabels(collection.filters, categoryById);
-      if (normalized && !textMatchesQuery(trimmed, [collection.name, ...labels])) return [];
       const count = bookmarks.filter((bookmark) =>
         matchesSmartCollection(bookmark, collection.filters, bookmarkTags[bookmark.id] ?? [], inboxIds),
       ).length;
+      const subtitle = `${count} bookmark${count === 1 ? "" : "s"}${labels.length ? ` · ${labels.slice(0, 4).join(" · ")}` : " · All bookmarks"}`;
+      const score = launcherTextScore(trimmed, collection.name, [subtitle, ...labels], 30);
+      if (normalized && score < 0) return [];
       return [{
         id: collectionResultId(collection.id),
-        source: "navigation" as const,
+        source: "collection" as const,
         title: collection.name,
-        subtitle: `${count} bookmark${count === 1 ? "" : "s"}${labels.length ? ` · ${labels.slice(0, 4).join(" · ")}` : " · All bookmarks"}`,
-        score: 95,
+        subtitle,
+        score,
       }];
     });
     const bookmarkResults: CommandResult[] = bookmarks.flatMap((bookmark) => {
@@ -253,37 +283,36 @@ export function App() {
       const subtitleParts = [hostLabel(bookmark.url)];
       if (category) subtitleParts.push(category);
       if (tagTokens.length) subtitleParts.push(tagTokens.slice(0, 3).join(" "));
+      const score = launcherTextScore(trimmed, bookmark.title, [bookmark.url, bookmark.description ?? "", category, ...tags, ...tagTokens], 30);
+      if (normalized && score < 0) return [];
       return [{
         id: bookmark.id,
         source: "bookmark" as const,
         title: bookmark.title,
         subtitle: subtitleParts.join(" · "),
         url: bookmark.url,
-        score: 30,
+        score,
       }];
     });
-    const navigationResults: CommandResult[] = [{
+    const navigationTitle = bridgeConnected ? "Browser extension" : "Install browser extension";
+    const navigationSubtitle = bridgeConnected ? "Diagnostics, version and capabilities" : "Enable open tabs, Session restore and native bookmark import";
+    const navigationScore = launcherTextScore(trimmed, navigationTitle, [navigationSubtitle], 20);
+    const navigationResults: CommandResult[] = normalized && navigationScore < 0 ? [] : [{
       id: "navigation:extension",
       source: "navigation",
-      title: bridgeConnected ? "Browser extension" : "Install browser extension",
-      subtitle: bridgeConnected ? "Diagnostics, version and capabilities" : "Enable open tabs, Session restore and native bookmark import",
-      score: 20,
+      title: navigationTitle,
+      subtitle: navigationSubtitle,
+      score: navigationScore,
     }];
 
-    const localCandidates = [
+    const localResults = rankCommands([
       ...tabResults,
       ...workspaceResults,
       ...sessionResults,
       ...collectionResults,
       ...bookmarkResults,
       ...navigationResults,
-    ];
-    const filtered = normalized
-      ? localCandidates.filter((item) =>
-          item.source === "bookmark" || item.id.startsWith("navigation:collection:") || `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized),
-        )
-      : localCandidates;
-    const localResults = rankCommands(filtered).slice(0, trimmed && defaultEngine ? 7 : 8);
+    ]).slice(0, trimmed && defaultEngine ? 7 : 8);
 
     if (trimmed && defaultEngine) {
       localResults.push({
@@ -336,7 +365,7 @@ export function App() {
       return;
     }
 
-    if (item.id.startsWith("navigation:collection:")) {
+    if (item.source === "collection" && item.id.startsWith("navigation:collection:")) {
       const collectionId = item.id.slice("navigation:collection:".length);
       const path = `/app/collections?collection=${encodeURIComponent(collectionId)}`;
       if (forceNewTab) {
@@ -430,11 +459,19 @@ export function App() {
       if (results.length) setSelectedIndex((index) => (index - 1 + results.length) % results.length);
       return;
     }
+    if (event.key === "Tab") {
+      const selected = results[selectedIndex];
+      if (selected?.id.startsWith("search-shortcut:")) {
+        event.preventDefault();
+        void executeResult(selected);
+      }
+      return;
+    }
     if (event.key === "Enter") {
       const selected = results[selectedIndex];
       if (selected) {
         event.preventDefault();
-        void executeResult(selected, event.shiftKey);
+        void executeResult(selected, event.shiftKey || event.metaKey || event.ctrlKey);
       }
       return;
     }
@@ -510,7 +547,7 @@ export function App() {
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => void refreshBridge()}
                 onKeyDown={onCommandKeyDown}
-                placeholder="Search tabs, Smart Collections, bookmarks, descriptions or #tags; type !g, !gh, !ddg…"
+                placeholder="Search tabs, Sessions, Workspaces, Collections, bookmarks or #tags; type !g, !gh, !ddg…"
                 aria-label="Search Dockmark"
                 aria-controls="dockmark-command-results"
                 aria-activedescendant={results[selectedIndex] ? `command-result-${selectedIndex}` : undefined}
@@ -535,7 +572,7 @@ export function App() {
             ) : (
               <div className="results" id="dockmark-command-results" role="listbox">
                 {results.map((item, index) => {
-                  const isCollection = item.id.startsWith("navigation:collection:");
+                  const isCollection = item.source === "collection";
                   return (
                     <button
                       className={`result result-button ${selectedIndex === index ? "selected" : ""}`}
@@ -552,7 +589,7 @@ export function App() {
                         <strong>{item.title}</strong>
                         <small>{item.subtitle}</small>
                       </span>
-                      <span className="pill">{isCollection ? "Collection" : item.source === "search" && item.id.startsWith("search-shortcut:") ? <span className="bang-token">Bang</span> : sourceLabel[item.source]}</span>
+                      <span className="pill">{item.source === "search" && item.id.startsWith("search-shortcut:") ? <span className="bang-token">Bang</span> : sourceLabel[item.source]}</span>
                     </button>
                   );
                 })}
@@ -560,8 +597,8 @@ export function App() {
               </div>
             )}
             <div className="command-footer">
-              <span><kbd>↑</kbd><kbd>↓</kbd> select <kbd>Enter</kbd> run</span>
-              <span><kbd>Shift</kbd>+<kbd>Enter</kbd> new tab <kbd>Esc</kbd> clear</span>
+              <span><kbd>↑</kbd><kbd>↓</kbd> select <kbd>Enter</kbd> run <kbd>Tab</kbd> accept bang</span>
+              <span><kbd>Shift</kbd>/<kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> new tab <kbd>/</kbd> focus <kbd>Esc</kbd> clear</span>
             </div>
           </section>
 
