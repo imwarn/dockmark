@@ -143,7 +143,7 @@
     for (let attempt = 0; attempt < 80 && refreshing; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    if (refreshing) return;
+    if (refreshing || !(await hasOriginPermission())) return;
     await refreshSessions();
   }
 
