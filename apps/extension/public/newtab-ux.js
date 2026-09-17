@@ -105,11 +105,9 @@
     return originalExecuteResult(result);
   };
 
-  refreshCloud = async function launcherParityRefresh(options = {}) {
+  async function refreshSessions() {
+    if (!origin) return false;
     const previousSessions = asArray(snapshot.sessions);
-    const refreshed = await originalRefreshCloud(options);
-    if (!refreshed || !origin) return refreshed;
-
     try {
       const sessionPayload = await requestJson("/api/sessions");
       snapshot = {
@@ -118,15 +116,36 @@
       };
       await chrome.storage.local.set({ [LOCAL_CACHE_KEY]: snapshot });
       renderSearchResults();
+      return true;
     } catch {
       if (previousSessions.length) {
         snapshot = { ...snapshot, sessions: previousSessions };
         await chrome.storage.local.set({ [LOCAL_CACHE_KEY]: snapshot });
         renderSearchResults();
       }
+      return false;
     }
+  }
+
+  refreshCloud = async function launcherParityRefresh(options = {}) {
+    const refreshed = await originalRefreshCloud(options);
+    if (!refreshed || !origin) return refreshed;
+    await refreshSessions();
     return refreshed;
   };
+
+  async function catchUpInitialSessionRefresh() {
+    if (!origin || !settings.newTab.autoRefresh) return;
+
+    // newtab.js starts bootstrap before this UX layer is loaded, so the first automatic
+    // refresh can already be using the unwrapped refreshCloud. Wait for that base refresh
+    // to finish, then fetch Sessions once so the initial local snapshot is complete.
+    for (let attempt = 0; attempt < 80 && refreshing; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (refreshing || !(await hasOriginPermission())) return;
+    await refreshSessions();
+  }
 
   function selectedResult() {
     return visibleResults[activeResult] || visibleResults[0] || null;
@@ -203,7 +222,10 @@
     window.history.replaceState({}, "", window.location.pathname);
   }
 
-  // Existing local snapshots remain valid. Sessions are additive and appear after the
-  // next successful refresh; cached sessions remain available when Dockmark is offline.
-  queueMicrotask(() => renderSearchResults());
+  // Existing local snapshots remain valid. Sessions are additive and remain available
+  // offline after either the initial catch-up or any later successful refresh.
+  queueMicrotask(() => {
+    renderSearchResults();
+    void catchUpInitialSessionRefresh();
+  });
 })();
