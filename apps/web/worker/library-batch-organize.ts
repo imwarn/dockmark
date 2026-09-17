@@ -1,9 +1,16 @@
+import {
+  createJournalItems,
+  journalInsertStatement,
+  loadBookmarkJournalSnapshots,
+} from "./change-journal";
+
 type BindValue = string | number | null;
 
 interface D1PreparedStatementLike {
   bind(...values: BindValue[]): D1PreparedStatementLike;
   first<T = unknown>(): Promise<T | null>;
   all<T = unknown>(): Promise<{ results: T[] }>;
+  run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
 }
 
 interface D1DatabaseLike {
@@ -155,11 +162,13 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
     throw new LibraryBatchOrganizeHttpError(409, "bookmark_changed", "One or more selected bookmarks no longer exist in the active Library. Refresh and review again.");
   }
 
+  let destinationCategoryName: string | undefined;
   if (categorySpecified && categoryId) {
-    const category = await db.prepare("SELECT id FROM categories WHERE id = ? LIMIT 1").bind(categoryId).first<{ id: string }>();
+    const category = await db.prepare("SELECT id, name FROM categories WHERE id = ? LIMIT 1").bind(categoryId).first<{ id: string; name: string }>();
     if (!category) {
       throw new LibraryBatchOrganizeHttpError(409, "category_changed", "The reviewed category no longer exists. Refresh the Library and review again.");
     }
+    destinationCategoryName = category.name;
   }
 
   const tagRows = await db.prepare(
@@ -191,9 +200,11 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
     finalTags.set(id, next);
   }
 
+  const before = await loadBookmarkJournalSnapshots(db, bookmarkIds);
   const existingTags = await db.prepare("SELECT id, name FROM tags").all<TagRow>();
   const tagIdByName = new Map(existingTags.results.map((row) => [row.name.toLocaleLowerCase(), row.id]));
   const statements: D1PreparedStatementLike[] = [];
+  const finalPositions = new Map<string, number>();
 
   let nextPosition = 0;
   if (categorySpecified) {
@@ -206,6 +217,7 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
   const tagsChanged = addTags.length > 0 || removeTags.length > 0;
   for (const id of bookmarkIds) {
     if (categorySpecified) {
+      finalPositions.set(id, nextPosition);
       statements.push(
         db.prepare("UPDATE bookmarks SET category_id = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND archived_at IS NULL")
           .bind(categoryId, nextPosition, id),
@@ -231,6 +243,27 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
     }
   }
   if (tagsChanged) statements.push(db.prepare("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)"));
+
+  const journalItems = createJournalItems(bookmarkIds, before, (snapshot) => ({
+    ...snapshot,
+    ...(categorySpecified ? {
+      categoryId,
+      ...(destinationCategoryName ? { categoryName: destinationCategoryName } : { categoryName: undefined }),
+      position: finalPositions.get(snapshot.id) ?? snapshot.position,
+    } : {}),
+    ...(tagsChanged ? { tags: finalTags.get(snapshot.id) ?? snapshot.tags } : {}),
+  }));
+  const changeParts = [
+    categorySpecified ? (categoryId ? `category → ${destinationCategoryName ?? categoryId}` : "category → Uncategorized") : null,
+    addTags.length ? `add ${addTags.map((tag) => `#${tag}`).join(" ")}` : null,
+    removeTags.length ? `remove ${removeTags.map((tag) => `#${tag}`).join(" ")}` : null,
+  ].filter(Boolean).join("; ");
+  statements.push(journalInsertStatement(
+    db,
+    "bulk-organize",
+    `Organized ${bookmarkIds.length} bookmark${bookmarkIds.length === 1 ? "" : "s"}: ${changeParts}`,
+    journalItems,
+  ) as D1PreparedStatementLike);
 
   const batchDb = db as D1BatchDatabaseLike;
   if (typeof batchDb.batch !== "function") {
