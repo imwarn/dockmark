@@ -73,14 +73,17 @@ function bookmarkFromRow(row: BookmarkReadRow) {
   };
 }
 
-async function listBookmarks(db: D1DatabaseLike, archived: boolean) {
-  const result = await db.prepare(
-    `SELECT id, category_id, title, url, description, icon_url,
-            health_policy, health_status, position, archived_at, created_at, updated_at
-       FROM bookmarks
-      WHERE archived_at IS ${archived ? "NOT NULL" : "NULL"}
-      ORDER BY position ASC, title COLLATE NOCASE ASC`,
-  ).all<BookmarkReadRow>();
+async function listBookmarks(request: Request, db: D1DatabaseLike, archived: boolean) {
+  const categoryId = new URL(request.url).searchParams.get("categoryId");
+  const base = `SELECT id, category_id, title, url, description, icon_url,
+                       health_policy, health_status, position, archived_at, created_at, updated_at
+                  FROM bookmarks
+                 WHERE archived_at IS ${archived ? "NOT NULL" : "NULL"}`;
+  const result = categoryId
+    ? await db.prepare(`${base} AND category_id = ? ORDER BY position ASC, title COLLATE NOCASE ASC`)
+        .bind(categoryId)
+        .all<BookmarkReadRow>()
+    : await db.prepare(`${base} ORDER BY position ASC, title COLLATE NOCASE ASC`).all<BookmarkReadRow>();
   return json({ bookmarks: result.results.map(bookmarkFromRow) });
 }
 
@@ -214,8 +217,8 @@ export async function handleLibraryBatchMaintenanceApi(
   db: D1DatabaseLike,
   pathname: string,
 ): Promise<Response | null> {
-  if (pathname === "/api/bookmarks" && request.method === "GET") return listBookmarks(db, false);
-  if (pathname === "/api/bookmarks/archived" && request.method === "GET") return listBookmarks(db, true);
+  if (pathname === "/api/bookmarks" && request.method === "GET") return listBookmarks(request, db, false);
+  if (pathname === "/api/bookmarks/archived" && request.method === "GET") return listBookmarks(request, db, true);
   if (pathname !== "/api/bookmarks/batch-maintenance") return null;
   if (request.method !== "POST") {
     throw new LibraryBatchMaintenanceHttpError(405, "method_not_allowed", "Method not allowed for reviewed Library batch maintenance.");
