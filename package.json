@@ -22,6 +22,7 @@
     "package:extension:newtab": "npm run zip:newtab -w @dockmark/extension",
     "package:extension:firefox": "npm run zip:firefox -w @dockmark/extension",
     "typecheck": "npm run typecheck -ws --if-present",
+    "check:extension-version": "node scripts/check-extension-version-alignment.mjs",
     "db:migrate:local": "npm run db:migrate:local -w @dockmark/web",
     "db:migrate:remote": "npm run db:migrate:remote -w @dockmark/web",
     "prepare:cloudflare-deploy": "node scripts/prepare-cloudflare-deploy.mjs",

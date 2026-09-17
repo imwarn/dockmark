@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Validate extension version alignment
+        run: npm run check:extension-version
+
       - name: Typecheck
         run: npm run typecheck
 
