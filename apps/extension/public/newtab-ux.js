@@ -1,8 +1,10 @@
 (() => {
   const LOCAL_CACHE_KEY = "dockmarkNewTabCacheV1";
+  const SERVER_URL_KEY = "dockmarkServerUrl";
   const originalBuildResults = buildResults;
   const originalExecuteResult = executeResult;
   const originalRefreshCloud = refreshCloud;
+  let sessionHydration = null;
 
   function matchingBangEngines(rawQuery) {
     const query = rawQuery.trim().toLocaleLowerCase();
@@ -105,47 +107,113 @@
     return originalExecuteResult(result);
   };
 
-  async function refreshSessions() {
-    if (!origin) return false;
-    const previousSessions = asArray(snapshot.sessions);
+  function applySessions(sessions) {
+    snapshot = {
+      ...snapshot,
+      sessions: asArray(sessions),
+    };
+    renderSearchResults();
+  }
+
+  async function persistSessions(sessions) {
+    const list = asArray(sessions);
+    const stored = await chrome.storage.local.get(LOCAL_CACHE_KEY);
+    const cached = stored[LOCAL_CACHE_KEY];
+    if (cached && typeof cached === "object" && !Array.isArray(cached)) {
+      await chrome.storage.local.set({
+        [LOCAL_CACHE_KEY]: {
+          ...cached,
+          sessions: list,
+        },
+      });
+    }
+    applySessions(list);
+  }
+
+  async function requestSessions(serverOrigin) {
+    const response = await fetch(new URL("/api/sessions", `${serverOrigin}/`).toString(), {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`Dockmark returned ${response.status}.`);
+    return response.json();
+  }
+
+  async function hasServerOriginPermission(serverOrigin) {
     try {
-      const sessionPayload = await requestJson("/api/sessions");
-      snapshot = {
-        ...snapshot,
-        sessions: asArray(sessionPayload?.sessions),
-      };
-      await chrome.storage.local.set({ [LOCAL_CACHE_KEY]: snapshot });
-      renderSearchResults();
-      return true;
+      return await chrome.permissions.contains({ origins: [`${serverOrigin}/*`] });
     } catch {
-      if (previousSessions.length) {
-        snapshot = { ...snapshot, sessions: previousSessions };
-        await chrome.storage.local.set({ [LOCAL_CACHE_KEY]: snapshot });
-        renderSearchResults();
-      }
       return false;
     }
   }
 
+  async function hydrateSessions(fallbackSessions = []) {
+    if (sessionHydration) return sessionHydration;
+    sessionHydration = (async () => {
+      const stored = await chrome.storage.local.get([SERVER_URL_KEY, LOCAL_CACHE_KEY]);
+      const serverOrigin = validOrigin(stored[SERVER_URL_KEY]) || origin;
+      const cached = stored[LOCAL_CACHE_KEY];
+      if (!serverOrigin) return false;
+      if (cached?.origin && cached.origin !== serverOrigin) return false;
+      if (!(await hasServerOriginPermission(serverOrigin))) return false;
+
+      try {
+        const payload = await requestSessions(serverOrigin);
+        await persistSessions(payload?.sessions);
+        return true;
+      } catch {
+        if (fallbackSessions.length && !Array.isArray(cached?.sessions)) {
+          await persistSessions(fallbackSessions);
+        } else if (Array.isArray(cached?.sessions)) {
+          applySessions(cached.sessions);
+        }
+        return false;
+      }
+    })().finally(() => {
+      sessionHydration = null;
+    });
+    return sessionHydration;
+  }
+
   refreshCloud = async function launcherParityRefresh(options = {}) {
+    const previousSessions = asArray(snapshot.sessions);
     const refreshed = await originalRefreshCloud(options);
-    if (!refreshed || !origin) return refreshed;
-    await refreshSessions();
+    if (!refreshed) return refreshed;
+
+    // Current library refreshes persist Sessions with the normal snapshot. This fallback
+    // only covers an early bootstrap that began before the library wrapper was installed.
+    if (!Array.isArray(snapshot.sessions)) await hydrateSessions(previousSessions);
     return refreshed;
   };
 
-  async function catchUpInitialSessionRefresh() {
-    if (!origin || !settings.newTab.autoRefresh) return;
-
-    // newtab.js starts bootstrap before this UX layer is loaded, so the first automatic
-    // refresh can already be using the unwrapped refreshCloud. Wait for that base refresh
-    // to finish, then fetch Sessions once so the initial local snapshot is complete.
-    for (let attempt = 0; attempt < 80 && refreshing; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[LOCAL_CACHE_KEY]) return;
+    const change = changes[LOCAL_CACHE_KEY];
+    const nextSessions = change.newValue?.sessions;
+    if (Array.isArray(nextSessions)) {
+      applySessions(nextSessions);
+      return;
     }
-    if (refreshing || !(await hasOriginPermission())) return;
-    await refreshSessions();
-  }
+
+    // bootstrap() can start before this UX layer is installed and write a base snapshot
+    // without Sessions. Observe that write so the race cannot erase Session search.
+    const previousSessions = asArray(change.oldValue?.sessions);
+    if (previousSessions.length) applySessions(previousSessions);
+    void hydrateSessions(previousSessions);
+  });
+
+  void (async () => {
+    const stored = await chrome.storage.local.get(LOCAL_CACHE_KEY);
+    const cached = stored[LOCAL_CACHE_KEY];
+    if (Array.isArray(cached?.sessions)) {
+      applySessions(cached.sessions);
+      return;
+    }
+    if (cached?.syncedAt && settings.newTab.autoRefresh === false) return;
+    await hydrateSessions();
+  })();
 
   function selectedResult() {
     return visibleResults[activeResult] || visibleResults[0] || null;
@@ -222,10 +290,5 @@
     window.history.replaceState({}, "", window.location.pathname);
   }
 
-  // Existing local snapshots remain valid. Sessions are additive and remain available
-  // offline after either the initial catch-up or any later successful refresh.
-  queueMicrotask(() => {
-    renderSearchResults();
-    void catchUpInitialSessionRefresh();
-  });
+  queueMicrotask(() => renderSearchResults());
 })();
