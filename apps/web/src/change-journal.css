@@ -85,7 +85,7 @@
 .journal-snapshot {
   padding: 0.75rem;
   border-radius: 10px;
-  background: var(--surface-subtle);
+  background: var(--surface-subtle, var(--panel));
 }
 
 .journal-deleted {
@@ -107,7 +107,7 @@
   overflow: auto;
   padding: 0.8rem;
   border-radius: 10px;
-  background: var(--surface-subtle);
+  background: var(--surface-subtle, var(--panel));
   font-size: 0.75rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
