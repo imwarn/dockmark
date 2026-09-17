@@ -61,6 +61,7 @@ export interface Bookmark {
   healthPolicy: HealthPolicy;
   healthStatus: HealthStatus;
   position: number;
+  archivedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
