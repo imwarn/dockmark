@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { App } from "./App";
+import { DuplicateReviewPage } from "./DuplicateReviewPage";
 import { InboxPage } from "./InboxPage";
 import { SettingsPage } from "./SettingsPage";
 import { SmartCollectionsPage } from "./SmartCollectionsPage";
@@ -11,6 +12,7 @@ function targetView() {
   if (window.location.pathname.startsWith("/app/settings")) return "settings";
   if (window.location.pathname.startsWith("/app/inbox")) return "inbox";
   if (window.location.pathname.startsWith("/app/collections")) return "collections";
+  if (window.location.pathname.startsWith("/app/duplicates")) return "duplicates";
   return "app";
 }
 
@@ -80,6 +82,7 @@ function PrivateNavigation({ children, onLogout }: { children: ReactNode; onLogo
             )}
           </button>
           <button className={path.startsWith("/app/collections") ? "active" : ""} type="button" onClick={() => navigate("/app/collections")}>Collections</button>
+          <button className={path.startsWith("/app/duplicates") ? "active" : ""} type="button" onClick={() => navigate("/app/duplicates")}>Duplicates</button>
           <button className={path.startsWith("/app/settings") ? "active" : ""} type="button" onClick={() => navigate("/app/settings")}>Settings</button>
           <button type="button" onClick={() => void onLogout()}>Sign out</button>
         </nav>
@@ -208,7 +211,9 @@ export function PrivateRoot() {
       ? "inbox"
       : path.startsWith("/app/collections")
         ? "collections"
-        : targetView();
+        : path.startsWith("/app/duplicates")
+          ? "duplicates"
+          : targetView();
   return (
     <PrivateNavigation onLogout={signOut}>
       {view === "settings"
@@ -217,7 +222,9 @@ export function PrivateRoot() {
           ? <InboxPage />
           : view === "collections"
             ? <SmartCollectionsPage />
-            : <App />}
+            : view === "duplicates"
+              ? <DuplicateReviewPage />
+              : <App />}
     </PrivateNavigation>
   );
 }
