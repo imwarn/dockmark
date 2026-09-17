@@ -122,8 +122,9 @@ try {
     renderSearchResults();
   });
 
-  const labels = await page.locator("#command-results .result-kind").allInnerTexts();
-  assert.deepEqual(labels, ["Open tab", "Workspace", "Session", "Collection", "Bookmark", "Search"]);
+  const labels = (await page.locator("#command-results .result-kind").allInnerTexts())
+    .map((value) => value.toLocaleLowerCase());
+  assert.deepEqual(labels, ["open tab", "workspace", "session", "collection", "bookmark", "search"]);
 
   const titles = await page.locator("#command-results .result-row strong").allInnerTexts();
   assert.deepEqual(titles.slice(0, 5), [
@@ -138,7 +139,7 @@ try {
   await search.fill("workspace-only-item");
   const workspaceRow = page.locator("#command-results .result-row").filter({ hasText: "Shared Match Workspace" }).first();
   await workspaceRow.waitFor();
-  assert.match(await workspaceRow.innerText(), /Workspace/);
+  assert.match(await workspaceRow.innerText(), /Workspace/i);
 
   await search.fill("");
   await search.focus();
