@@ -49,7 +49,7 @@ try {
           showOpenTabs: false,
           bookmarkLimit: 12,
           workspaceLimit: 8,
-          autoRefresh: false,
+          autoRefresh: true,
         },
         updatedAt: now,
       },
@@ -58,10 +58,10 @@ try {
         origin,
         syncedAt: now,
         bookmarks: [{
-          id: "bookmark-ux",
-          title: "Cached Target",
-          url: `${origin}/bookmark`,
-          tags: ["ux"],
+          id: "bookmark-old",
+          title: "Old Cached Target",
+          url: `${origin}/old-bookmark`,
+          tags: ["old"],
           healthPolicy: "normal",
           healthStatus: "unknown",
           position: 0,
@@ -71,47 +71,131 @@ try {
         categories: [],
         workspaces: [],
         sessions: [{
-          id: "session-ux",
-          name: "Morning Session",
-          sourceDevice: "Smoke browser",
+          id: "session-stale",
+          name: "Stale Session",
+          sourceDevice: "Old cache",
           createdAt: now,
           updatedAt: now,
           items: [{
-            id: "session-item-ux",
-            sessionId: "session-ux",
-            title: "Session target",
-            url: `${origin}/session`,
+            id: "session-item-stale",
+            sessionId: "session-stale",
+            title: "Old session target",
+            url: `${origin}/old-session`,
             pinned: false,
             position: 0,
           }],
         }],
-        searchEngines: [
-          {
-            id: "engine-g",
-            name: "Google",
-            keyword: "g",
-            searchUrl: `${origin}/google?q=%s`,
-            isDefault: true,
-            position: 0,
-          },
-          {
-            id: "engine-gh",
-            name: "GitHub",
-            keyword: "gh",
-            searchUrl: `${origin}/github?q=%s`,
-            isDefault: false,
-            position: 1,
-          },
-        ],
+        searchEngines: [],
         smartCollections: [],
         inboxBookmarkIds: [],
       },
     });
   }, { origin, now });
 
+  await page.addInitScript(({ origin, now }) => {
+    const nativeContains = chrome.permissions.contains.bind(chrome.permissions);
+    chrome.permissions.contains = async (query) => {
+      if (Array.isArray(query?.origins) && query.origins.includes(`${origin}/*`)) return true;
+      return nativeContains(query);
+    };
+
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (input, init = {}) => {
+      const requestUrl = new URL(
+        typeof input === "string" || input instanceof URL ? input.toString() : input.url,
+        window.location.href,
+      );
+      if (requestUrl.origin !== origin || !requestUrl.pathname.startsWith("/api/")) {
+        return nativeFetch(input, init);
+      }
+
+      const json = (data) => new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+
+      if (requestUrl.pathname === "/api/bookmarks") {
+        return json({
+          bookmarks: [{
+            id: "bookmark-ux",
+            title: "Cached Target",
+            url: `${origin}/bookmark`,
+            tags: ["ux"],
+            healthPolicy: "normal",
+            healthStatus: "unknown",
+            position: 0,
+            createdAt: now,
+            updatedAt: now,
+          }],
+        });
+      }
+      if (requestUrl.pathname === "/api/categories") return json({ categories: [] });
+      if (requestUrl.pathname === "/api/workspaces") return json({ workspaces: [] });
+      if (requestUrl.pathname === "/api/search-engines") {
+        return json({
+          engines: [
+            {
+              id: "engine-g",
+              name: "Google",
+              keyword: "g",
+              searchUrl: `${origin}/google?q=%s`,
+              isDefault: true,
+              position: 0,
+            },
+            {
+              id: "engine-gh",
+              name: "GitHub",
+              keyword: "gh",
+              searchUrl: `${origin}/github?q=%s`,
+              isDefault: false,
+              position: 1,
+            },
+          ],
+        });
+      }
+      if (requestUrl.pathname === "/api/settings/browser") {
+        return json({
+          settings: {
+            version: 1,
+            conflictPreference: "ask",
+            newTab: {
+              defaultSearchEngineId: "engine-g",
+              showOpenTabs: false,
+              bookmarkLimit: 12,
+              workspaceLimit: 8,
+              autoRefresh: true,
+            },
+            updatedAt: now,
+          },
+        });
+      }
+      if (requestUrl.pathname === "/api/sessions") {
+        return json({
+          sessions: [{
+            id: "session-ux",
+            name: "Morning Session",
+            sourceDevice: "Smoke browser",
+            createdAt: now,
+            updatedAt: now,
+            items: [{
+              id: "session-item-ux",
+              sessionId: "session-ux",
+              title: "Session target",
+              url: `${origin}/session`,
+              pinned: false,
+              position: 0,
+            }],
+          }],
+        });
+      }
+      return json({});
+    };
+  }, { origin, now });
+
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
   const search = page.locator("#search");
+  await page.getByText("Online · synced", { exact: true }).waitFor();
 
   await search.fill("!");
   await page.getByText("Google", { exact: true }).waitFor();
@@ -135,6 +219,12 @@ try {
   assert.match(await sessionRow.innerText(), /1 tab/);
   assert.match(await sessionRow.innerText(), /Smoke browser/);
 
+  const cachedSessionNames = await page.evaluate(async () => {
+    const stored = await chrome.storage.local.get("dockmarkNewTabCacheV1");
+    return (stored.dockmarkNewTabCacheV1?.sessions ?? []).map((session) => session.name);
+  });
+  assert.deepEqual(cachedSessionNames, ["Morning Session"]);
+
   await search.fill("Cached Target");
   const foregroundPromise = context.waitForEvent("page");
   await search.press("Shift+Enter");
@@ -155,8 +245,16 @@ try {
   await page.locator("body").press("/");
   assert.equal(await search.evaluate((element) => document.activeElement === element), true);
 
+  await search.fill("Morning Session");
+  const restorePromise = context.waitForEvent("page");
+  await search.press("Enter");
+  const restored = await restorePromise;
+  await restored.waitForLoadState("domcontentloaded");
+  assert.equal(restored.url(), `${origin}/session`);
+
   console.log("✓ New Tab suggests bare ! search-engine shortcuts and Enter accepts them");
-  console.log("✓ New Tab searches cached Sessions alongside the existing launcher sources");
+  console.log("✓ New Tab auto refresh hydrates and caches Sessions on the first real launcher load");
+  console.log("✓ New Tab searches and restores a cloud-refreshed Session");
   console.log("✓ Shift+Enter opens a selected URL in a foreground tab");
   console.log("✓ Ctrl/Command+Enter opens a selected URL in a background tab");
   console.log("✓ / focuses the launcher input from the New Tab page");

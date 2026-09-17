@@ -9,6 +9,7 @@
         throw new Error("Dockmark site access is not granted. Open the extension popup and reconnect this origin.");
       }
 
+      const previousSessions = asArray(snapshot.sessions);
       const [bookmarkPayload, categoryPayload, workspacePayload, enginePayload, settingsPayload] = await Promise.all([
         requestJson("/api/bookmarks"),
         requestJson("/api/categories"),
@@ -16,6 +17,15 @@
         requestJson("/api/search-engines"),
         requestJson("/api/settings/browser"),
       ]);
+
+      let sessions = previousSessions;
+      try {
+        const sessionPayload = await requestJson("/api/sessions");
+        sessions = asArray(sessionPayload?.sessions);
+      } catch {
+        // Sessions are additive launcher data. A Session-only failure must not turn an
+        // otherwise healthy bookmark/workspace refresh into an offline snapshot.
+      }
 
       const bookmarkTags = settingsPayload?.bookmarkTags && typeof settingsPayload.bookmarkTags === "object" && !Array.isArray(settingsPayload.bookmarkTags)
         ? settingsPayload.bookmarkTags
@@ -32,6 +42,7 @@
         })),
         categories: asArray(categoryPayload?.categories),
         workspaces: asArray(workspacePayload?.workspaces),
+        sessions,
         searchEngines: asArray(enginePayload?.engines),
         smartCollections: asArray(settingsPayload?.smartCollections),
         inboxBookmarkIds: asArray(settingsPayload?.inboxBookmarkIds).filter((id) => typeof id === "string" && id.trim()),
