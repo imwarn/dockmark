@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const extensionPackage = JSON.parse(await readFile(path.join(root, "apps/extension/package.json"), "utf8"));
+const expectedExtensionVersion = extensionPackage.version;
 const extensionPath = path.join(root, "apps/extension/.output/chrome-mv3-newtab");
 const userDataDir = await mkdtemp(path.join(tmpdir(), "dockmark-newtab-chromium-"));
 
@@ -43,7 +45,7 @@ try {
   await page.waitForLoadState("domcontentloaded");
 
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-  assert.equal(manifest.version, "1.5.0");
+  assert.equal(manifest.version, expectedExtensionVersion);
   assert.equal(manifest.name, "Dockmark New Tab");
   assert.equal(manifest.icons?.[128], "icons/dockmark-128.png");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
