@@ -5,7 +5,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: ({ browser }) => ({
     name: "Dockmark",
-    version: "1.4.2",
+    version: "1.5.0",
     description: "Browser bridge for Dockmark tabs, reviewed Capture Inbox, sessions, Smart Collection-aware local-first search, reviewed bookmark sync, local health checks and device pairing.",
     icons: {
       16: "icons/dockmark-16.png",
@@ -16,6 +16,13 @@ export default defineConfig({
     permissions: ["storage", "tabs", "scripting"],
     optional_permissions: ["bookmarks"],
     optional_host_permissions: ["http://*/*", "https://*/*"],
+    commands: {
+      "open-dockmark-launcher": {
+        suggested_key: { default: "Alt+Shift+D" },
+        description: "Open or focus the Dockmark launcher",
+      },
+    },
+    omnibox: { keyword: "d" },
     ...(browser === "firefox"
       ? {
           browser_specific_settings: {
