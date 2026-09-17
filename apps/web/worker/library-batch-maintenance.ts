@@ -1,4 +1,4 @@
-import type { HealthPolicy } from "@dockmark/core";
+import type { HealthPolicy, HealthStatus } from "@dockmark/core";
 
 type BindValue = string | number | null;
 
@@ -16,9 +16,22 @@ interface D1BatchDatabaseLike extends D1DatabaseLike {
   batch(statements: D1PreparedStatementLike[]): Promise<unknown[]>;
 }
 
-interface BookmarkRow {
+interface BookmarkStateRow {
   id: string;
   archived_at: string | null;
+}
+
+interface BookmarkReadRow extends BookmarkStateRow {
+  category_id: string | null;
+  title: string;
+  url: string;
+  description: string | null;
+  icon_url: string | null;
+  health_policy: HealthPolicy;
+  health_status: HealthStatus;
+  position: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export class LibraryBatchMaintenanceHttpError extends Error {
@@ -41,6 +54,34 @@ function json(data: unknown, init: ResponseInit = {}) {
   headers.set("content-type", "application/json; charset=utf-8");
   headers.set("cache-control", "no-store");
   return new Response(JSON.stringify(data), { ...init, headers });
+}
+
+function bookmarkFromRow(row: BookmarkReadRow) {
+  return {
+    id: row.id,
+    ...(row.category_id ? { categoryId: row.category_id } : {}),
+    title: row.title,
+    url: row.url,
+    ...(row.description ? { description: row.description } : {}),
+    ...(row.icon_url ? { iconUrl: row.icon_url } : {}),
+    healthPolicy: row.health_policy,
+    healthStatus: row.health_status,
+    position: row.position,
+    ...(row.archived_at ? { archivedAt: row.archived_at } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function listBookmarks(db: D1DatabaseLike, archived: boolean) {
+  const result = await db.prepare(
+    `SELECT id, category_id, title, url, description, icon_url,
+            health_policy, health_status, position, archived_at, created_at, updated_at
+       FROM bookmarks
+      WHERE archived_at IS ${archived ? "NOT NULL" : "NULL"}
+      ORDER BY position ASC, title COLLATE NOCASE ASC`,
+  ).all<BookmarkReadRow>();
+  return json({ bookmarks: result.results.map(bookmarkFromRow) });
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -77,7 +118,7 @@ function normalizeBookmarkIds(value: unknown) {
   return ids;
 }
 
-function healthStatusForPolicy(policy: HealthPolicy) {
+function healthStatusForPolicy(policy: HealthPolicy): HealthStatus {
   if (policy === "ignore") return "ignored";
   if (policy === "local-only") return "local-only";
   return "unknown";
@@ -114,7 +155,7 @@ async function applyBatch(request: Request, db: D1DatabaseLike) {
   const placeholders = bookmarkIds.map(() => "?").join(", ");
   const rows = await db.prepare(
     `SELECT id, archived_at FROM bookmarks WHERE id IN (${placeholders})`,
-  ).bind(...bookmarkIds).all<BookmarkRow>();
+  ).bind(...bookmarkIds).all<BookmarkStateRow>();
   const rowById = new Map(rows.results.map((row) => [row.id, row]));
   if (rowById.size !== bookmarkIds.length) {
     throw new LibraryBatchMaintenanceHttpError(409, "bookmark_changed", "One or more selected bookmarks no longer exist. Refresh and review again.");
@@ -173,6 +214,8 @@ export async function handleLibraryBatchMaintenanceApi(
   db: D1DatabaseLike,
   pathname: string,
 ): Promise<Response | null> {
+  if (pathname === "/api/bookmarks" && request.method === "GET") return listBookmarks(db, false);
+  if (pathname === "/api/bookmarks/archived" && request.method === "GET") return listBookmarks(db, true);
   if (pathname !== "/api/bookmarks/batch-maintenance") return null;
   if (request.method !== "POST") {
     throw new LibraryBatchMaintenanceHttpError(405, "method_not_allowed", "Method not allowed for reviewed Library batch maintenance.");
