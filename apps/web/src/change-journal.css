@@ -1,0 +1,125 @@
+.change-journal {
+  margin-top: 1.25rem;
+}
+
+.journal-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.journal-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.journal-entry {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  overflow: hidden;
+}
+
+.journal-entry > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.95rem 1rem;
+}
+
+.journal-entry > summary::-webkit-details-marker {
+  display: none;
+}
+
+.journal-entry > summary span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.journal-entry > summary small,
+.journal-item-heading small,
+.journal-snapshot span,
+.journal-tools span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.journal-entry-body {
+  display: grid;
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.journal-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.9rem;
+}
+
+.journal-items {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.journal-item {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.journal-item-heading,
+.journal-snapshot {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.journal-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.journal-snapshot {
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.journal-deleted {
+  font-weight: 700;
+}
+
+.journal-raw {
+  border-top: 1px solid var(--border);
+  padding-top: 0.8rem;
+}
+
+.journal-raw summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.journal-raw pre {
+  max-height: 28rem;
+  overflow: auto;
+  padding: 0.8rem;
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .journal-snapshot-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .journal-tools {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
