@@ -171,21 +171,38 @@ try {
       }
       if (requestUrl.pathname === "/api/sessions") {
         return json({
-          sessions: [{
-            id: "session-ux",
-            name: "Morning Session",
-            sourceDevice: "Smoke browser",
-            createdAt: now,
-            updatedAt: now,
-            items: [{
-              id: "session-item-ux",
-              sessionId: "session-ux",
-              title: "Session target",
-              url: `${origin}/session`,
-              pinned: false,
-              position: 0,
-            }],
-          }],
+          sessions: [
+            {
+              id: "session-ux",
+              name: "Morning Session",
+              sourceDevice: "Smoke browser",
+              createdAt: now,
+              updatedAt: now,
+              items: [{
+                id: "session-item-ux",
+                sessionId: "session-ux",
+                title: "Session target",
+                url: `${origin}/session`,
+                pinned: false,
+                position: 0,
+              }],
+            },
+            {
+              id: "session-campus",
+              name: "Campus Tools",
+              sourceDevice: "Web",
+              createdAt: now,
+              updatedAt: now,
+              items: [{
+                id: "session-item-campus",
+                sessionId: "session-campus",
+                title: "学生电子邮箱服务中心 — 北京信息科技大学 BIST",
+                url: "https://mail.bist.edu.cn/mail/",
+                pinned: false,
+                position: 0,
+              }],
+            },
+          ],
         });
       }
       return json({});
@@ -219,11 +236,24 @@ try {
   assert.match(await sessionRow.innerText(), /1 tab/);
   assert.match(await sessionRow.innerText(), /Smoke browser/);
 
+  await search.fill("学生电子");
+  const campusByTitle = page.locator("#command-results .result-row").filter({ hasText: "Campus Tools" }).first();
+  await campusByTitle.waitFor();
+  assert.match(await campusByTitle.innerText(), /学生电子邮箱服务中心/);
+
+  await search.fill("mail.bist");
+  const campusByUrl = page.locator("#command-results .result-row").filter({ hasText: "Campus Tools" }).first();
+  await campusByUrl.waitFor();
+  assert.match(await campusByUrl.innerText(), /mail\.bist\.edu\.cn\/mail/);
+
+  await search.fill("bist.edu.cn/mail");
+  await page.locator("#command-results .result-row").filter({ hasText: "Campus Tools" }).first().waitFor();
+
   const cachedSessionNames = await page.evaluate(async () => {
     const stored = await chrome.storage.local.get("dockmarkNewTabCacheV1");
     return (stored.dockmarkNewTabCacheV1?.sessions ?? []).map((session) => session.name);
   });
-  assert.deepEqual(cachedSessionNames, ["Morning Session"]);
+  assert.deepEqual(cachedSessionNames, ["Morning Session", "Campus Tools"]);
 
   await search.fill("Cached Target");
   const foregroundPromise = context.waitForEvent("page");
@@ -254,7 +284,8 @@ try {
 
   console.log("✓ New Tab suggests bare ! search-engine shortcuts and Enter accepts them");
   console.log("✓ New Tab auto refresh hydrates and caches Sessions on the first real launcher load");
-  console.log("✓ New Tab searches and restores a cloud-refreshed Session");
+  console.log("✓ New Tab searches Sessions by name, tab title and partial tab URL");
+  console.log("✓ New Tab restores a cloud-refreshed Session");
   console.log("✓ Shift+Enter opens a selected URL in a foreground tab");
   console.log("✓ Ctrl/Command+Enter opens a selected URL in a background tab");
   console.log("✓ / focuses the launcher input from the New Tab page");

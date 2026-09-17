@@ -29,14 +29,42 @@
     };
   }
 
+  function queryTerms(value) {
+    return String(value || "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  }
+
+  function valuesMatchQuery(query, values) {
+    const terms = queryTerms(query);
+    if (!terms.length) return true;
+    const haystack = values.map((value) => String(value || "")).join("\n").toLocaleLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  }
+
+  function matchingSessionItem(query, items) {
+    return items.find((item) => valuesMatchQuery(query, [item?.title, item?.url])) || null;
+  }
+
   function sessionResult(query, session, index) {
     const items = asArray(session?.items).filter((item) => isHttpUrl(item?.url));
-    const source = typeof session?.sourceDevice === "string" && session.sourceDevice.trim()
-      ? ` · ${session.sourceDevice.trim()}`
+    const sourceDevice = typeof session?.sourceDevice === "string" ? session.sourceDevice.trim() : "";
+    const searchValues = [
+      session?.name,
+      sourceDevice,
+      ...items.flatMap((item) => [item?.title, item?.url]),
+    ];
+    if (!valuesMatchQuery(query, searchValues)) return null;
+
+    const matchedItem = matchingSessionItem(query, items);
+    const source = sourceDevice ? ` · ${sourceDevice}` : "";
+    const itemMatch = matchedItem
+      ? ` · ${matchedItem.title || displayHost(matchedItem.url)} · ${matchedItem.url}`
       : "";
-    const subtitle = `${items.length} tab${items.length === 1 ? "" : "s"}${source}`;
-    const score = searchScore(query, session?.name, subtitle, 390);
-    if (score < 0) return null;
+    const subtitle = `${items.length} tab${items.length === 1 ? "" : "s"}${source}${itemMatch}`;
+
+    let score = searchScore(query, session?.name, sourceDevice, 430);
+    if (score < 0 && matchedItem) score = searchScore(query, matchedItem?.title, matchedItem?.url, 400);
+    if (score < 0) score = 390;
+
     return {
       kind: "session",
       title: session.name || "Session",
