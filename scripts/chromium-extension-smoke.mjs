@@ -66,6 +66,13 @@ try {
   assert.ok(manifest.optional_host_permissions?.includes("http://*/*"), "HTTP host access should remain optional for explicit local checks.");
   assert.ok(manifest.optional_host_permissions?.includes("https://*/*"), "HTTPS host access should remain optional for explicit local checks.");
   assert.equal(manifest.chrome_url_overrides, undefined, "The standard Dockmark build must not override the browser new tab page.");
+  assert.equal(manifest.omnibox?.keyword, "d", "The standard extension should expose the d + Space Dockmark omnibox keyword.");
+  assert.equal(manifest.commands?.["open-dockmark-launcher"]?.suggested_key?.default, "Alt+Shift+D");
+
+  const commands = await popup.evaluate(async () => chrome.commands.getAll());
+  const launcherCommand = commands.find((command) => command.name === "open-dockmark-launcher");
+  assert.ok(launcherCommand, "Dockmark launcher command should be registered.");
+  assert.match(launcherCommand.description ?? "", /Dockmark launcher/i);
 
   const capabilities = await popup.evaluate(async () =>
     chrome.runtime.sendMessage({ type: "dockmark:get-capabilities" }),
@@ -153,6 +160,7 @@ try {
   console.log(`✓ Dockmark Chromium extension loaded: ${extensionId}`);
   console.log("✓ Capability handshake protocol 1 / extension 1.4.2");
   console.log("✓ Dockmark D dot mark is wired into manifest icon sizes");
+  console.log("✓ Alt+Shift+D launcher command and d + Space omnibox entry are registered");
   console.log("✓ Native bookmark import, mapping sync and explicit writeback capabilities advertised");
   console.log("✓ Native bookmark capability is optional and ungranted by default");
   console.log("✓ Local health capability is advertised without install-time host grants");
