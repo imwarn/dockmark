@@ -15,6 +15,7 @@ interface DuplicateRow {
   url: string;
   description: string | null;
   category_id: string | null;
+  category_name: string | null;
   health_status: string;
   health_policy: string;
   canonical_url: string | null;
@@ -22,27 +23,29 @@ interface DuplicateRow {
   fetched_at: string | null;
 }
 
-export type DuplicateEvidenceKind = "canonical" | "resolved" | "near-url";
+export type DuplicateCandidateKind = "canonical" | "resolved" | "normalized";
 
-export interface DuplicateReviewBookmark {
+export interface DuplicateReviewMember {
   id: string;
   title: string;
   url: string;
   description?: string;
-  categoryId?: string;
-  healthStatus: string;
+  categoryId: string | null;
+  categoryName?: string;
   healthPolicy: string;
+  healthStatus: string;
   canonicalUrl?: string;
   finalUrl?: string;
   metadataFetchedAt?: string;
 }
 
-export interface DuplicateSuggestion {
+export interface DuplicateReviewCandidate {
   id: string;
-  kind: DuplicateEvidenceKind;
-  evidenceUrl: string;
-  left: DuplicateReviewBookmark;
-  right: DuplicateReviewBookmark;
+  kind: DuplicateCandidateKind;
+  reason: string;
+  evidenceUrl?: string;
+  left: DuplicateReviewMember;
+  right: DuplicateReviewMember;
 }
 
 export class DuplicateReviewHttpError extends Error {
@@ -55,15 +58,9 @@ export class DuplicateReviewHttpError extends Error {
   }
 }
 
-const MAX_SUGGESTIONS = 250;
-const TRACKING_KEYS = new Set([
-  "fbclid",
-  "gclid",
-  "dclid",
-  "msclkid",
-  "mc_cid",
-  "mc_eid",
-]);
+const MAX_RETURNED_CANDIDATES = 300;
+const MAX_BUCKET_MEMBERS = 25;
+const TRACKING_KEYS = new Set(["fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "_ga", "_gl"]);
 
 function json(data: unknown, init: ResponseInit = {}) {
   const headers = new Headers(init.headers);
@@ -77,145 +74,199 @@ function reviewFingerprint(raw: string | null) {
   try {
     const url = new URL(raw);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    url.hash = "";
-    url.hostname = url.hostname.toLocaleLowerCase();
-    if ((url.protocol === "http:" && url.port === "80") || (url.protocol === "https:" && url.port === "443")) {
-      url.port = "";
-    }
-    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+    let hostname = url.hostname.toLocaleLowerCase().replace(/\.$/, "");
+    if (hostname.startsWith("www.")) hostname = hostname.slice(4);
+    let pathname = url.pathname || "/";
+    pathname = pathname.replace(/\/{2,}/g, "/");
+    if (pathname.length > 1) pathname = pathname.replace(/\/+$/, "");
 
     const params = Array.from(url.searchParams.entries())
-      .filter(([key]) => !key.toLocaleLowerCase().startsWith("utm_") && !TRACKING_KEYS.has(key.toLocaleLowerCase()))
+      .filter(([key]) => {
+        const normalized = key.toLocaleLowerCase();
+        return !normalized.startsWith("utm_") && !TRACKING_KEYS.has(normalized);
+      })
       .sort(([leftKey, leftValue], [rightKey, rightValue]) => leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue));
-    url.search = "";
-    for (const [key, value] of params) url.searchParams.append(key, value);
-    return url.toString();
+    const query = new URLSearchParams(params).toString();
+    const port = url.port && !((url.protocol === "http:" && url.port === "80") || (url.protocol === "https:" && url.port === "443"))
+      ? `:${url.port}`
+      : "";
+    return `${hostname}${port}${pathname}${query ? `?${query}` : ""}`;
   } catch {
     return null;
   }
 }
 
-function bookmarkFromRow(row: DuplicateRow): DuplicateReviewBookmark {
+function displayEvidenceUrl(raw: string | null | undefined) {
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
+function member(row: DuplicateRow): DuplicateReviewMember {
   return {
     id: row.id,
     title: row.title,
     url: row.url,
     ...(row.description ? { description: row.description } : {}),
-    ...(row.category_id ? { categoryId: row.category_id } : {}),
-    healthStatus: row.health_status,
+    categoryId: row.category_id,
+    ...(row.category_name ? { categoryName: row.category_name } : {}),
     healthPolicy: row.health_policy,
+    healthStatus: row.health_status,
     ...(row.canonical_url ? { canonicalUrl: row.canonical_url } : {}),
     ...(row.final_url ? { finalUrl: row.final_url } : {}),
     ...(row.fetched_at ? { metadataFetchedAt: row.fetched_at } : {}),
   };
 }
 
-function pairId(kind: DuplicateEvidenceKind, leftId: string, rightId: string) {
-  const [first, second] = [leftId, rightId].sort();
-  return `${kind}:${first}:${second}`;
+function stablePairKey(left: DuplicateRow, right: DuplicateRow) {
+  return [left.id, right.id].sort().join("::");
 }
 
-function addPair(
-  output: Map<string, DuplicateSuggestion>,
-  kind: DuplicateEvidenceKind,
-  evidenceUrl: string,
-  left: DuplicateRow,
-  right: DuplicateRow,
+function addCandidate(
+  candidates: Map<string, DuplicateReviewCandidate>,
+  leftRow: DuplicateRow,
+  rightRow: DuplicateRow,
+  kind: DuplicateCandidateKind,
+  reason: string,
+  evidenceUrl?: string,
 ) {
-  if (left.id === right.id) return;
-  const ids = [left.id, right.id].sort();
-  const stableKey = `${ids[0]}:${ids[1]}`;
-  const priority: Record<DuplicateEvidenceKind, number> = { canonical: 3, resolved: 2, "near-url": 1 };
-  const existing = output.get(stableKey);
-  if (existing && priority[existing.kind] >= priority[kind]) return;
-
-  const ordered = left.id === ids[0] ? [left, right] : [right, left];
-  output.set(stableKey, {
-    id: pairId(kind, ordered[0].id, ordered[1].id),
+  if (leftRow.id === rightRow.id) return;
+  const rank: Record<DuplicateCandidateKind, number> = { canonical: 3, resolved: 2, normalized: 1 };
+  const key = stablePairKey(leftRow, rightRow);
+  const current = candidates.get(key);
+  if (current && rank[current.kind] >= rank[kind]) return;
+  const [left, right] = leftRow.id.localeCompare(rightRow.id) <= 0 ? [leftRow, rightRow] : [rightRow, leftRow];
+  candidates.set(key, {
+    id: key,
     kind,
-    evidenceUrl,
-    left: bookmarkFromRow(ordered[0]),
-    right: bookmarkFromRow(ordered[1]),
+    reason,
+    ...(evidenceUrl ? { evidenceUrl } : {}),
+    left: member(left),
+    right: member(right),
   });
-}
-
-function addBucketPairs(
-  output: Map<string, DuplicateSuggestion>,
-  kind: DuplicateEvidenceKind,
-  buckets: Map<string, DuplicateRow[]>,
-) {
-  for (const [evidenceUrl, rows] of buckets) {
-    const limited = rows.slice(0, 25);
-    for (let left = 0; left < limited.length; left += 1) {
-      for (let right = left + 1; right < limited.length; right += 1) {
-        addPair(output, kind, evidenceUrl, limited[left], limited[right]);
-      }
-    }
-  }
 }
 
 function pushBucket(map: Map<string, DuplicateRow[]>, key: string | null, row: DuplicateRow) {
   if (!key) return;
   const current = map.get(key) ?? [];
-  current.push(row);
+  if (current.length < MAX_BUCKET_MEMBERS) current.push(row);
   map.set(key, current);
 }
 
-async function duplicateSuggestions(db: DuplicateReviewDatabase) {
+function addMetadataPairs(
+  candidates: Map<string, DuplicateReviewCandidate>,
+  rows: DuplicateRow[],
+  kind: "canonical" | "resolved",
+) {
+  const originals = new Map<string, DuplicateRow[]>();
+  const evidence = new Map<string, DuplicateRow[]>();
+  for (const row of rows) {
+    pushBucket(originals, reviewFingerprint(row.url), row);
+    pushBucket(evidence, reviewFingerprint(kind === "canonical" ? row.canonical_url : row.final_url), row);
+  }
+
+  for (const [target, evidenceRows] of evidence) {
+    const combined = new Map<string, DuplicateRow>();
+    for (const row of evidenceRows) combined.set(row.id, row);
+    for (const row of originals.get(target) ?? []) combined.set(row.id, row);
+    const group = Array.from(combined.values()).slice(0, MAX_BUCKET_MEMBERS);
+    if (group.length < 2) continue;
+    for (let left = 0; left < group.length; left += 1) {
+      for (let right = left + 1; right < group.length; right += 1) {
+        const leftHasEvidence = evidenceRows.some((row) => row.id === group[left].id);
+        const rightHasEvidence = evidenceRows.some((row) => row.id === group[right].id);
+        if (!leftHasEvidence && !rightHasEvidence) continue;
+        const rawEvidence = kind === "canonical"
+          ? (group[left].canonical_url ?? group[right].canonical_url)
+          : (group[left].final_url ?? group[right].final_url);
+        addCandidate(
+          candidates,
+          group[left],
+          group[right],
+          kind,
+          kind === "canonical"
+            ? "Saved page metadata points these bookmarks at the same canonical target."
+            : "Saved metadata shows these bookmarks resolving to the same final target.",
+          displayEvidenceUrl(rawEvidence),
+        );
+      }
+    }
+  }
+}
+
+function addNormalizedPairs(candidates: Map<string, DuplicateReviewCandidate>, rows: DuplicateRow[]) {
+  const groups = new Map<string, DuplicateRow[]>();
+  for (const row of rows) pushBucket(groups, reviewFingerprint(row.url), row);
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    for (let left = 0; left < group.length; left += 1) {
+      for (let right = left + 1; right < group.length; right += 1) {
+        addCandidate(
+          candidates,
+          group[left],
+          group[right],
+          "normalized",
+          "The URLs become equivalent after ignoring protocol/www, fragments, trailing slashes and known tracking parameters.",
+        );
+      }
+    }
+  }
+}
+
+async function duplicateReview(db: DuplicateReviewDatabase) {
   const result = await db.prepare(
     `SELECT b.id,
             b.title,
             b.url,
             b.description,
             b.category_id,
+            c.name AS category_name,
             b.health_status,
             b.health_policy,
             m.canonical_url,
             m.final_url,
             m.fetched_at
        FROM bookmarks b
+       LEFT JOIN categories c ON c.id = b.category_id
        LEFT JOIN bookmark_metadata m ON m.bookmark_id = b.id
-      ORDER BY b.id ASC`,
+      ORDER BY b.updated_at DESC, b.id ASC`,
   ).all<DuplicateRow>();
   const rows = result.results ?? [];
-  const byOriginal = new Map<string, DuplicateRow[]>();
-  const byCanonical = new Map<string, DuplicateRow[]>();
-  const byFinal = new Map<string, DuplicateRow[]>();
+  const candidates = new Map<string, DuplicateReviewCandidate>();
+  addMetadataPairs(candidates, rows, "canonical");
+  addMetadataPairs(candidates, rows, "resolved");
+  addNormalizedPairs(candidates, rows);
 
-  for (const row of rows) {
-    pushBucket(byOriginal, reviewFingerprint(row.url), row);
-    pushBucket(byCanonical, reviewFingerprint(row.canonical_url), row);
-    pushBucket(byFinal, reviewFingerprint(row.final_url), row);
-  }
-
-  const suggestions = new Map<string, DuplicateSuggestion>();
-  addBucketPairs(suggestions, "canonical", byCanonical);
-
-  for (const [target, canonicalRows] of byCanonical) {
-    for (const canonicalRow of canonicalRows) {
-      for (const originalRow of byOriginal.get(target) ?? []) addPair(suggestions, "canonical", target, canonicalRow, originalRow);
-    }
-  }
-
-  addBucketPairs(suggestions, "resolved", byFinal);
-  for (const [target, finalRows] of byFinal) {
-    for (const finalRow of finalRows) {
-      for (const originalRow of byOriginal.get(target) ?? []) addPair(suggestions, "resolved", target, finalRow, originalRow);
-    }
-  }
-
-  addBucketPairs(suggestions, "near-url", byOriginal);
-
-  const priority: Record<DuplicateEvidenceKind, number> = { canonical: 3, resolved: 2, "near-url": 1 };
-  const ordered = Array.from(suggestions.values())
-    .sort((left, right) => priority[right.kind] - priority[left.kind] || left.evidenceUrl.localeCompare(right.evidenceUrl))
-    .slice(0, MAX_SUGGESTIONS);
+  const rank: Record<DuplicateCandidateKind, number> = { canonical: 3, resolved: 2, normalized: 1 };
+  const allCandidates = Array.from(candidates.values()).sort((left, right) => {
+    const byKind = rank[right.kind] - rank[left.kind];
+    if (byKind) return byKind;
+    return left.left.title.localeCompare(right.left.title);
+  });
+  const returned = allCandidates.slice(0, MAX_RETURNED_CANDIDATES);
+  const counts = allCandidates.reduce(
+    (current, candidate) => ({ ...current, [candidate.kind]: current[candidate.kind] + 1 }),
+    { canonical: 0, resolved: 0, normalized: 0 } as Record<DuplicateCandidateKind, number>,
+  );
 
   return {
-    scanned: rows.length,
-    metadataBacked: rows.filter((row) => Boolean(row.canonical_url || row.final_url)).length,
-    suggestions: ordered,
-    truncated: suggestions.size > MAX_SUGGESTIONS,
+    candidates: returned,
+    stats: {
+      totalBookmarks: rows.length,
+      analyzedBookmarks: rows.length,
+      metadataBookmarks: rows.filter((row) => Boolean(row.fetched_at)).length,
+      totalCandidates: allCandidates.length,
+      canonicalCandidates: counts.canonical,
+      resolvedCandidates: counts.resolved,
+      normalizedCandidates: counts.normalized,
+      bookmarkAnalysisTruncated: false,
+      candidateListTruncated: allCandidates.length > returned.length,
+    },
   };
 }
 
@@ -228,5 +279,5 @@ export async function handleDuplicateReviewApi(
   if (request.method !== "GET") {
     throw new DuplicateReviewHttpError(405, "method_not_allowed", "Duplicate review only supports GET.");
   }
-  return json(await duplicateSuggestions(db));
+  return json(await duplicateReview(db));
 }
