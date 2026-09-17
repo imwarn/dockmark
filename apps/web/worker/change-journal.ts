@@ -2,7 +2,9 @@ type BindValue = string | number | null;
 
 export interface JournalPreparedStatementLike {
   bind(...values: BindValue[]): JournalPreparedStatementLike;
+  first<T = unknown>(): Promise<T | null>;
   all<T = unknown>(): Promise<{ results: T[] }>;
+  run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
 }
 
 export interface ChangeJournalDatabaseLike {
