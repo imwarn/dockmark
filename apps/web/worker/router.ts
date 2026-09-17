@@ -28,6 +28,10 @@ import {
   handleCaptureWriteApi,
 } from "./capture-write";
 import {
+  DuplicateReviewHttpError,
+  handleDuplicateReviewApi,
+} from "./duplicate-review";
+import {
   LibraryBatchOrganizeHttpError,
   handleLibraryBatchOrganizeApi,
 } from "./library-batch-organize";
@@ -175,6 +179,17 @@ export default {
         } catch (error) {
           if (error instanceof LibraryBatchOrganizeHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Library Batch Organize API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
+      }
+
+      if (pathname === "/api/library/duplicates") {
+        try {
+          const response = await handleDuplicateReviewApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof DuplicateReviewHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Duplicate Review API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
       }
