@@ -32,6 +32,10 @@ import {
   handleDuplicateReviewApi,
 } from "./duplicate-review";
 import {
+  LibraryBatchMaintenanceHttpError,
+  handleLibraryBatchMaintenanceApi,
+} from "./library-batch-maintenance";
+import {
   LibraryBatchOrganizeHttpError,
   handleLibraryBatchOrganizeApi,
 } from "./library-batch-organize";
@@ -157,6 +161,19 @@ export default {
         } catch (error) {
           if (error instanceof CaptureInboxHttpError) return problem(error.status, error.code, error.message);
           console.error("Dockmark Capture/Inbox API error", error);
+          return problem(500, "internal_error", "An unexpected server error occurred.");
+        }
+      }
+
+      if (pathname === "/api/bookmarks" ||
+          pathname === "/api/bookmarks/archived" ||
+          pathname === "/api/bookmarks/batch-maintenance") {
+        try {
+          const response = await handleLibraryBatchMaintenanceApi(request, env.DB, pathname);
+          if (response) return response;
+        } catch (error) {
+          if (error instanceof LibraryBatchMaintenanceHttpError) return problem(error.status, error.code, error.message);
+          console.error("Dockmark Library Batch Maintenance API error", error);
           return problem(500, "internal_error", "An unexpected server error occurred.");
         }
       }
