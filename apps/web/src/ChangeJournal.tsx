@@ -7,7 +7,7 @@ import {
 import "./change-journal.css";
 
 interface Props {
-  revision: number;
+  revision: string;
 }
 
 function messageFrom(error: unknown) {
