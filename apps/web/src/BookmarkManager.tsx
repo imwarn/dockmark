@@ -37,19 +37,8 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
     setJournalRevision((current) => current + 1);
   }
 
-  const active = views.find((item) => item.id === view) ?? views[0];
-
   return (
-    <section className="management bookmark-management">
-      <div className="management-heading bookmark-management-heading">
-        <div>
-          <p className="eyebrow">BOOKMARK LIBRARY</p>
-          <h1>One library,<br />one place to maintain it.</h1>
-          <p className="management-intro">{active.detail}</p>
-        </div>
-        <span className="library-count">{bookmarks.length} bookmarks</span>
-      </div>
-
+    <section className="bookmark-management-hub">
       <nav className="section-tabs" aria-label="Bookmark management sections">
         {views.map((item) => (
           <button
