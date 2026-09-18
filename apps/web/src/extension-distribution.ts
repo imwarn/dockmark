@@ -1,4 +1,4 @@
-export const EXTENSION_RELEASE_VERSION = "1.5.3";
+export const EXTENSION_RELEASE_VERSION = "1.5.4";
 
 // Fill these when browser-store listings are public. The UI will promote the
 // store action while keeping manual downloads visible.
