@@ -316,7 +316,7 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
                       <div className="public-order-actions">
                         <button className="text-action" type="button" disabled={sorting || index === 0} onClick={() => void moveBookmark(bookmark, -1)}>↑</button>
                         <button className="text-action" type="button" disabled={sorting || index === group.bookmarks.length - 1} onClick={() => void moveBookmark(bookmark, 1)}>↓</button>
-                        <button className="danger-text text-action" type="button" disabled={busyId === bookmark.id || Boolean(batchBusy)} onClick={() => void toggle(bookmark)}>Unpublish</button>
+                        <button className="danger-text text-action" type="button" disabled={mutationBusy} onClick={() => void toggle(bookmark)}>Unpublish</button>
                       </div>
                     </div>
                   ))}
