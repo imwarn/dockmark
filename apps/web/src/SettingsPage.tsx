@@ -62,7 +62,7 @@ export function SettingsPage() {
     }
   }, [publicDataLoaded, refreshPublicData, view]);
 
-  const active = sections.find((section) => section.id === view) ?? sections[0];
+  const active = sections.find((section) => section.id === view) ?? sections[0]!;
 
   return (
     <main className="settings-page shell">
