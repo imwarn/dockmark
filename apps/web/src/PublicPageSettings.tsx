@@ -400,7 +400,7 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
                   <button
                     className={isPublished ? "danger-text text-action" : "text-action"}
                     type="button"
-                    disabled={mutationBusy && busyId !== bookmark.id}
+                    disabled={mutationBusy}
                     onClick={() => void toggle(bookmark)}
                   >
                     {busyId === bookmark.id ? "Saving…" : isPublished ? "Unpublish" : "Publish"}
