@@ -135,6 +135,39 @@ try {
     "Shared Match Bookmark",
   ]);
 
+  await page.evaluate(() => {
+    const now = new Date().toISOString();
+    snapshot = {
+      ...snapshot,
+      bookmarks: Array.from({ length: 12 }, (_, index) => ({
+        id: `overflow-bookmark-${index + 1}`,
+        title: `Overflow Match Bookmark ${index + 1}`,
+        url: `https://overflow.example/${index + 1}`,
+        description: "Overflow Match fixture",
+        tags: [],
+        healthPolicy: "normal",
+        healthStatus: "unknown",
+        position: index,
+        createdAt: now,
+        updatedAt: now,
+      })),
+    };
+    openTabs = [];
+    activeResult = 0;
+    elements.search.value = "Overflow Match";
+    renderSearchResults();
+  });
+
+  const overflowKinds = (await page.locator("#command-results .result-kind").allInnerTexts())
+    .map((value) => value.toLocaleLowerCase());
+  assert.equal(overflowKinds.length, 8, "New Tab should expose the same eight-result Launcher cap as Web.");
+  assert.deepEqual(overflowKinds.slice(0, 7), Array(7).fill("bookmark"));
+  assert.equal(overflowKinds[7], "search", "Default Search must remain visible even when local matches exceed the result limit.");
+  assert.match(
+    await page.locator("#command-results .result-row").last().innerText(),
+    /Search Google for “Overflow Match”/i,
+  );
+
   const search = page.locator("#search");
   await search.fill("workspace-only-item");
   const workspaceRow = page.locator("#command-results .result-row").filter({ hasText: "Shared Match Workspace" }).first();
@@ -147,6 +180,7 @@ try {
   assert.equal(await search.evaluate((element) => document.activeElement === element), false, "Escape on an empty Launcher should blur it on both Web and New Tab.");
 
   console.log("✓ New Tab canonical ordering is Open tab > Workspace > Session > Collection > Bookmark > Search");
+  console.log("✓ New Tab keeps the eight-result Web Launcher cap and reserves the final slot for Search");
   console.log("✓ New Tab exposes the same human-readable result type labels as Web Launcher");
   console.log("✓ Workspace item title/URL content participates in New Tab Launcher search");
   console.log("✓ Escape clears first and blurs the empty Launcher consistently");

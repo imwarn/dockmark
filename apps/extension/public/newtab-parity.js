@@ -1,4 +1,5 @@
 (() => {
+  const LAUNCHER_RESULT_LIMIT = 8;
   const SOURCE_WEIGHT = {
     tab: 500,
     workspace: 400,
@@ -64,6 +65,18 @@
     };
   }
 
+  function regularSearchFallback(query) {
+    const engine = preferredSearchEngine();
+    const keyword = typeof engine?.keyword === "string" ? engine.keyword.trim() : "";
+    return {
+      kind: "search",
+      title: `Search ${engine?.name || "the web"} for “${query}”`,
+      subtitle: keyword ? `Default · !${keyword}` : "Default search engine",
+      url: searchUrl(engine, query),
+      score: SOURCE_WEIGHT.search,
+    };
+  }
+
   function sessionResult(query, session, index) {
     const items = asArray(session?.items).filter((item) => isHttpUrl(item?.url));
     const sourceDevice = typeof session?.sourceDevice === "string" ? session.sourceDevice.trim() : "";
@@ -92,8 +105,9 @@
     if (!query) return [];
 
     const existing = originalBuildResults(rawQuery);
-    if (query.startsWith("@") || searchEngineCommand(query) || (existing.length && existing.every((result) => result.kind === "search-shortcut"))) {
-      return existing;
+    if (query.startsWith("@") || searchEngineCommand(query)) return existing;
+    if (existing.length && existing.every((result) => result.kind === "search-shortcut")) {
+      return existing.slice(0, LAUNCHER_RESULT_LIMIT);
     }
 
     const deduped = new Map();
@@ -114,9 +128,13 @@
       if (result) deduped.set(`session:${session?.id || result.title}`, result);
     });
 
-    return [...deduped.values()]
-      .sort((left, right) => right.score - left.score || String(left.title || "").localeCompare(String(right.title || "")))
-      .slice(0, 10);
+    const ranked = [...deduped.values()]
+      .sort((left, right) => right.score - left.score || String(left.title || "").localeCompare(String(right.title || "")));
+
+    return [
+      ...ranked.filter((result) => result.kind !== "search").slice(0, LAUNCHER_RESULT_LIMIT - 1),
+      regularSearchFallback(query),
+    ];
   };
 
   renderSearchResults = function parityRenderSearchResults() {
