@@ -14,6 +14,7 @@ import "./bookmark-tags.css";
 import "./inbox.css";
 import "./ui-polish.css";
 import "./light-theme-consistency.css";
+import "./responsive-shell.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root");
