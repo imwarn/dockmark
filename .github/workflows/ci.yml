@@ -84,6 +84,9 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@1.63.0
           npx playwright install --with-deps --no-shell chromium
 
+      - name: Web responsive shell smoke test
+        run: npm run smoke:chromium:web-shell
+
       - name: Standard Chromium extension smoke test
         run: npm run smoke:chromium
 
