@@ -100,6 +100,9 @@ try {
           }],
         };
       }
+      if (path === "/api/settings/appearance") {
+        return { settings: { version: 1, preference: "light", updatedAt: now } };
+      }
       if (path === "/api/settings/browser") {
         return {
           settings: {
@@ -136,6 +139,9 @@ try {
   }, clickedTargetUrl);
   assert.equal(refreshProbe.refreshed, true);
   assert.equal(refreshProbe.counts["/api/settings/browser"], 1, "A current New Tab refresh should read /api/settings/browser exactly once.");
+  assert.equal(refreshProbe.counts["/api/settings/appearance"], 1, "A current New Tab refresh should read the shared Web appearance exactly once.");
+  assert.equal(refreshProbe.snapshot.appearancePreference, "light");
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
   assert.deepEqual(refreshProbe.snapshot.bookmarks?.[0]?.tags, ["online", "dev"]);
   assert.equal(refreshProbe.snapshot.smartCollections?.[0]?.name, "Online dev");
   assert.deepEqual(refreshProbe.snapshot.inboxBookmarkIds, ["online-bookmark"]);
