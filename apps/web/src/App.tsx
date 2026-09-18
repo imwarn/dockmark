@@ -497,14 +497,14 @@ export function App() {
           <span className="brand-mark">D·</span>
           <span>Dockmark</span>
         </button>
-        <nav>
-          <button className={`ghost ${view === "launcher" ? "active" : ""}`} type="button" onClick={() => setView("launcher")}>Launcher</button>
-          <button className={`ghost ${view === "workspaces" ? "active" : ""}`} type="button" onClick={() => setView("workspaces")}>Workspaces</button>
-          <button className={`ghost ${view === "sessions" ? "active" : ""}`} type="button" onClick={() => setView("sessions")}>Sessions</button>
-          <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" onClick={() => setView("bookmarks")}>Bookmarks</button>
-          <button className={`ghost ${view === "search" ? "active" : ""}`} type="button" onClick={() => setView("search")}>Search</button>
-          <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" onClick={() => setView("transfer")}>Transfer</button>
-          <button className={`ghost ${view === "extension" ? "active" : ""}`} type="button" onClick={() => setView("extension")}>Extension</button>
+        <nav className="workspace-section-nav" aria-label="Workspace sections">
+          <button className={`ghost ${view === "launcher" ? "active" : ""}`} type="button" aria-current={view === "launcher" ? "page" : undefined} onClick={() => setView("launcher")}>Launcher</button>
+          <button className={`ghost ${view === "workspaces" ? "active" : ""}`} type="button" aria-current={view === "workspaces" ? "page" : undefined} onClick={() => setView("workspaces")}>Workspaces</button>
+          <button className={`ghost ${view === "sessions" ? "active" : ""}`} type="button" aria-current={view === "sessions" ? "page" : undefined} onClick={() => setView("sessions")}>Sessions</button>
+          <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" aria-current={view === "bookmarks" ? "page" : undefined} onClick={() => setView("bookmarks")}>Bookmarks</button>
+          <button className={`ghost ${view === "search" ? "active" : ""}`} type="button" aria-current={view === "search" ? "page" : undefined} onClick={() => setView("search")}>Search</button>
+          <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" aria-current={view === "transfer" ? "page" : undefined} onClick={() => setView("transfer")}>Transfer</button>
+          <button className={`ghost ${view === "extension" ? "active" : ""}`} type="button" aria-current={view === "extension" ? "page" : undefined} onClick={() => setView("extension")}>Extension</button>
         </nav>
       </header>
 
