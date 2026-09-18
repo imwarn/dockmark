@@ -21,6 +21,14 @@ function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function isWorkspacePath(pathname: string) {
+  return pathname.startsWith("/app") &&
+    !pathname.startsWith("/app/settings") &&
+    !pathname.startsWith("/app/inbox") &&
+    !pathname.startsWith("/app/collections") &&
+    !pathname.startsWith("/app/duplicates");
+}
+
 function PrivateNavigation({ children, onLogout }: { children: ReactNode; onLogout: () => Promise<void> }) {
   const [path, setPath] = useState(window.location.pathname);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
@@ -69,7 +77,7 @@ function PrivateNavigation({ children, onLogout }: { children: ReactNode; onLogo
       <div className="private-utility-bar">
         <a href="/" className="private-utility-brand"><span>D·</span> Public page</a>
         <nav>
-          <button className={path === "/app" ? "active" : ""} type="button" onClick={() => navigate("/app")}>Workspace</button>
+          <button className={isWorkspacePath(path) ? "active" : ""} type="button" onClick={() => navigate("/app")}>Workspace</button>
           <button
             className={`${path.startsWith("/app/inbox") ? "active " : ""}private-inbox-nav`}
             type="button"
