@@ -5,7 +5,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: ({ browser }) => ({
     name: "Dockmark",
-    version: "1.5.4",
+    version: "1.5.5",
     description: "Browser bridge for Dockmark tabs, reviewed Capture Inbox, sessions, Smart Collection-aware local-first search, reviewed bookmark sync, local health checks and device pairing.",
     icons: {
       16: "icons/dockmark-16.png",
