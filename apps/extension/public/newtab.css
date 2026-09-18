@@ -1,5 +1,5 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --dm-bg: #0a0f0c;
   --dm-surface: #0f1512;
@@ -119,3 +119,55 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .footer { align-items: flex-start; flex-direction: column; }
   .footer-actions { justify-content: flex-start; flex-wrap: wrap; }
 }
+
+
+html[data-theme="light"] {
+  --dm-bg: #f4f7f5;
+  --dm-surface: #edf2ef;
+  --dm-surface-raised: #ffffff;
+  --dm-surface-hover: #e7efea;
+  --dm-surface-selected: #dceae1;
+  --dm-input-bg: #ffffff;
+  --dm-border: #d1ddd6;
+  --dm-border-strong: #b7c9bf;
+  --dm-text: #173126;
+  --dm-text-soft: #4e665b;
+  --dm-text-muted: #73867c;
+  --dm-placeholder: #91a097;
+  --dm-accent: #4f8063;
+  --dm-accent-strong: #315f47;
+  --dm-focus-ring: rgba(79, 128, 99, .14);
+}
+
+html[data-theme="light"] body {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(81, 132, 101, .11), transparent 34rem),
+    radial-gradient(circle at 85% 12%, rgba(86, 115, 98, .05), transparent 26rem),
+    var(--dm-bg);
+}
+html[data-theme="light"] .state-chip,
+html[data-theme="light"] .icon-button,
+html[data-theme="light"] .ghost-button,
+html[data-theme="light"] .command-input,
+html[data-theme="light"] .panel,
+html[data-theme="light"] .setup-card {
+  border-color: var(--dm-border);
+  background: rgba(255,255,255,.86);
+  color: var(--dm-text-soft);
+}
+html[data-theme="light"] .command-input { box-shadow: 0 18px 60px rgba(40,67,54,.08); color: var(--dm-text); }
+html[data-theme="light"] .command-results { border-color: var(--dm-border-strong); background: rgba(255,255,255,.985); box-shadow: 0 26px 80px rgba(40,67,54,.14); }
+html[data-theme="light"] .result-row { border-color: var(--dm-border); }
+html[data-theme="light"] .bookmark-card,
+html[data-theme="light"] .workspace-card { border-color: var(--dm-border); background: #fff; color: var(--dm-text-soft); }
+html[data-theme="light"] .bookmark-card:hover,
+html[data-theme="light"] .workspace-card:hover,
+html[data-theme="light"] .result-row:hover,
+html[data-theme="light"] .result-row.active,
+html[data-theme="light"] .icon-button:hover,
+html[data-theme="light"] .ghost-button:hover { border-color: #a8c7b5; background: var(--dm-surface-selected); color: var(--dm-text); }
+html[data-theme="light"] .state-chip.online { border-color: #a8cbb5; color: #315f47; background: #eef8f1; }
+html[data-theme="light"] .state-chip.offline,
+html[data-theme="light"] .offline-banner { border-color: #dfc995; color: #7a6328; background: #fff8e9; }
+html[data-theme="light"] .footer,
+html[data-theme="light"] .footer-button { color: var(--dm-text-muted); }
