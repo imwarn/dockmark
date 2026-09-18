@@ -144,3 +144,42 @@ kbd { padding: 6px 8px; color: #77827c; border: 1px solid #303934; border-radius
   .bookmark-actions { width: 100%; padding-left: 55px; }
   .row-actions { opacity: 1; }
 }
+
+
+.bookmark-management-hub { padding-top: 26px; }
+.section-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: -28px;
+  padding: 7px;
+  border: 1px solid var(--dm-border);
+  border-radius: 16px;
+  background: var(--dm-bg-soft);
+}
+.section-tabs button {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--dm-text-muted);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.section-tabs button:hover { color: var(--dm-text); background: var(--dm-bg-card); }
+.section-tabs button.active { border-color: var(--dm-border-strong); color: var(--dm-text); background: var(--dm-bg-raised); }
+.section-tabs strong { font-size: 12px; }
+.section-tabs span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.bookmark-section-stack { padding-top: 40px; }
+.bookmark-section-stack > :first-child { margin-top: 0; }
+
+@media (max-width: 760px) {
+  .section-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: -10px; }
+}
+@media (max-width: 520px) {
+  .section-tabs { grid-template-columns: 1fr; }
+  .section-tabs span { white-space: normal; }
+}
