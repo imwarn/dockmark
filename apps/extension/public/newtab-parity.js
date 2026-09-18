@@ -1,5 +1,6 @@
 (() => {
-  const LAUNCHER_RESULT_LIMIT = 8;\n  const SOURCE_WEIGHT = {
+  const LAUNCHER_RESULT_LIMIT = 8;
+  const SOURCE_WEIGHT = {
     tab: 500,
     workspace: 400,
     session: 350,
