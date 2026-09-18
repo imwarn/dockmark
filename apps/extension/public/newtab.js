@@ -52,6 +52,7 @@ function emptySnapshot() {
     categories: [],
     workspaces: [],
     searchEngines: [],
+    appearancePreference: "system",
   };
 }
 
@@ -284,15 +285,19 @@ async function refreshCloud({ quiet = false } = {}) {
       throw new Error("Dockmark site access is not granted. Open the extension popup and reconnect this origin.");
     }
 
-    const [bookmarkPayload, categoryPayload, workspacePayload, enginePayload, settingsPayload] = await Promise.all([
+    const [bookmarkPayload, categoryPayload, workspacePayload, enginePayload, settingsPayload, appearancePayload] = await Promise.all([
       requestJson("/api/bookmarks"),
       requestJson("/api/categories"),
       requestJson("/api/workspaces"),
       requestJson("/api/search-engines"),
       requestJson("/api/settings/browser"),
+      requestJson("/api/settings/appearance").catch(() => null),
     ]);
 
     settings = normalizeSettings(settingsPayload.settings);
+    const appearancePreference = window.dockmarkAppearance?.apply(
+      appearancePayload?.settings?.preference ?? snapshot.appearancePreference ?? "system",
+    ) ?? "system";
     snapshot = {
       version: CACHE_VERSION,
       origin,
@@ -301,6 +306,7 @@ async function refreshCloud({ quiet = false } = {}) {
       categories: asArray(categoryPayload.categories),
       workspaces: asArray(workspacePayload.workspaces),
       searchEngines: asArray(enginePayload.engines),
+      appearancePreference,
     };
     await chrome.storage.local.set({
       [CACHE_KEY]: snapshot,
@@ -568,6 +574,7 @@ async function bootstrap() {
   origin = validOrigin(stored[SERVER_KEY]);
   settings = normalizeSettings(stored[SETTINGS_KEY]);
   if (cacheIsUsable(stored[CACHE_KEY], origin)) snapshot = stored[CACHE_KEY];
+  if (snapshot.appearancePreference) window.dockmarkAppearance?.apply(snapshot.appearancePreference);
 
   await loadOpenTabs();
   renderSnapshot();

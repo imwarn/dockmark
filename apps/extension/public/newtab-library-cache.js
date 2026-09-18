@@ -10,12 +10,13 @@
       }
 
       const previousSessions = asArray(snapshot.sessions);
-      const [bookmarkPayload, categoryPayload, workspacePayload, enginePayload, settingsPayload] = await Promise.all([
+      const [bookmarkPayload, categoryPayload, workspacePayload, enginePayload, settingsPayload, appearancePayload] = await Promise.all([
         requestJson("/api/bookmarks"),
         requestJson("/api/categories"),
         requestJson("/api/workspaces"),
         requestJson("/api/search-engines"),
         requestJson("/api/settings/browser"),
+        requestJson("/api/settings/appearance").catch(() => null),
       ]);
 
       let sessions = previousSessions;
@@ -32,6 +33,9 @@
         : {};
 
       settings = normalizeSettings(settingsPayload?.settings);
+      const appearancePreference = window.dockmarkAppearance?.apply(
+        appearancePayload?.settings?.preference ?? snapshot.appearancePreference ?? "system",
+      ) ?? "system";
       snapshot = {
         version: CACHE_VERSION,
         origin,
@@ -46,6 +50,7 @@
         searchEngines: asArray(enginePayload?.engines),
         smartCollections: asArray(settingsPayload?.smartCollections),
         inboxBookmarkIds: asArray(settingsPayload?.inboxBookmarkIds).filter((id) => typeof id === "string" && id.trim()),
+        appearancePreference,
       };
 
       await chrome.storage.local.set({
