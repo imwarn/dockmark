@@ -1,5 +1,5 @@
 (() => {
-  const SOURCE_WEIGHT = {
+  const LAUNCHER_RESULT_LIMIT = 8;\n  const SOURCE_WEIGHT = {
     tab: 500,
     workspace: 400,
     session: 350,
@@ -92,8 +92,9 @@
     if (!query) return [];
 
     const existing = originalBuildResults(rawQuery);
-    if (query.startsWith("@") || searchEngineCommand(query) || (existing.length && existing.every((result) => result.kind === "search-shortcut"))) {
-      return existing;
+    if (query.startsWith("@") || searchEngineCommand(query)) return existing;
+    if (existing.length && existing.every((result) => result.kind === "search-shortcut")) {
+      return existing.slice(0, LAUNCHER_RESULT_LIMIT);
     }
 
     const deduped = new Map();
@@ -114,9 +115,15 @@
       if (result) deduped.set(`session:${session?.id || result.title}`, result);
     });
 
-    return [...deduped.values()]
-      .sort((left, right) => right.score - left.score || String(left.title || "").localeCompare(String(right.title || "")))
-      .slice(0, 10);
+    const ranked = [...deduped.values()]
+      .sort((left, right) => right.score - left.score || String(left.title || "").localeCompare(String(right.title || "")));
+    const searchFallback = ranked.find((result) => result.kind === "search") || null;
+    if (!searchFallback) return ranked.slice(0, LAUNCHER_RESULT_LIMIT);
+
+    return [
+      ...ranked.filter((result) => result.kind !== "search").slice(0, LAUNCHER_RESULT_LIMIT - 1),
+      searchFallback,
+    ];
   };
 
   renderSearchResults = function parityRenderSearchResults() {
