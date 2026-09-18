@@ -327,7 +327,7 @@ try {
   assert.equal(await page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).count(), 0);
 
   await page.locator("#search").fill("offline query");
-  await page.getByText("Search Secondary Search", { exact: true }).waitFor();
+  await page.getByText("Search Secondary Search for “offline query”", { exact: true }).waitFor();
 
   await page.locator("#search").fill("e offline query");
   await page.getByText("Search Example Search", { exact: true }).waitFor();
