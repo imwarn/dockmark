@@ -52,6 +52,31 @@ const sourceLabel: Record<CommandResult["source"], string> = {
 
 type View = "launcher" | "workspaces" | "sessions" | "bookmarks" | "search" | "transfer" | "extension";
 
+const viewPaths: Record<View, string> = {
+  launcher: "/app",
+  workspaces: "/app/workspaces",
+  sessions: "/app/sessions",
+  bookmarks: "/app/bookmarks",
+  search: "/app/search",
+  transfer: "/app/transfer",
+  extension: "/app/extension",
+};
+
+function viewFromPath(pathname: string): View {
+  for (const [view, path] of Object.entries(viewPaths) as Array<[View, string]>) {
+    if (view === "launcher") continue;
+    if (pathname === path || pathname.startsWith(`${path}/`)) return view;
+  }
+  return "launcher";
+}
+
+function navigateView(view: View) {
+  const path = viewPaths[view];
+  if (window.location.pathname === path) return;
+  window.history.pushState({}, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 function openUrls(urls: string[]) {
   for (const url of urls) {
     const opened = window.open(url, "_blank", "noopener,noreferrer");
@@ -72,7 +97,7 @@ function collectionResultId(id: string) {
 }
 
 export function App() {
-  const [view, setView] = useState<View>("launcher");
+  const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname));
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -147,6 +172,12 @@ export function App() {
   }, [refresh]);
 
   useEffect(() => {
+    const onPopState = () => setView(viewFromPath(window.location.pathname));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onBridgeEvent((event) => {
       if (event === "ready" || event === "tabs-changed") void refreshBridge();
     });
@@ -161,6 +192,7 @@ export function App() {
 
   useEffect(() => {
     const focusLauncher = () => {
+      navigateView("launcher");
       setView("launcher");
       void refreshBridge();
       requestAnimationFrame(() => commandInputRef.current?.focus());
@@ -361,7 +393,7 @@ export function App() {
     }
 
     if (item.source === "navigation" && item.id === "navigation:extension") {
-      setView("extension");
+      navigateView("extension");
       return;
     }
 
@@ -493,18 +525,18 @@ export function App() {
   return (
     <main className="shell">
       <header className="topbar">
-        <button className="brand brand-button" type="button" onClick={() => setView("launcher")} aria-label="Dockmark home">
+        <button className="brand brand-button" type="button" onClick={() => navigateView("launcher")} aria-label="Dockmark home">
           <span className="brand-mark">D·</span>
           <span>Dockmark</span>
         </button>
         <nav className="workspace-section-nav" aria-label="Workspace sections">
-          <button className={`ghost ${view === "launcher" ? "active" : ""}`} type="button" aria-current={view === "launcher" ? "page" : undefined} onClick={() => setView("launcher")}>Launcher</button>
-          <button className={`ghost ${view === "workspaces" ? "active" : ""}`} type="button" aria-current={view === "workspaces" ? "page" : undefined} onClick={() => setView("workspaces")}>Workspaces</button>
-          <button className={`ghost ${view === "sessions" ? "active" : ""}`} type="button" aria-current={view === "sessions" ? "page" : undefined} onClick={() => setView("sessions")}>Sessions</button>
-          <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" aria-current={view === "bookmarks" ? "page" : undefined} onClick={() => setView("bookmarks")}>Bookmarks</button>
-          <button className={`ghost ${view === "search" ? "active" : ""}`} type="button" aria-current={view === "search" ? "page" : undefined} onClick={() => setView("search")}>Search</button>
-          <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" aria-current={view === "transfer" ? "page" : undefined} onClick={() => setView("transfer")}>Transfer</button>
-          <button className={`ghost ${view === "extension" ? "active" : ""}`} type="button" aria-current={view === "extension" ? "page" : undefined} onClick={() => setView("extension")}>Extension</button>
+          <button className={`ghost ${view === "launcher" ? "active" : ""}`} type="button" aria-current={view === "launcher" ? "page" : undefined} onClick={() => navigateView("launcher")}>Launcher</button>
+          <button className={`ghost ${view === "workspaces" ? "active" : ""}`} type="button" aria-current={view === "workspaces" ? "page" : undefined} onClick={() => navigateView("workspaces")}>Workspaces</button>
+          <button className={`ghost ${view === "sessions" ? "active" : ""}`} type="button" aria-current={view === "sessions" ? "page" : undefined} onClick={() => navigateView("sessions")}>Sessions</button>
+          <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" aria-current={view === "bookmarks" ? "page" : undefined} onClick={() => navigateView("bookmarks")}>Bookmarks</button>
+          <button className={`ghost ${view === "search" ? "active" : ""}`} type="button" aria-current={view === "search" ? "page" : undefined} onClick={() => navigateView("search")}>Search</button>
+          <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" aria-current={view === "transfer" ? "page" : undefined} onClick={() => navigateView("transfer")}>Transfer</button>
+          <button className={`ghost ${view === "extension" ? "active" : ""}`} type="button" aria-current={view === "extension" ? "page" : undefined} onClick={() => navigateView("extension")}>Extension</button>
         </nav>
       </header>
 
@@ -530,7 +562,7 @@ export function App() {
       ) : view === "search" ? (
         <SearchEngineManager engines={searchEngines} loading={loading} onChanged={refresh} />
       ) : view === "transfer" ? (
-        <TransferManager bookmarks={bookmarks} categories={categories} onChanged={refresh} onOpenExtension={() => setView("extension")} />
+        <TransferManager bookmarks={bookmarks} categories={categories} onChanged={refresh} onOpenExtension={() => navigateView("extension")} />
       ) : view === "extension" ? (
         <BrowserExtensionManager />
       ) : (
@@ -603,7 +635,7 @@ export function App() {
           </section>
 
           {!bridgeConnected && (
-            <button className="extension-nudge" type="button" onClick={() => setView("extension")}>
+            <button className="extension-nudge" type="button" onClick={() => navigateView("extension")}>
               <span className="extension-nudge-copy">
                 <strong>Unlock browser integration</strong>
                 <span>Install Dockmark Extension for open tabs, pinned Session restore and native bookmark import.</span>
