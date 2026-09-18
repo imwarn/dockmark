@@ -65,6 +65,18 @@
     };
   }
 
+  function regularSearchFallback(query) {
+    const engine = preferredSearchEngine();
+    const keyword = typeof engine?.keyword === "string" ? engine.keyword.trim() : "";
+    return {
+      kind: "search",
+      title: `Search ${engine?.name || "the web"} for “${query}”`,
+      subtitle: keyword ? `Default · !${keyword}` : "Default search engine",
+      url: searchUrl(engine, query),
+      score: SOURCE_WEIGHT.search,
+    };
+  }
+
   function sessionResult(query, session, index) {
     const items = asArray(session?.items).filter((item) => isHttpUrl(item?.url));
     const sourceDevice = typeof session?.sourceDevice === "string" ? session.sourceDevice.trim() : "";
@@ -118,12 +130,10 @@
 
     const ranked = [...deduped.values()]
       .sort((left, right) => right.score - left.score || String(left.title || "").localeCompare(String(right.title || "")));
-    const searchFallback = ranked.find((result) => result.kind === "search") || null;
-    if (!searchFallback) return ranked.slice(0, LAUNCHER_RESULT_LIMIT);
 
     return [
       ...ranked.filter((result) => result.kind !== "search").slice(0, LAUNCHER_RESULT_LIMIT - 1),
-      searchFallback,
+      regularSearchFallback(query),
     ];
   };
 
