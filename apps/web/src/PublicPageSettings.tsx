@@ -140,6 +140,11 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
         else next.delete(bookmark.id);
         return next;
       });
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        next.delete(bookmark.id);
+        return next;
+      });
       setNotice(`${nextPublished ? "Published" : "Unpublished"} “${bookmark.title}”.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not update this bookmark.");
