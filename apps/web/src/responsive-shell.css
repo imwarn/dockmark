@@ -1,0 +1,191 @@
+:root {
+  --dm-private-nav-height: 46px;
+  --dm-secondary-nav-height: 64px;
+  --dm-shell-gutter: 20px;
+}
+
+.shell {
+  width: min(1100px, calc(100% - (2 * var(--dm-shell-gutter))));
+}
+
+.private-utility-bar {
+  height: var(--dm-private-nav-height);
+  min-height: var(--dm-private-nav-height);
+  overflow: hidden;
+  padding-inline: max(var(--dm-shell-gutter), calc((100vw - 1100px) / 2));
+}
+
+.private-utility-brand {
+  flex: 0 0 auto;
+}
+
+.private-utility-bar nav,
+.workspace-section-nav {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.private-utility-bar nav::-webkit-scrollbar,
+.workspace-section-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.private-utility-bar nav {
+  flex: 0 1 auto;
+  margin-left: auto;
+}
+
+.private-utility-bar nav button,
+.workspace-section-nav .ghost {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.topbar {
+  position: sticky;
+  top: var(--dm-private-nav-height);
+  z-index: 25;
+  height: var(--dm-secondary-nav-height);
+  min-height: var(--dm-secondary-nav-height);
+  gap: 18px;
+  background: color-mix(in srgb, var(--dm-bg) 94%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.topbar .brand {
+  flex: 0 0 auto;
+}
+
+.workspace-section-nav {
+  flex: 0 1 auto;
+  max-width: 100%;
+  margin-left: auto;
+  scroll-padding-inline: 8px;
+}
+
+.workspace-section-nav .ghost {
+  scroll-snap-align: start;
+}
+
+.manager-sidebar,
+.search-engine-form {
+  top: calc(var(--dm-private-nav-height) + var(--dm-secondary-nav-height) + 18px);
+}
+
+.command-footer {
+  flex-wrap: wrap;
+}
+
+.command-footer span {
+  flex-wrap: wrap;
+}
+
+.panel-heading {
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --dm-shell-gutter: 16px;
+  }
+
+  .topbar {
+    gap: 10px;
+  }
+
+  .topbar .brand > span:not(.brand-mark) {
+    display: none;
+  }
+
+  .workspace-section-nav {
+    flex: 1 1 auto;
+  }
+
+  .workspace-section-nav .ghost {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --dm-shell-gutter: 12px;
+  }
+
+  .private-utility-bar {
+    gap: 10px;
+  }
+
+  .private-utility-bar nav {
+    flex: 1 1 auto;
+  }
+
+  .topbar {
+    gap: 8px;
+  }
+
+  .topbar .brand-mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .panel-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .command-footer {
+    gap: 8px;
+  }
+
+  .result {
+    gap: 9px;
+    padding-inline: 8px;
+  }
+
+  .pill {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar .brand {
+    display: none;
+  }
+
+  .workspace-section-nav {
+    flex: 1 1 100%;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .hero {
+    padding-top: 42px;
+    padding-bottom: 34px;
+  }
+
+  .hero h1 {
+    font-size: clamp(34px, 11vw, 44px);
+  }
+
+  .command {
+    min-height: 56px;
+    padding-left: 13px;
+  }
+
+  .command-shortcuts {
+    display: none;
+  }
+
+  .command-footer > span {
+    width: 100%;
+  }
+
+  .feature-grid {
+    margin-top: 34px;
+  }
+}
