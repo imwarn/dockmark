@@ -20,7 +20,7 @@
 .session-nav-item > span:last-child { display: grid; min-width: 0; gap: 3px; }
 .session-nav-item strong, .session-nav-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-nav-item strong { font-size: 13px; font-weight: 590; }
-.session-nav-item small { color: #707b75; font-size: 10px; }
+.session-nav-item small { color: var(--dm-text-muted); font-size: 10px; }
 .session-nav-icon {
   display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border: 1px solid #303a35;
   border-radius: 10px; background: #1a211d; color: #a7c8b2; font-size: 11px; font-weight: 700;
@@ -33,7 +33,7 @@
   display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #35413a; border-radius: 12px;
   background: #19211c; color: #afd1ba; font-size: 20px;
 }
-.session-header-content p { margin: 8px 0 0 53px; color: #77827c; font-size: 12px; }
+.session-header-content p { margin: 8px 0 0 53px; color: var(--dm-text-muted); font-size: 12px; }
 .session-header-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .session-add-card { display: grid; gap: 12px; }
 .session-add-fields { display: grid; grid-template-columns: .9fr 1.5fr auto auto; gap: 9px; align-items: center; }
@@ -49,13 +49,13 @@
 .session-item-copy { display: grid; flex: 1; min-width: 0; gap: 4px; }
 .session-item-copy a, .session-item-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-item-copy strong { font-size: 14px; font-weight: 590; }
-.session-item-copy small { color: #707b75; }
+.session-item-copy small { color: var(--dm-text-muted); }
 .session-item-meta { display: flex; gap: 8px; color: #819087; font-size: 10px; }
 .session-item-meta span { padding: 2px 6px; border: 1px solid #2b342f; border-radius: 999px; }
 .session-item-actions { display: flex; align-items: center; gap: 7px; }
 .session-item-edit { grid-template-columns: .9fr 1.5fr auto; align-items: center; }
 .session-item-edit .edit-actions { grid-column: 1 / -1; margin-top: 0; }
-.session-web-note { margin: 4px 4px 0; color: #6f7a74; font-size: 11px; line-height: 1.6; }
+.session-web-note { margin: 4px 4px 0; color: var(--dm-text-muted); font-size: 11px; line-height: 1.6; }
 .session-empty { min-height: 220px; align-content: center; }
 .result-button { width: 100%; border: 0; color: inherit; background: transparent; cursor: pointer; }
 

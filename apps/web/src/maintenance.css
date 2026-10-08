@@ -6,7 +6,7 @@
 .maintenance-list-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; }
 .maintenance-list-tools input { min-width: 0; height: 36px; padding: 0 11px; border: 1px solid #2d3932; border-radius: 9px; color: #dbe5df; background: #0f1512; font: inherit; font-size: 11px; outline: none; }
 .maintenance-list-tools input:focus { border-color: #6d987a; box-shadow: 0 0 0 2px rgb(109 152 122 / 16%); }
-.maintenance-list-tools span { color: #6f7b74; font-size: 9px; white-space: nowrap; }
+.maintenance-list-tools span { color: #6f7b74; font-size: 10px; white-space: nowrap; }
 .maintenance-list-scroll { display: grid; align-content: start; gap: 7px; min-height: 0; overflow-y: scroll; padding-right: 4px; scrollbar-gutter: stable; }
 .maintenance-list-scroll::-webkit-scrollbar { width: 8px; }
 .maintenance-list-scroll::-webkit-scrollbar-track { border-radius: 999px; background: #101612; }
@@ -19,7 +19,7 @@
 .maintenance-list-item strong, .maintenance-list-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .maintenance-list-item strong { font-size: 13px; }
 .maintenance-list-item small { color: #77827c; font-size: 10px; }
-.maintenance-list-item em { font-size: 9px; font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
+.maintenance-list-item em { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
 .maintenance-inspector { display: grid; gap: 14px; min-width: 0; }
 .maintenance-card { display: grid; gap: 16px; padding: 18px; }
 .maintenance-card-heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; }
@@ -33,7 +33,7 @@
 .metadata-fields { display: grid; gap: 8px; }
 .metadata-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 58px; padding: 10px 12px; border: 1px solid #27312c; border-radius: 11px; background: #0f1512; }
 .metadata-row > span, .redirect-review > span { display: grid; gap: 4px; min-width: 0; }
-.metadata-row small, .redirect-review small { color: #6f7b74; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.metadata-row small, .redirect-review small { color: #6f7b74; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .metadata-row strong, .redirect-review strong { overflow-wrap: anywhere; color: #bdc9c1; font-size: 11px; font-weight: 550; line-height: 1.45; }
 .redirect-review { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px; border: 1px solid #42604c; border-radius: 12px; background: #101b14; }
 .health-actions { display: flex; flex: 0 0 auto; gap: 8px; }
@@ -43,7 +43,7 @@
 .health-history-row { display: grid; grid-template-columns: 105px 58px 48px 74px minmax(120px,1fr) 150px; align-items: center; gap: 10px; min-height: 38px; padding: 7px 9px; border-bottom: 1px solid #222b27; color: #849089; font-size: 10px; }
 .health-history-row:last-child { border-bottom: 0; }
 .health-history-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.health-source { color: #66736c; font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
+.health-source { color: #66736c; font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
 .health-source.source-extension { color: #9fb9a7; }
 .maintenance-health { color: #76827b; }
 .cleanup-panel { display: grid; gap: 14px; padding: 18px; order: 4; scroll-margin-top: 18px; }

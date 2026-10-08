@@ -60,7 +60,9 @@
   padding: 11px 12px;
   border: 1px solid transparent;
   border-radius: 11px;
-  color: var(--dm-text-muted);
+  /* Section labels rather than supporting copy, so they need the soft text
+     colour to stay legible at 10-12px. */
+  color: var(--dm-text-soft);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -135,6 +137,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   min-height: 46px;
   margin-bottom: 10px;
   padding: 8px 10px;
@@ -142,12 +145,12 @@
   border-radius: 11px;
   background: color-mix(in srgb, var(--dm-bg-soft) 78%, transparent);
 }
-.public-select-visible { display: inline-flex; align-items: center; gap: 7px; color: var(--dm-text-soft); font-size: 10px; cursor: pointer; white-space: nowrap; }
+.public-select-visible { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; color: var(--dm-text-soft); font-size: 10px; cursor: pointer; white-space: nowrap; }
 .public-select-visible input,
 .public-bookmark-select input { width: 16px; height: 16px; margin: 0; accent-color: var(--dm-accent); }
-.public-selected-count { color: var(--dm-text-muted); font-size: 10px; white-space: nowrap; }
-.public-bulk-actions { display: flex; align-items: center; gap: 7px; margin-left: auto; }
-.public-bulk-actions .secondary { min-height: 32px; padding-inline: 9px; font-size: 10px; }
+.public-selected-count { flex: 0 1 auto; min-width: 0; color: var(--dm-text-muted); font-size: 10px; white-space: nowrap; }
+.public-bulk-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; margin-left: auto; }
+.public-bulk-actions .secondary { min-height: 32px; padding-inline: 9px; font-size: 10px; white-space: nowrap; }
 
 .public-bookmark-manager { align-content: start; }
 .public-bookmark-row.public-bookmark-manage {

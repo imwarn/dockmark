@@ -68,7 +68,7 @@
   border-radius: 999px;
   background: var(--dm-accent-bg);
   color: var(--dm-accent-strong);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -163,9 +163,9 @@
 .bookmark-meta-line { display: flex; align-items: center; gap: 9px; min-width: 0; flex-wrap: wrap; }
 .bookmark-tags { display: flex; gap: 5px; min-width: 0; flex-wrap: wrap; }
 .bookmark-tags button {
-  min-height: 21px;
-  padding: 0 7px;
-  font-size: 9px;
+  min-height: 26px;
+  padding: 0 9px;
+  font-size: 10px;
 }
 
 @media (max-width: 860px) {

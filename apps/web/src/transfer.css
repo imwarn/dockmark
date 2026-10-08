@@ -2,7 +2,7 @@
 .transfer-grid { display: grid; grid-template-columns: 1.35fr .65fr; gap: 14px; margin: 18px 0; }
 .transfer-card { min-height: 190px; }
 .native-import-card { display: grid; gap: 16px; margin-bottom: 18px; }
-.native-readonly { align-self: start; padding: 4px 7px; border: 1px solid #31513d; border-radius: 999px; color: #96bca3; font-size: 9px; letter-spacing: .08em; }
+.native-readonly { align-self: start; padding: 4px 7px; border: 1px solid #31513d; border-radius: 999px; color: #96bca3; font-size: 10px; letter-spacing: .08em; }
 .native-import-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .native-import-actions > span { color: #748078; font-size: 11px; }
 .file-drop { min-height: 112px; display: grid; place-items: center; align-content: center; gap: 6px; padding: 20px; border: 1px dashed #35413a; border-radius: 13px; background: #0d1210; cursor: pointer; text-align: center; }
@@ -21,7 +21,7 @@
 .preview-actions { display: flex; align-items: center; gap: 10px; }
 .import-stats, .mapping-stats { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid #242c28; }
 .import-stats.native-stats { grid-template-columns: repeat(6, 1fr); }
-.import-stats span, .mapping-stats span { display: grid; gap: 2px; padding: 13px 16px; color: #6f7a74; border-right: 1px solid #242c28; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.import-stats span, .mapping-stats span { display: grid; gap: 2px; padding: 13px 16px; color: var(--dm-text-muted); border-right: 1px solid #242c28; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .import-stats span:last-child, .mapping-stats span:last-child { border-right: 0; }
 .import-stats strong, .mapping-stats strong { color: #c7d2cc; font-size: 17px; font-weight: 580; letter-spacing: -.02em; }
 .import-list, .mapping-list { max-height: 520px; overflow: auto; padding: 6px; }
@@ -33,7 +33,7 @@
 .import-copy strong { font-size: 13px; font-weight: 580; }
 .import-copy small { color: #707c75; }
 .import-copy span { color: #88938d; font-size: 10px; }
-.import-status { padding: 4px 7px; border: 1px solid #303a35; border-radius: 999px; color: #839087; font-size: 9px; letter-spacing: .06em; }
+.import-status { padding: 4px 7px; border: 1px solid #303a35; border-radius: 999px; color: #839087; font-size: 10px; letter-spacing: .06em; }
 .status-duplicate, .status-invalid { opacity: .56; }
 .status-mapped { opacity: .62; }
 .status-mapped .import-status { color: #8db99c; border-color: #31513d; }
@@ -47,7 +47,7 @@
 .mapping-copy strong, .mapping-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mapping-copy strong { font-size: 13px; font-weight: 580; }
 .mapping-copy small { color: #707c75; font-size: 11px; }
-.mapping-status { flex: 0 0 auto; padding: 4px 7px; border: 1px solid #303a35; border-radius: 999px; color: #839087; font-size: 9px; letter-spacing: .06em; white-space: nowrap; }
+.mapping-status { flex: 0 0 auto; padding: 4px 7px; border: 1px solid #303a35; border-radius: 999px; color: #839087; font-size: 10px; letter-spacing: .06em; white-space: nowrap; }
 .mapping-status-synced { color: #8db99c; border-color: #31513d; }
 .mapping-status-native-changed, .mapping-status-mapping-stale { color: #c5b87d; border-color: #4b452b; }
 .mapping-status-native-missing, .mapping-status-cloud-missing { color: #c6a071; border-color: #4e3d29; }
@@ -58,7 +58,7 @@
 .mapping-review-panel > p { margin: 0; color: #bda39f; font-size: 11px; line-height: 1.55; }
 .mapping-review-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .mapping-review-sides > div { display: grid; gap: 6px; min-width: 0; padding: 11px; border: 1px solid #2b342f; border-radius: 11px; background: rgba(10,15,13,.58); }
-.mapping-review-sides span { color: #849087; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.mapping-review-sides span { color: #849087; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .mapping-review-sides strong, .mapping-review-sides small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mapping-review-sides strong { display: grid; gap: 3px; padding: 8px 9px; border: 1px solid #35433b; border-radius: 8px; background: rgba(52,72,61,.2); color: #e0ebe5; font-size: 13px; }
 .mapping-review-sides strong::before { content: "TITLE"; color: #8fbc9f; font-size: 8px; font-weight: 700; letter-spacing: .1em; }

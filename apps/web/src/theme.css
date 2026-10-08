@@ -7,7 +7,9 @@
   --dm-border-strong: #34403a;
   --dm-text: #edf3ef;
   --dm-text-soft: #a9b4ad;
-  --dm-text-muted: #75817a;
+  /* Lifted from #75817a to clear 4.5:1 against the card surfaces; muted copy is
+     used for small 10-12px supporting text throughout the app. */
+  --dm-text-muted: #8b968f;
   --dm-accent: #91bc9f;
   --dm-accent-strong: #b8e0c5;
   --dm-accent-bg: #1d2a23;
@@ -28,7 +30,9 @@ html[data-theme="light"] {
   --dm-border-strong: #b7c9bf;
   --dm-text: #173126;
   --dm-text-soft: #4e665b;
-  --dm-text-muted: #73867c;
+  /* Darkened from #73867c to clear 4.5:1 on both white cards and the page
+     background, since muted copy is small 10-12px supporting text. */
+  --dm-text-muted: #5f7168;
   --dm-accent: #4f8063;
   --dm-accent-strong: #315f47;
   --dm-accent-bg: #dceae1;
@@ -58,7 +62,9 @@ body::before {
 html[data-theme="light"] .topbar,
 html[data-theme="light"] .public-topbar,
 html[data-theme="light"] .public-footer { border-color: var(--dm-border); }
-html[data-theme="light"] .ghost,
+/* Nav buttons are 16px body text, so light mode needs the softer text colour to
+   clear 4.5:1 rather than the muted tone used for small supporting copy. */
+html[data-theme="light"] .ghost { color: var(--dm-text-soft); }
 html[data-theme="light"] .public-intro,
 html[data-theme="light"] .settings-heading p { color: var(--dm-text-muted); }
 html[data-theme="light"] .ghost:hover,
@@ -67,7 +73,9 @@ html[data-theme="light"] .settings,
 html[data-theme="light"] .secondary,
 html[data-theme="light"] .public-manage,
 html[data-theme="light"] .library-count { border-color: var(--dm-border); background: var(--dm-bg-card); color: var(--dm-text-soft); }
-html[data-theme="light"] .primary { border-color: #6c9a7d; background: #74a889; color: #f8fffa; }
+/* White on the brand green only reaches ~2.7:1, so the light theme uses the same
+   dark-on-green treatment as dark mode to stay readable. */
+html[data-theme="light"] .primary { border-color: #6c9a7d; background: #74a889; color: #0a100d; font-weight: 650; }
 html[data-theme="light"] .form-card,
 html[data-theme="light"] .panel,
 html[data-theme="light"] .bookmark-card,

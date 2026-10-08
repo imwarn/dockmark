@@ -64,16 +64,24 @@
 .workspace-nav-item small { color: #6d7872; font-size: 11px; }
 .workspace-nav-icon,
 .workspace-large-icon {
-  display: grid;
-  place-items: center;
+  /* Workspace icons hold free-form emoji or words that can render much wider
+     than the badge. Centring with `place-items` overflows in both directions and
+     is not clipped, so use an inline-flex box that clips cleanly instead. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
+  overflow: hidden;
   border: 1px solid #313b35;
   background: #1b231e;
   color: #b8d6c1;
   font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1;
 }
-.workspace-nav-icon { width: 34px; height: 34px; border-radius: 10px; }
-.workspace-large-icon { width: 46px; height: 46px; border-radius: 13px; }
+.workspace-nav-icon { width: 34px; height: 34px; border-radius: 10px; font-size: 17px; }
+.workspace-large-icon { width: 46px; height: 46px; border-radius: 13px; font-size: 22px; }
 
 .workspace-header-content {
   display: flex;
@@ -112,14 +120,14 @@
 .workspace-item-copy a,
 .workspace-item-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-item-copy strong { font-size: 14px; font-weight: 590; }
-.workspace-item-copy small { color: #707b75; }
+.workspace-item-copy small { color: var(--dm-text-muted); }
 .workspace-item-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .workspace-item-meta span {
   padding: 3px 6px;
   border: 1px solid #2d3631;
   border-radius: 999px;
-  color: #77847d;
-  font-size: 9px;
+  color: var(--dm-text-muted);
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: .05em;
 }
@@ -127,7 +135,7 @@
 .workspace-item-actions .text-action:disabled { opacity: .3; cursor: default; }
 .workspace-item-edit { width: 100%; grid-template-columns: 1fr 1.4fr 180px; align-items: end; }
 .workspace-item-edit .edit-actions { margin-top: 0; }
-.workspace-web-note { margin: 5px 2px 0; color: #68736d; font-size: 11px; line-height: 1.55; }
+.workspace-web-note { margin: 5px 2px 0; color: var(--dm-text-muted); font-size: 11px; line-height: 1.55; }
 .workspace-empty { margin-top: 0; }
 
 @media (max-width: 900px) {

@@ -4,6 +4,29 @@ import { browser } from "wxt/browser";
 import { ReviewedCapture } from "./ReviewedCapture";
 import "./style.css";
 
+// The popup shares the Dockmark appearance preference with New Tab and Web, so it
+// resolves the same storage key instead of staying pinned to dark.
+const APPEARANCE_KEY = "dockmarkAppearanceV1";
+
+function applyAppearance(preference: string, persist = true) {
+  const normalized = preference === "light" || preference === "dark" || preference === "system" ? preference : "system";
+  const theme = normalized === "system"
+    ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+    : normalized;
+  document.documentElement.dataset.appearance = normalized;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "light" ? "#f4f7f5" : "#0a0f0c");
+  if (persist) localStorage.setItem(APPEARANCE_KEY, normalized);
+  return normalized;
+}
+
+applyAppearance(localStorage.getItem(APPEARANCE_KEY) ?? "system", false);
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+  applyAppearance(localStorage.getItem(APPEARANCE_KEY) ?? "system", false);
+});
+
 type TabSummary = {
   id?: number;
   title: string;

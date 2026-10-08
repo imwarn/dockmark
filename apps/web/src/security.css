@@ -1,4 +1,6 @@
 .private-utility-bar {
+  /* The utility bar sits above the sticky section bar, so it needs an opaque,
+     theme-aware backdrop instead of a hard-coded dark fill. */
   position: sticky;
   top: 0;
   z-index: 30;
@@ -6,26 +8,26 @@
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  min-height: 46px;
-  padding: 0 max(20px, calc((100vw - 1100px) / 2));
-  border-bottom: 1px solid #202723;
-  background: rgba(9, 13, 11, .92);
+  border-bottom: 1px solid var(--dm-border);
+  background: color-mix(in srgb, var(--dm-bg) 94%, transparent);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
-.private-utility-brand { display: inline-flex; align-items: center; gap: 8px; color: #9eaaa4; font-size: 12px; }
-.private-utility-brand span { color: #b9dfc6; font-weight: 800; }
+.private-utility-brand { display: inline-flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 6px; margin-left: -6px; border-radius: 8px; color: var(--dm-text-soft); font-size: 12px; }
+.private-utility-brand:hover { background: color-mix(in srgb, var(--dm-accent) 12%, transparent); color: var(--dm-text); }
+.private-utility-brand span { color: var(--dm-accent-strong); font-weight: 800; }
 .private-utility-bar nav { display: flex; gap: 5px; }
 .private-utility-bar nav button {
   padding: 7px 10px;
   border: 0;
   border-radius: 8px;
-  color: #7e8a84;
+  color: var(--dm-text-soft);
   background: transparent;
   cursor: pointer;
   font-size: 11px;
 }
 .private-utility-bar nav button:hover,
-.private-utility-bar nav button.active { color: #edf3ef; background: #151b18; }
+.private-utility-bar nav button.active { color: var(--dm-text); background: var(--dm-bg-raised); }
 .private-inbox-nav { display: inline-flex; align-items: center; gap: 6px; }
 .private-inbox-badge {
   display: inline-grid;
@@ -37,7 +39,7 @@
   border-radius: 999px;
   background: var(--dm-accent-bg);
   color: var(--dm-accent-strong);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   line-height: 1;
 }
@@ -81,7 +83,7 @@
 .public-bookmark-row > span { display: grid; gap: 3px; min-width: 0; }
 .public-bookmark-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .public-bookmark-row small { overflow: hidden; color: #6f7a74; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.public-bookmark-row em { color: #66736b; font-size: 9px; font-style: normal; letter-spacing: .08em; }
+.public-bookmark-row em { color: #66736b; font-size: 10px; font-style: normal; letter-spacing: .08em; }
 .public-bookmark-row:has(input:checked) { border-color: #476050; background: #121a15; }
 .public-bookmark-row:has(input:checked) em { color: #99c5a7; }
 

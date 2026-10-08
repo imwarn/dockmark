@@ -31,7 +31,7 @@
 .duplicate-member p { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .duplicate-member-evidence { display: grid; gap: 7px; margin-top: 12px; }
 .duplicate-member-evidence > div { display: grid; gap: 3px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--panel) 86%, var(--accent) 4%); }
-.duplicate-member-evidence span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.duplicate-member-evidence span { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
 .duplicate-member-evidence code { color: var(--text); font-size: 10px; overflow-wrap: anywhere; }
 .duplicate-member-evidence > small { color: var(--muted); font-size: 10px; }
 .duplicate-vs { display: grid; place-items: center; color: var(--muted); border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-size: 18px; }

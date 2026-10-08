@@ -6,10 +6,13 @@
 .bookmark-drag-handle { align-self: stretch; display: grid; place-items: center; padding-right: 2px; }
 .reorder-action:disabled { opacity: .28; cursor: default; }
 .grouped-bookmark-list { gap: 16px; }
-.bookmark-group { display: grid; gap: 7px; }
-.bookmark-group-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; color: #91a098; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+/* Grid children default to min-width:auto, which lets a long bookmark title
+   size the track and push the whole management column past the viewport. */
+.bookmark-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
+.bookmark-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 4px; color: #91a098; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
 .bookmark-group-heading > span { color: #5f6b65; }
-.bookmark-group-items { display: grid; gap: 8px; }
+.bookmark-group-items { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.bookmark-group-items > * { min-width: 0; }
 .reorder-button { min-width: 34px; padding: 0 8px; }
 @media (max-width: 720px) {
   .bookmark-drag-handle { display: none; }

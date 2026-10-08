@@ -22,7 +22,7 @@
 .extension-profile-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .extension-profile-heading h2 { margin: 5px 0 0; font-size: 22px; letter-spacing: -.025em; }
 .extension-profile-kicker { color: #769683; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
-.extension-profile-badge { flex: 0 0 auto; padding: 6px 8px; border: 1px solid #33443a; border-radius: 999px; color: #88a995; font-size: 9px; letter-spacing: .06em; }
+.extension-profile-badge { flex: 0 0 auto; padding: 6px 8px; border: 1px solid #33443a; border-radius: 999px; color: #88a995; font-size: 10px; letter-spacing: .06em; }
 .extension-profile > p { margin: 15px 0 0; color: #849088; font-size: 13px; line-height: 1.6; }
 .extension-profile ul { display: grid; gap: 7px; margin: 15px 0 0; padding-left: 18px; color: #748078; font-size: 12px; line-height: 1.5; }
 .extension-profile .extension-actions { margin-top: 18px; }

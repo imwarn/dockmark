@@ -18,7 +18,7 @@
 .inbox-title-line a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 700; text-decoration: none; }
 .inbox-title-line a:hover { color: var(--accent); }
 .inbox-title-line > span { flex: 0 0 auto; padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
-.inbox-ai-select { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 999px; color: var(--accent); cursor: pointer; font-size: 9px; font-weight: 700; letter-spacing: .06em; }
+.inbox-ai-select { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 999px; color: var(--accent); cursor: pointer; font-size: 10px; font-weight: 700; letter-spacing: .06em; }
 .inbox-ai-select input { margin: 0; accent-color: var(--accent); }
 .inbox-ai-select.disabled { border-color: var(--line); color: var(--muted); cursor: not-allowed; opacity: .62; }
 .inbox-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 7px; color: var(--muted); font-size: 11px; }
@@ -39,12 +39,12 @@
 .inbox-metadata-field.available { border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); }
 .inbox-metadata-field input { margin: 0; accent-color: var(--accent); }
 .inbox-metadata-field > span, .inbox-metadata-info > span { display: grid; gap: 2px; min-width: 0; }
-.inbox-metadata-field small, .inbox-metadata-info small { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.inbox-metadata-field small, .inbox-metadata-info small { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
 .inbox-metadata-field strong, .inbox-metadata-info strong { overflow: hidden; color: var(--text); font-size: 11px; font-weight: 600; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
-.inbox-metadata-field em, .inbox-metadata-info em { color: var(--muted); font-size: 9px; font-style: normal; text-align: right; white-space: nowrap; }
+.inbox-metadata-field em, .inbox-metadata-info em { color: var(--muted); font-size: 10px; font-style: normal; text-align: right; white-space: nowrap; }
 .inbox-metadata-field.available em { color: var(--accent); }
 .inbox-metadata-info { grid-template-columns: minmax(0, 1fr) auto; padding-left: 34px; }
-.inbox-metadata-footnote { color: var(--muted); font-size: 9px; }
+.inbox-metadata-footnote { color: var(--muted); font-size: 10px; }
 .inbox-empty { display: grid; justify-items: center; gap: 7px; padding: 58px 24px; color: var(--muted); text-align: center; }
 .inbox-empty strong { color: var(--text); }
 .inbox-notice { margin: 0 0 14px; padding: 12px 14px; border-radius: 12px; font-size: 12px; }
@@ -71,8 +71,8 @@
 .inbox-ai-suggestion input { margin: 0; accent-color: var(--accent); }
 .inbox-ai-suggestion > span { display: grid; gap: 2px; min-width: 0; }
 .inbox-ai-suggestion strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.inbox-ai-suggestion small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
-.inbox-ai-suggestion em { color: var(--accent); font-size: 9px; font-style: normal; text-align: right; white-space: nowrap; }
+.inbox-ai-suggestion small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.inbox-ai-suggestion em { color: var(--accent); font-size: 10px; font-style: normal; text-align: right; white-space: nowrap; }
 
 @media (max-width: 760px) {
   .inbox-shell { width: min(100% - 24px, 1120px); padding-top: 28px; }
