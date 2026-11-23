@@ -90,13 +90,13 @@ html[data-theme="light"] .launcher-tab-chip {
 }
 html[data-theme="light"] .command { border-color: var(--dm-border-strong); background: rgba(255,255,255,.94); box-shadow: 0 16px 48px rgba(40,67,54,.08); }
 html[data-theme="light"] .command input,
-html[data-theme="light"] .public-search input,
+html[data-theme="light"] .public-search input { color: var(--dm-text); background: transparent; border: 0; }
 html[data-theme="light"] .field-grid input,
 html[data-theme="light"] .field-grid select,
 html[data-theme="light"] .compact-form input,
 html[data-theme="light"] .category-edit input,
 html[data-theme="light"] .settings-field input,
-html[data-theme="light"] .settings-field select { color: var(--dm-text); background: #fff; border-color: var(--dm-border); }
+html[data-theme="light"] .settings-field select { color: var(--dm-text); background-color: #fff; border-color: var(--dm-border); }
 html[data-theme="light"] .command input::placeholder { color: #7e9187; }
 html[data-theme="light"] kbd { color: var(--dm-text-muted); border-color: var(--dm-border); background: var(--dm-bg-soft); }
 html[data-theme="light"] .result:hover,

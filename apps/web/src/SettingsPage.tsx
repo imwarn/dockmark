@@ -1,11 +1,12 @@
 /**
- * [INPUT]: depends on listBookmarks/listCategories from ./api, useI18n from ./i18n, AppearanceSettings, BrowserSettingsManager, SecuritySettings, PublicPageSettings, and settings/security CSS
- * [OUTPUT]: exports SettingsPage shell and client-side /app/settings/* sub-router
- * [POS]: Mounted by PrivateRoot for /app/settings/*. Coordinates four configuration panels without mixing library editing.
+ * [INPUT]: depends on listBookmarks/listCategories from ./api, useI18n from ./i18n, AppearanceSettings, BrowserSettingsManager, AiProviderSettingsPage, SecuritySettings, PublicPageSettings, and settings/security CSS
+ * [OUTPUT]: exports SettingsPage shell and client-side /app/settings/* sub-router across 5 settings tabs
+ * [POS]: Mounted by PrivateRoot for /app/settings/*. Coordinates Appearance & Language, Browser, AI Service, Security, and Public Page panels.
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
+import { AiProviderSettingsPage } from "./AiProviderSettingsPage";
 import { listBookmarks, listCategories } from "./api";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { BrowserSettingsManager } from "./BrowserSettingsManager";
@@ -15,11 +16,11 @@ import { SecuritySettings } from "./SecuritySettings";
 import "./settings.css";
 import "./security.css";
 
-type SettingsView = "appearance" | "browser" | "security" | "public";
+type SettingsView = "appearance" | "browser" | "ai" | "security" | "public";
 
 function settingsView(pathname: string): SettingsView {
   const segment = pathname.split("/").filter(Boolean).at(-1);
-  return segment === "browser" || segment === "security" || segment === "public" || segment === "appearance"
+  return segment === "browser" || segment === "ai" || segment === "security" || segment === "public" || segment === "appearance"
     ? segment
     : "appearance";
 }
@@ -48,7 +49,12 @@ export function SettingsPage() {
       {
         id: "browser",
         label: tx("Browser", "浏览器与新标签页"),
-        detail: tx("New Tab launcher and sync preferences.", "新标签页启动台与同步偏好。"),
+        detail: tx("New Tab launcher, shortcuts and sync.", "新标签页启动台、快捷键与同步。"),
+      },
+      {
+        id: "ai",
+        label: tx("AI Service", "AI 服务"),
+        detail: tx("OpenAI-compatible endpoint, model and Worker key status.", "OpenAI 兼容接口、模型预设与 Worker 密钥状态。"),
       },
       {
         id: "security",
@@ -58,7 +64,7 @@ export function SettingsPage() {
       {
         id: "public",
         label: tx("Public Page", "公开主页"),
-        detail: tx("Publish and order curated links.", "发布与排序精选公开链接。"),
+        detail: tx("Navigation station look, publishing and order.", "导航站外观配置、书签公开与排序。"),
       },
     ],
     [tx],
@@ -118,6 +124,7 @@ export function SettingsPage() {
       {error && <div className="error-banner" role="alert">{error}</div>}
       {view === "appearance" && <AppearanceSettings />}
       {view === "browser" && <BrowserSettingsManager />}
+      {view === "ai" && <AiProviderSettingsPage />}
       {view === "security" && <SecuritySettings />}
       {view === "public" && (
         publicDataLoaded

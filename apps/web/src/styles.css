@@ -326,10 +326,10 @@ kbd { padding: 4px 7px; color: var(--dm-text-muted); border: 1px solid #303934; 
 .field-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
 .field-grid label { display: grid; gap: 6px; color: var(--dm-text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
 .field-grid input, .field-grid select, .compact-form input, .category-edit input {
-  width: 100%; min-width: 0; height: 40px; padding: 0 11px; border: 1px solid #303934; border-radius: 10px; outline: 0; color: #edf3ef; background: #0e1311;
+  width: 100%; min-width: 0; height: 40px; padding: 0 11px; border: 1px solid #303934; border-radius: 10px; outline: 0; color: #edf3ef; background-color: #0e1311;
 }
 .field-grid input:focus, .field-grid select:focus, .compact-form input:focus, .category-edit input:focus { border-color: #729f82; box-shadow: 0 0 0 3px rgba(114,159,130,.1); }
-.field-grid select { appearance: auto; }
+.field-grid select { padding-right: 34px; }
 .primary, .secondary, .danger-button {
   min-height: 34px;
   padding: 0 12px;

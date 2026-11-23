@@ -1,7 +1,7 @@
 /**
- * [INPUT]: depends on DEFAULT_BROWSER_SETTINGS, normalizeBrowserSettings, BrowserSettings, SearchEngine from @dockmark/core; useI18n from ./i18n; and ./settings.css
- * [OUTPUT]: exports BrowserSettingsManager panel for local-first and cloud-synced New Tab and bookmark conflict policies
- * [POS]: Shared between SettingsPage (/app/settings/browser) and BrowserExtensionManager (/app/extension). Persists settings to localStorage and PATCH /api/settings/browser.
+ * [INPUT]: depends on DEFAULT_BROWSER_SETTINGS, normalizeBrowserSettings, BrowserSettings, LauncherShortcutKey, SearchEngine from @dockmark/core; useI18n from ./i18n; and ./settings.css
+ * [OUTPUT]: exports BROWSER_SETTINGS_STORAGE_KEY, BROWSER_SETTINGS_EVENT, readLocalBrowserSettings, and BrowserSettingsManager panel for launcher shortcuts, New Tab preferences, and bookmark conflict policies
+ * [POS]: Shared between SettingsPage (/app/settings/browser) and BrowserExtensionManager (/app/extension). Persists settings to localStorage, broadcasts dockmark:browser-settings, and syncs via PATCH /api/settings/browser.
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 import { useEffect, useMemo, useState } from "react";
@@ -9,27 +9,35 @@ import {
   DEFAULT_BROWSER_SETTINGS,
   normalizeBrowserSettings,
   type BrowserSettings,
+  type LauncherShortcutKey,
   type SearchEngine,
 } from "@dockmark/core";
 import { useI18n } from "./i18n";
 import "./settings.css";
 
-const LOCAL_SETTINGS_KEY = "dockmarkBrowserSettingsV1";
+export const BROWSER_SETTINGS_STORAGE_KEY = "dockmarkBrowserSettingsV1";
+export const BROWSER_SETTINGS_EVENT = "dockmark:browser-settings";
 
-function readLocalSettings() {
+export function readLocalBrowserSettings(): BrowserSettings {
   try {
-    const raw = window.localStorage.getItem(LOCAL_SETTINGS_KEY);
+    const raw = window.localStorage.getItem(BROWSER_SETTINGS_STORAGE_KEY);
     return raw ? normalizeBrowserSettings(JSON.parse(raw)) : normalizeBrowserSettings(DEFAULT_BROWSER_SETTINGS);
   } catch {
     return normalizeBrowserSettings(DEFAULT_BROWSER_SETTINGS);
   }
 }
 
-function writeLocalSettings(settings: BrowserSettings) {
-  window.localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(settings));
+export function writeLocalBrowserSettings(settings: BrowserSettings) {
+  const normalized = normalizeBrowserSettings(settings);
+  try {
+    window.localStorage.setItem(BROWSER_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+  } catch {
+    // Ignore storage quota or private-browsing failures.
+  }
+  window.dispatchEvent(new CustomEvent(BROWSER_SETTINGS_EVENT, { detail: normalized }));
 }
 
-async function fetchCloudSettings() {
+export async function fetchCloudBrowserSettings(): Promise<BrowserSettings> {
   const response = await fetch("/api/settings/browser", {
     headers: { accept: "application/json" },
     cache: "no-store",
@@ -58,6 +66,8 @@ async function saveCloudSettings(settings: BrowserSettings) {
     },
     body: JSON.stringify({
       conflictPreference: settings.conflictPreference,
+      launcherShortcut: settings.launcherShortcut,
+      slashFocus: settings.slashFocus,
       newTab: settings.newTab,
     }),
   });
@@ -79,7 +89,7 @@ function dateLabel(value: string | null, locale: string, tx: (en: string, zh: st
 
 export function BrowserSettingsManager() {
   const { locale, tx } = useI18n();
-  const [settings, setSettings] = useState<BrowserSettings>(() => readLocalSettings());
+  const [settings, setSettings] = useState<BrowserSettings>(() => readLocalBrowserSettings());
   const [engines, setEngines] = useState<SearchEngine[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -88,12 +98,12 @@ export function BrowserSettingsManager() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([fetchCloudSettings(), fetchSearchEngines()])
+    void Promise.all([fetchCloudBrowserSettings(), fetchSearchEngines()])
       .then(([cloud, nextEngines]) => {
         if (cancelled) return;
         setSettings(cloud);
         setEngines(nextEngines);
-        writeLocalSettings(cloud);
+        writeLocalBrowserSettings(cloud);
         setDirty(false);
         setMessage(null);
       })
@@ -117,7 +127,7 @@ export function BrowserSettingsManager() {
 
   function update(next: BrowserSettings) {
     setSettings(next);
-    writeLocalSettings(next);
+    writeLocalBrowserSettings(next);
     setDirty(true);
     setMessage(tx("Saved locally. Sync to cloud to share this policy with Dockmark New Tab.", "已在本地保存，点击同步后将推送到云端及 Dockmark New Tab。"));
   }
@@ -141,7 +151,7 @@ export function BrowserSettingsManager() {
     try {
       const saved = await saveCloudSettings(settings);
       setSettings(saved);
-      writeLocalSettings(saved);
+      writeLocalBrowserSettings(saved);
       setDirty(false);
       setMessage(tx("Settings synced. New Tab will pick them up on its next refresh.", "设置已同步，新标签页将在下次刷新时生效。"));
     } catch (error) {
@@ -234,6 +244,64 @@ export function BrowserSettingsManager() {
               ))}
             </select>
           </label>
+        </article>
+
+        <article className="form-card settings-card settings-card-wide">
+          <div className="card-heading">
+            <div>
+              <h3>{tx("Launcher shortcuts", "启动台快捷键")}</h3>
+              <p>
+                {tx(
+                  "Choose the keyboard shortcut that jumps straight into the Dockmark command bar across Web workspace views.",
+                  "自定义在网页工作台任意页面快速唤起 Dockmark 命令框的键盘快捷键。",
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="shortcut-card-stack">
+            <div className="public-site-config-layout">
+              <span>{tx("Command palette shortcut", "唤起命令框快捷键")}</span>
+              <div className="settings-segmented" role="group" aria-label={tx("Command palette shortcut", "唤起命令框快捷键")}>
+                {([
+                  ["mod-k", "⌘K / Ctrl+K"],
+                  ["mod-j", "⌘J / Ctrl+J"],
+                  ["alt-k", "Alt+K"],
+                ] as Array<[LauncherShortcutKey, string]>).map(([shortcutValue, label]) => (
+                  <button
+                    key={shortcutValue}
+                    type="button"
+                    className={settings.launcherShortcut === shortcutValue ? "active" : ""}
+                    onClick={() => update({ ...settings, launcherShortcut: shortcutValue })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="settings-toggle">
+              <span>
+                <strong>{tx("Press / to focus search", "按 / 键快速聚焦搜索框")}</strong>
+                <small>{tx("Focus the launcher input whenever you press / outside text fields.", "在非输入焦点状态下，按 / 键自动回到启动台并聚焦命令输入框。")}</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.slashFocus}
+                onChange={(event) => update({ ...settings, slashFocus: event.target.checked })}
+              />
+            </label>
+
+            <div className="shortcut-ext-note">
+              {tx(
+                "Tip: To customize the browser-wide Dockmark extension shortcut (default ",
+                "提示：如需修改浏览器全局唤起扩展的快捷键（默认 ",
+              )}
+              <code>Alt+Shift+D</code>
+              {tx("), open ", "），请在浏览器地址栏打开 ")}
+              <code>chrome://extensions/shortcuts</code>
+              {tx(".", " 进行自定义。")}
+            </div>
+          </div>
         </article>
 
         <article className="form-card settings-card settings-card-wide">
