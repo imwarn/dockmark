@@ -92,7 +92,12 @@ textarea:focus-visible {
 .public-search:focus-within,
 .public-publish-search:focus-within,
 .bang-input:focus-within,
-.dm-search-box:focus-within {
+.dm-search-box:focus-within,
+html[data-theme="light"] .command:focus-within,
+html[data-theme="light"] .public-search:focus-within,
+html[data-theme="light"] .public-publish-search:focus-within,
+html[data-theme="light"] .bang-input:focus-within,
+html[data-theme="light"] .dm-search-box:focus-within {
   border-color: var(--dm-accent);
   box-shadow: 0 0 0 3px var(--dm-focus-ring);
 }
@@ -102,6 +107,7 @@ textarea:focus-visible {
 }
 
 html[data-theme="light"] .command:focus-within {
+  border-color: var(--dm-accent);
   box-shadow: 0 0 0 3px var(--dm-focus-ring), 0 16px 48px rgba(40, 67, 54, .08);
 }
 
@@ -290,7 +296,13 @@ select:disabled {
 .smart-filter-grid select:hover,
 .inbox-review select:hover,
 .auth-card input:hover,
-.ai-bookmark-search:hover {
+.ai-bookmark-search:hover,
+html[data-theme="light"] .field-grid input:hover,
+html[data-theme="light"] .field-grid select:hover,
+html[data-theme="light"] .compact-form input:hover,
+html[data-theme="light"] .category-edit input:hover,
+html[data-theme="light"] .settings-field input:hover,
+html[data-theme="light"] .settings-field select:hover {
   border-color: color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border-strong));
   background-color: var(--dm-input-hover);
 }
@@ -321,7 +333,13 @@ select:disabled {
 .smart-filter-grid select:focus,
 .inbox-review select:focus,
 .auth-card input:focus,
-.ai-bookmark-search:focus {
+.ai-bookmark-search:focus,
+html[data-theme="light"] .field-grid input:focus,
+html[data-theme="light"] .field-grid select:focus,
+html[data-theme="light"] .compact-form input:focus,
+html[data-theme="light"] .category-edit input:focus,
+html[data-theme="light"] .settings-field input:focus,
+html[data-theme="light"] .settings-field select:focus {
   border-color: var(--dm-accent);
   background-color: var(--dm-input-bg);
   box-shadow: 0 0 0 3px var(--dm-focus-ring);
