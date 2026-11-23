@@ -1,13 +1,18 @@
 /**
- * [INPUT]: depends on Bookmark, Category from @dockmark/core; textMatchesQuery from ./bookmark-search; reorderBookmarks/reorderCategories from ./reorder-api; useI18n from ./i18n
- * [OUTPUT]: exports PublicPageSettings panel for publishing/unpublishing bookmarks (single & batch) and ordering public groups
- * [POS]: Mounted in SettingsPage under /app/settings/public. Manages /api/public/bookmarks/* selection and shares canonical Library ordering.
+ * [INPUT]: depends on Bookmark, Category, PublicPageLayout, PublicPageSettings from @dockmark/core; textMatchesQuery from ./bookmark-search; fetchPublicPageSettings, readLocalPublicPageSettings, savePublicPageSettings from ./public-settings-api; reorderBookmarks/reorderCategories from ./reorder-api; useI18n from ./i18n
+ * [OUTPUT]: exports PublicPageSettings panel for Personal Navigation Station configuration, single/bulk bookmark publishing, and canonical public group ordering
+ * [POS]: Mounted in SettingsPage under /app/settings/public. Manages /api/settings/public-page and /api/public/bookmarks/* selection while sharing canonical Library ordering.
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Bookmark, Category } from "@dockmark/core";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import type { Bookmark, Category, PublicPageLayout, PublicPageSettings as PublicSiteConfig } from "@dockmark/core";
 import { textMatchesQuery } from "./bookmark-search";
 import { useI18n } from "./i18n";
+import {
+  fetchPublicPageSettings,
+  readLocalPublicPageSettings,
+  savePublicPageSettings,
+} from "./public-settings-api";
 import { reorderBookmarks, reorderCategories } from "./reorder-api";
 
 interface Props {
@@ -45,6 +50,8 @@ function swapIds(ids: string[], leftId: string, rightId: string) {
 
 export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) {
   const { tx } = useI18n();
+  const [siteConfig, setSiteConfig] = useState<PublicSiteConfig>(() => readLocalPublicPageSettings());
+  const [siteSaving, setSiteSaving] = useState(false);
   const [published, setPublishedIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -56,12 +63,15 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const selectVisibleRef = useRef<HTMLInputElement>(null);
+  const publishSearchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void loadSelection()
-      .then((ids) => {
-        if (!cancelled) setPublishedIds(ids);
+    void Promise.all([loadSelection(), fetchPublicPageSettings().catch(() => null)])
+      .then(([ids, remoteSiteConfig]) => {
+        if (cancelled) return;
+        setPublishedIds(ids);
+        if (remoteSiteConfig) setSiteConfig(remoteSiteConfig);
       })
       .catch((caught) => {
         if (!cancelled) setError(caught instanceof Error ? caught.message : tx("Could not load public page settings.", "无法加载公开主页配置。"));
@@ -73,6 +83,30 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
       cancelled = true;
     };
   }, [tx]);
+
+  async function saveSiteConfig(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSiteSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const saved = await savePublicPageSettings({
+        siteTitle: siteConfig.siteTitle.trim(),
+        siteSubtitle: siteConfig.siteSubtitle.trim(),
+        defaultLayout: siteConfig.defaultLayout,
+        showSearchBar: siteConfig.showSearchBar,
+        showWebSearch: siteConfig.showWebSearch,
+        showCategoryNav: siteConfig.showCategoryNav,
+        openInNewTab: siteConfig.openInNewTab,
+      });
+      setSiteConfig(saved);
+      setNotice(tx("Navigation station settings saved.", "导航站外观与交互配置已保存。"));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : tx("Could not save navigation station settings.", "保存导航站配置失败。"));
+    } finally {
+      setSiteSaving(false);
+    }
+  }
 
   useEffect(() => {
     const activeIds = new Set(bookmarks.map((bookmark) => bookmark.id));
@@ -315,6 +349,124 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
       {error && <div className="error-banner" role="alert">{error}</div>}
       {notice && <div className="success-banner" role="status">{notice}</div>}
 
+      <form className="form-card public-site-config-card" onSubmit={(event) => void saveSiteConfig(event)}>
+        <div className="card-heading">
+          <div>
+            <h2>{tx("Navigation Station Appearance & Behavior", "导航站外观与交互配置")}</h2>
+            <p>
+              {tx(
+                "Customize the public root page (/) title, default density, search engines, and link opening behavior.",
+                "自定义公开主页（/）的站点标题、默认视图密度、外网搜索引擎栏与链接打开方式。",
+              )}
+            </p>
+          </div>
+          <span>{tx("Applies to /", "生效于 /")}</span>
+        </div>
+
+        <div className="public-site-config-grid">
+          <label className="settings-field">
+            <span>{tx("Custom site title", "自定义站点标题")}</span>
+            <input
+              type="text"
+              value={siteConfig.siteTitle}
+              onChange={(event) => setSiteConfig((current) => ({ ...current, siteTitle: event.target.value }))}
+              placeholder={tx("Curated links", "个人导航")}
+              maxLength={80}
+            />
+          </label>
+          <label className="settings-field">
+            <span>{tx("Site subtitle / intro", "站点简介 / 副标题")}</span>
+            <input
+              type="text"
+              value={siteConfig.siteSubtitle}
+              onChange={(event) => setSiteConfig((current) => ({ ...current, siteSubtitle: event.target.value }))}
+              placeholder={tx("Curated bookmarks and quick web search.", "精选导航与快捷搜索。")}
+              maxLength={200}
+            />
+          </label>
+        </div>
+
+        <div className="public-site-config-layout">
+          <span>{tx("Default layout", "默认布局")}</span>
+          <div className="settings-segmented" role="group" aria-label={tx("Default public layout", "公开主页默认布局")}>
+            {([
+              ["grid", tx("Standard Grid", "标准卡片 Grid")],
+              ["compact", tx("Compact Nav", "紧凑导航 Compact")],
+              ["list", tx("Detailed List", "详情列表 List")],
+            ] as Array<[PublicPageLayout, string]>).map(([layoutValue, label]) => (
+              <button
+                key={layoutValue}
+                type="button"
+                className={siteConfig.defaultLayout === layoutValue ? "active" : ""}
+                onClick={() => setSiteConfig((current) => ({ ...current, defaultLayout: layoutValue }))}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="settings-options-grid">
+          <label className="settings-toggle">
+            <span>
+              <strong>{tx("Show startpage search bar", "显示导航搜索框")}</strong>
+              <small>{tx("Allow instant local filtering (with Pinyin initials) on /.", "在主页顶部显示搜索框，支持标题、域名与拼音首字母筛选。")}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={siteConfig.showSearchBar}
+              onChange={(event) => setSiteConfig((current) => ({ ...current, showSearchBar: event.target.checked }))}
+            />
+          </label>
+          <label className="settings-toggle">
+            <span>
+              <strong>{tx("Enable web search engines", "启用外网搜索引擎栏")}</strong>
+              <small>{tx("Show quick Google, Bing, GitHub, DuckDuckGo and Baidu search pills.", "在搜索框上方提供 Google、Bing、GitHub、DuckDuckGo、百度直达切换。")}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={siteConfig.showWebSearch}
+              disabled={!siteConfig.showSearchBar}
+              onChange={(event) => setSiteConfig((current) => ({ ...current, showWebSearch: event.target.checked }))}
+            />
+          </label>
+          <label className="settings-toggle">
+            <span>
+              <strong>{tx("Show category quick-filter bar", "显示分类快捷筛选栏")}</strong>
+              <small>{tx("Display scrollable category pills above bookmark groups.", "在书签分组上方展示横向分类标签栏，支持一键筛选。")}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={siteConfig.showCategoryNav}
+              onChange={(event) => setSiteConfig((current) => ({ ...current, showCategoryNav: event.target.checked }))}
+            />
+          </label>
+          <label className="settings-toggle">
+            <span>
+              <strong>{tx("Open links in new tab", "新标签页打开链接")}</strong>
+              <small>{tx("Applies to both public bookmark cards and web search actions.", "同时作用于公开书签卡片与外网搜索跳转。")}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={siteConfig.openInNewTab}
+              onChange={(event) => setSiteConfig((current) => ({ ...current, openInNewTab: event.target.checked }))}
+            />
+          </label>
+        </div>
+
+        <div className="public-site-config-footer">
+          <small>
+            {tx(
+              "Visitors can still switch Grid / Compact / List locally in their browser without changing your D1 defaults.",
+              "访客仍可在自己浏览器中本地切换网格 / 紧凑 / 列表视图，不会覆盖你的 D1 默认配置。",
+            )}
+          </small>
+          <button className="primary" type="submit" disabled={siteSaving}>
+            {siteSaving ? tx("Saving…", "保存中…") : tx("Save navigation settings", "保存导航站配置")}
+          </button>
+        </div>
+      </form>
+
       <div className="public-curation-layout">
         <article className="form-card public-layout-card">
           <div className="card-heading">
@@ -415,16 +567,30 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
           </div>
 
           <div className="public-publish-tools">
-            <label className="public-publish-search">
+            <div className="public-publish-search">
               <span aria-hidden="true">⌕</span>
               <input
+                ref={publishSearchRef}
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={tx("Filter title, URL, description or category…", "按标题、网址、描述或分类筛选…")}
                 aria-label={tx("Filter public page bookmarks", "筛选书签")}
               />
-            </label>
+              {query && (
+                <button
+                  className="dm-search-clear"
+                  type="button"
+                  aria-label={tx("Clear filter", "清空筛选")}
+                  onClick={() => {
+                    setQuery("");
+                    publishSearchRef.current?.focus();
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
             <div className="settings-segmented public-publish-filter" aria-label={tx("Publication status filter", "公开状态筛选")}>
               <button className={filter === "all" ? "active" : ""} type="button" onClick={() => setFilter("all")}>
                 {tx(`All · ${bookmarks.length}`, `全部 · ${bookmarks.length}`)}
