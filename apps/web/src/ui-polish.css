@@ -274,7 +274,8 @@ html[data-theme="light"] .inbox-panel,
 html[data-theme="light"] .inbox-ai-panel,
 html[data-theme="light"] .smart-summary,
 html[data-theme="light"] .smart-list,
-html[data-theme="light"] .smart-editor {
+html[data-theme="light"] .smart-editor,
+html[data-theme="light"] .auth-card {
   color: var(--dm-text);
 }
 

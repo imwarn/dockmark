@@ -1,21 +1,21 @@
+/**
+ * [INPUT]: depends on listBookmarks/listCategories from ./api, useI18n from ./i18n, AppearanceSettings, BrowserSettingsManager, SecuritySettings, PublicPageSettings, and settings/security CSS
+ * [OUTPUT]: exports SettingsPage shell and client-side /app/settings/* sub-router
+ * [POS]: Mounted by PrivateRoot for /app/settings/*. Coordinates four configuration panels without mixing library editing.
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
 import { listBookmarks, listCategories } from "./api";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { BrowserSettingsManager } from "./BrowserSettingsManager";
+import { useI18n } from "./i18n";
 import { PublicPageSettings } from "./PublicPageSettings";
 import { SecuritySettings } from "./SecuritySettings";
 import "./settings.css";
 import "./security.css";
 
 type SettingsView = "appearance" | "browser" | "security" | "public";
-
-const sections: Array<{ id: SettingsView; label: string; detail: string }> = [
-  { id: "appearance", label: "Appearance", detail: "Theme and visual preferences." },
-  { id: "browser", label: "Browser", detail: "New Tab and sync behavior." },
-  { id: "security", label: "Security", detail: "Pairing and trusted devices." },
-  { id: "public", label: "Public Page", detail: "Publish and arrange curated links." },
-];
 
 function settingsView(pathname: string): SettingsView {
   const segment = pathname.split("/").filter(Boolean).at(-1);
@@ -30,12 +30,39 @@ function navigate(view: SettingsView) {
 }
 
 export function SettingsPage() {
+  const { tx } = useI18n();
   const [path, setPath] = useState(window.location.pathname);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [publicDataLoaded, setPublicDataLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const view = useMemo(() => settingsView(path), [path]);
+
+  const sections = useMemo<Array<{ id: SettingsView; label: string; detail: string }>>(
+    () => [
+      {
+        id: "appearance",
+        label: tx("Appearance & Language", "外观与语言"),
+        detail: tx("Theme mode and interface language.", "主题模式与界面显示语言。"),
+      },
+      {
+        id: "browser",
+        label: tx("Browser", "浏览器与新标签页"),
+        detail: tx("New Tab launcher and sync preferences.", "新标签页启动台与同步偏好。"),
+      },
+      {
+        id: "security",
+        label: tx("Security", "安全与设备"),
+        detail: tx("Pairing codes and trusted extensions.", "配对码与已配对扩展管理。"),
+      },
+      {
+        id: "public",
+        label: tx("Public Page", "公开主页"),
+        detail: tx("Publish and order curated links.", "发布与排序精选公开链接。"),
+      },
+    ],
+    [tx],
+  );
 
   useEffect(() => {
     const onPopState = () => setPath(window.location.pathname);
@@ -51,10 +78,10 @@ export function SettingsPage() {
       setCategories(nextCategories);
       setPublicDataLoaded(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load public-page data.");
+      setError(caught instanceof Error ? caught.message : tx("Could not load public-page data.", "无法加载公开主页数据。"));
       throw caught;
     }
-  }, []);
+  }, [tx]);
 
   useEffect(() => {
     if (view === "public" && !publicDataLoaded) {
@@ -68,13 +95,12 @@ export function SettingsPage() {
     <main className="settings-page shell">
       <section className="management-heading settings-page-heading">
         <div>
-          <p className="eyebrow">DOCKMARK SETTINGS</p>
-          <h1>Policies and preferences,<br />without the library clutter.</h1>
-          <p>{active.detail} Bookmark editing, organization, health and change history now live together under Workspace → Bookmarks.</p>
+          <h1>{tx("Settings", "设置")}</h1>
+          <p>{active.detail}</p>
         </div>
       </section>
 
-      <nav className="settings-subnav" aria-label="Settings sections">
+      <nav className="settings-subnav" aria-label={tx("Settings sections", "设置分区")}>
         {sections.map((section) => (
           <button
             key={section.id}
@@ -96,7 +122,7 @@ export function SettingsPage() {
       {view === "public" && (
         publicDataLoaded
           ? <PublicPageSettings bookmarks={bookmarks} categories={categories} onChanged={refreshPublicData} />
-          : <div className="settings-loading-card">Loading public-page library…</div>
+          : <div className="settings-loading-card">{tx("Loading public-page library…", "正在加载书签列表…")}</div>
       )}
     </main>
   );

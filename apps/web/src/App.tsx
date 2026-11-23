@@ -1,16 +1,17 @@
+/**
+ * [INPUT]: depends on @dockmark/core domain types, ./api, ./browser-bridge, ./i18n, ./LauncherDashboard, and workspace section manager views
+ * [OUTPUT]: exports App root workspace shell with sticky 64px topbar, command palette launcher, and section router
+ * [POS]: Primary authenticated workspace mounted by PrivateRoot for /app and /app/(workspaces|sessions|bookmarks|search|transfer|extension).
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import {
-  buildSearchUrl,
-  launcherTextScore,
-  matchingBangEngines,
-  parseBangQuery,
-  rankCommands,
-  type Bookmark,
-  type Category,
-  type CommandResult,
-  type SearchEngine,
-  type SessionWithItems,
-  type WorkspaceWithItems,
+import type {
+  Bookmark,
+  Category,
+  CommandResult,
+  SearchEngine,
+  SessionWithItems,
+  WorkspaceWithItems,
 } from "@dockmark/core";
 import {
   activateBridgeTab,
@@ -28,9 +29,13 @@ import {
   listSessions,
   listWorkspaces,
 } from "./api";
-import { bookmarkMatchesQuery } from "./bookmark-search";
+import { useI18n } from "./i18n";
 import { listInbox } from "./inbox-api";
-import { matchesSmartCollection, smartCollectionFilterLabels } from "./smart-collection-match";
+import {
+  buildLauncherResults,
+  LauncherCommandPanel,
+  LauncherDashboard,
+} from "./LauncherDashboard";
 import { listSmartCollections, type SmartCollection } from "./smart-collections-api";
 import { listBookmarkTags } from "./tag-api";
 import { BookmarkManager } from "./BookmarkManager";
@@ -39,16 +44,6 @@ import { SearchEngineManager } from "./SearchEngineManager";
 import { SessionManager } from "./SessionManager";
 import { TransferManager } from "./TransferManager";
 import { WorkspaceManager } from "./WorkspaceManager";
-
-const sourceLabel: Record<CommandResult["source"], string> = {
-  tab: "Open tab",
-  workspace: "Workspace",
-  session: "Session",
-  collection: "Collection",
-  bookmark: "Bookmark",
-  navigation: "Navigation",
-  search: "Search",
-};
 
 type View = "launcher" | "workspaces" | "sessions" | "bookmarks" | "search" | "transfer" | "extension";
 
@@ -84,19 +79,8 @@ function openUrls(urls: string[]) {
   }
 }
 
-function hostLabel(url: string) {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
-
-function collectionResultId(id: string) {
-  return `navigation:collection:${id}`;
-}
-
 export function App() {
+  const { locale, tx } = useI18n();
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname));
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -148,11 +132,11 @@ export function App() {
       setSessions(nextSessions);
       setSearchEngines(nextSearchEngines);
     } catch (error) {
-      setDataError(error instanceof Error ? error.message : "Could not load Dockmark data.");
+      setDataError(error instanceof Error ? error.message : tx("Could not load Dockmark data.", "无法加载 Dockmark 数据。"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tx]);
 
   const refreshBridge = useCallback(async () => {
     try {
@@ -205,7 +189,14 @@ export function App() {
       }
       if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
       event.preventDefault();
       focusLauncher();
     };
@@ -218,160 +209,57 @@ export function App() {
     [searchEngines],
   );
 
+  const primaryBangKeyword = useMemo(
+    () => searchEngines.find((engine) => engine.isDefault && engine.keyword)?.keyword
+      ?? searchEngines.find((engine) => engine.keyword)?.keyword
+      ?? "g",
+    [searchEngines],
+  );
+
   const categoryById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
   );
 
-  const results = useMemo(() => {
-    const trimmed = query.trim();
-    const normalized = trimmed.toLocaleLowerCase();
-    const bang = parseBangQuery(trimmed, searchEngines);
+  const bookmarkById = useMemo(
+    () => new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark])),
+    [bookmarks],
+  );
 
-    if (bang) {
-      const canRun = Boolean(bang.query);
-      return [{
-        id: `search-run:${bang.engine.id}`,
-        source: "search" as const,
-        title: canRun ? `Search ${bang.engine.name} for “${bang.query}”` : `Search with ${bang.engine.name}`,
-        subtitle: `!${bang.engine.keyword ?? ""} · ${bang.engine.searchUrl}`,
-        ...(canRun ? { url: buildSearchUrl(bang.engine, bang.query) } : {}),
-        score: 100,
-      }];
-    }
+  const hasQuery = query.trim().length > 0;
 
-    const bangSuggestions = matchingBangEngines(trimmed, searchEngines);
-    if (bangSuggestions.length) {
-      return bangSuggestions.slice(0, 8).map((engine) => ({
-        id: `search-shortcut:${engine.id}`,
-        source: "search" as const,
-        title: engine.name,
-        subtitle: `!${engine.keyword} · type a query`,
-        score: 100,
-      }));
-    }
-
-    const tabCandidates = normalized ? openTabs : openTabs.slice(0, 4);
-    const tabResults: CommandResult[] = tabCandidates.flatMap((tab) => {
-      const subtitle = `${hostLabel(tab.url)}${tab.pinned ? " · Pinned" : ""}${tab.active ? " · Active" : ""}`;
-      const score = launcherTextScore(trimmed, tab.title, [tab.url, subtitle], 40 + (tab.pinned ? 4 : 0) + (tab.active ? 2 : 0));
-      if (normalized && score < 0) return [];
-      return [{
-        id: `tab:${tab.id}`,
-        source: "tab" as const,
-        title: tab.title,
-        subtitle,
-        url: tab.url,
-        score,
-      }];
-    });
-    const workspaceResults: CommandResult[] = workspaces.flatMap((workspace) => {
-      const subtitle = `Open workspace · ${workspace.items.length} tabs`;
-      const itemText = workspace.items.flatMap((item) => [item.title, item.url]);
-      const score = launcherTextScore(trimmed, workspace.name, [workspace.description ?? "", subtitle, ...itemText], 30);
-      if (normalized && score < 0) return [];
-      return [{
-        id: workspace.id,
-        source: "workspace" as const,
-        title: workspace.name,
-        subtitle,
-        score,
-      }];
-    });
-    const sessionResults: CommandResult[] = sessions.flatMap((session, index) => {
-      const subtitle = `Restore session · ${session.items.length} tabs${session.sourceDevice ? ` · ${session.sourceDevice}` : ""}`;
-      const itemText = session.items.flatMap((item) => [item.title, item.url]);
-      const score = launcherTextScore(trimmed, session.name, [session.sourceDevice ?? "", subtitle, ...itemText], Math.max(0, 30 - index));
-      if (normalized && score < 0) return [];
-      return [{
-        id: session.id,
-        source: "session" as const,
-        title: session.name,
-        subtitle,
-        score,
-      }];
-    });
-    const collectionResults: CommandResult[] = smartCollections.flatMap((collection) => {
-      const labels = smartCollectionFilterLabels(collection.filters, categoryById);
-      const count = bookmarks.filter((bookmark) =>
-        matchesSmartCollection(bookmark, collection.filters, bookmarkTags[bookmark.id] ?? [], inboxIds),
-      ).length;
-      const subtitle = `${count} bookmark${count === 1 ? "" : "s"}${labels.length ? ` · ${labels.slice(0, 4).join(" · ")}` : " · All bookmarks"}`;
-      const score = launcherTextScore(trimmed, collection.name, [subtitle, ...labels], 30);
-      if (normalized && score < 0) return [];
-      return [{
-        id: collectionResultId(collection.id),
-        source: "collection" as const,
-        title: collection.name,
-        subtitle,
-        score,
-      }];
-    });
-    const bookmarkResults: CommandResult[] = bookmarks.flatMap((bookmark) => {
-      const tags = bookmarkTags[bookmark.id] ?? [];
-      const category = bookmark.categoryId ? categoryById.get(bookmark.categoryId) ?? "" : "Uncategorized";
-      const tagTokens = tags.map((tag) => `#${tag}`);
-      if (normalized && !bookmarkMatchesQuery(bookmark, category, tags, trimmed)) return [];
-      const subtitleParts = [hostLabel(bookmark.url)];
-      if (category) subtitleParts.push(category);
-      if (tagTokens.length) subtitleParts.push(tagTokens.slice(0, 3).join(" "));
-      const score = launcherTextScore(trimmed, bookmark.title, [bookmark.url, bookmark.description ?? "", category, ...tags, ...tagTokens], 30);
-      if (normalized && score < 0) return [];
-      return [{
-        id: bookmark.id,
-        source: "bookmark" as const,
-        title: bookmark.title,
-        subtitle: subtitleParts.join(" · "),
-        url: bookmark.url,
-        score,
-      }];
-    });
-    const navigationTitle = bridgeConnected ? "Browser extension" : "Install browser extension";
-    const navigationSubtitle = bridgeConnected ? "Diagnostics, version and capabilities" : "Enable open tabs, Session restore and native bookmark import";
-    const navigationScore = launcherTextScore(trimmed, navigationTitle, [navigationSubtitle], 20);
-    const navigationResults: CommandResult[] = normalized && navigationScore < 0 ? [] : [{
-      id: "navigation:extension",
-      source: "navigation",
-      title: navigationTitle,
-      subtitle: navigationSubtitle,
-      score: navigationScore,
-    }];
-
-    const localResults = rankCommands([
-      ...tabResults,
-      ...workspaceResults,
-      ...sessionResults,
-      ...collectionResults,
-      ...bookmarkResults,
-      ...navigationResults,
-    ]).slice(0, trimmed && defaultEngine ? 7 : 8);
-
-    if (trimmed && defaultEngine) {
-      localResults.push({
-        id: `search-run:${defaultEngine.id}`,
-        source: "search",
-        title: `Search ${defaultEngine.name} for “${trimmed}”`,
-        subtitle: defaultEngine.keyword ? `Default · !${defaultEngine.keyword}` : "Default search engine",
-        url: buildSearchUrl(defaultEngine, trimmed),
-        score: 0,
-      });
-    }
-
-    return localResults;
-  }, [
-    bookmarkTags,
-    bookmarks,
-    bridgeConnected,
-    categoryById,
-    defaultEngine,
-    inboxIds,
-    openTabs,
-    query,
-    searchEngines,
-    sessions,
-    smartCollections,
-    workspaces,
-  ]);
+  const results = useMemo(
+    () => buildLauncherResults({
+      query,
+      bookmarks,
+      bookmarkTags,
+      categoryById,
+      smartCollections,
+      inboxIds,
+      workspaces,
+      sessions,
+      searchEngines,
+      defaultEngine,
+      openTabs,
+      bridgeConnected,
+      tx,
+    }),
+    [
+      bookmarkTags,
+      bookmarks,
+      bridgeConnected,
+      categoryById,
+      defaultEngine,
+      inboxIds,
+      openTabs,
+      query,
+      searchEngines,
+      sessions,
+      smartCollections,
+      tx,
+      workspaces,
+    ],
+  );
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -380,6 +268,39 @@ export function App() {
   useEffect(() => {
     if (selectedIndex >= results.length) setSelectedIndex(Math.max(0, results.length - 1));
   }, [results.length, selectedIndex]);
+
+  const launchWorkspace = useCallback(async (workspace: WorkspaceWithItems) => {
+    const ordered = [...workspace.items].sort((a, b) => a.position - b.position);
+    if (bridgeConnected) {
+      try {
+        await openWorkspaceWithBridge(ordered.map((entry) => ({
+          url: entry.url,
+          openMode: entry.openMode,
+        })));
+        return;
+      } catch {
+        setBridgeConnected(false);
+        setOpenTabs([]);
+      }
+    }
+    openUrls(ordered.map((entry) => entry.url));
+  }, [bridgeConnected]);
+
+  const activateTab = useCallback(async (tab: BridgeTab, forceNewTab: boolean) => {
+    if (forceNewTab && tab.url) {
+      const opened = window.open(tab.url, "_blank", "noopener,noreferrer");
+      if (opened) opened.opener = null;
+      return;
+    }
+    try {
+      await activateBridgeTab(tab.id);
+      return;
+    } catch {
+      setBridgeConnected(false);
+      setOpenTabs([]);
+    }
+    if (tab.url) window.location.assign(tab.url);
+  }, []);
 
   async function executeResult(item: CommandResult, forceNewTab = false) {
     if (item.id.startsWith("search-shortcut:")) {
@@ -416,7 +337,6 @@ export function App() {
         if (opened) opened.opener = null;
         return;
       }
-
       const tabId = Number(item.id.slice("tab:".length));
       if (Number.isFinite(tabId)) {
         try {
@@ -433,21 +353,7 @@ export function App() {
 
     if (item.source === "workspace") {
       const workspace = workspaces.find((candidate) => candidate.id === item.id);
-      if (!workspace) return;
-      const ordered = [...workspace.items].sort((a, b) => a.position - b.position);
-      if (bridgeConnected) {
-        try {
-          await openWorkspaceWithBridge(ordered.map((entry) => ({
-            url: entry.url,
-            openMode: entry.openMode,
-          })));
-          return;
-        } catch {
-          setBridgeConnected(false);
-          setOpenTabs([]);
-        }
-      }
-      openUrls(ordered.map((entry) => entry.url));
+      if (workspace) await launchWorkspace(workspace);
       return;
     }
 
@@ -480,6 +386,16 @@ export function App() {
     }
   }
 
+  function prefillSyntax(prefix: string) {
+    setQuery(prefix);
+    requestAnimationFrame(() => {
+      const input = commandInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(prefix.length, prefix.length);
+    });
+  }
+
   function onCommandKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -500,6 +416,7 @@ export function App() {
       return;
     }
     if (event.key === "Enter") {
+      if (!hasQuery) return;
       const selected = results[selectedIndex];
       if (selected) {
         event.preventDefault();
@@ -515,28 +432,42 @@ export function App() {
   }
 
   const launcherStatus = loading
-    ? "Loading…"
+    ? tx("Loading…", "加载中…")
     : bridgeConnected
-      ? `Browser bridge · ${openTabs.length} open tabs`
+      ? tx(`Browser bridge · ${openTabs.length} open tabs`, `浏览器桥接 · ${openTabs.length} 个标签页`)
       : defaultEngine
-        ? `Web mode · default ${defaultEngine.name}`
-        : "Web mode";
+        ? tx(`Web mode · ${defaultEngine.name}`, `网页模式 · ${defaultEngine.name}`)
+        : tx("Web mode", "网页模式");
 
   return (
     <main className="shell">
       <header className="topbar">
-        <button className="brand brand-button" type="button" onClick={() => navigateView("launcher")} aria-label="Dockmark home">
+        <button className="brand brand-button" type="button" onClick={() => navigateView("launcher")} aria-label={tx("Dockmark home", "Dockmark 启动台")}>
           <span className="brand-mark">D·</span>
           <span>Dockmark</span>
         </button>
-        <nav className="workspace-section-nav" aria-label="Workspace sections">
-          <button className={`ghost ${view === "launcher" ? "active" : ""}`} type="button" aria-current={view === "launcher" ? "page" : undefined} onClick={() => navigateView("launcher")}>Launcher</button>
-          <button className={`ghost ${view === "workspaces" ? "active" : ""}`} type="button" aria-current={view === "workspaces" ? "page" : undefined} onClick={() => navigateView("workspaces")}>Workspaces</button>
-          <button className={`ghost ${view === "sessions" ? "active" : ""}`} type="button" aria-current={view === "sessions" ? "page" : undefined} onClick={() => navigateView("sessions")}>Sessions</button>
-          <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" aria-current={view === "bookmarks" ? "page" : undefined} onClick={() => navigateView("bookmarks")}>Bookmarks</button>
-          <button className={`ghost ${view === "search" ? "active" : ""}`} type="button" aria-current={view === "search" ? "page" : undefined} onClick={() => navigateView("search")}>Search</button>
-          <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" aria-current={view === "transfer" ? "page" : undefined} onClick={() => navigateView("transfer")}>Transfer</button>
-          <button className={`ghost ${view === "extension" ? "active" : ""}`} type="button" aria-current={view === "extension" ? "page" : undefined} onClick={() => navigateView("extension")}>Extension</button>
+        <nav className="workspace-section-nav" aria-label={tx("Workspace sections", "工作区分区导航")}>
+          <button className={`ghost ${view === "launcher" ? "active" : ""}`} type="button" aria-current={view === "launcher" ? "page" : undefined} onClick={() => navigateView("launcher")}>
+            {tx("Launcher", "启动台")}
+          </button>
+          <button className={`ghost ${view === "workspaces" ? "active" : ""}`} type="button" aria-current={view === "workspaces" ? "page" : undefined} onClick={() => navigateView("workspaces")}>
+            {tx("Workspaces", "工作区")}
+          </button>
+          <button className={`ghost ${view === "sessions" ? "active" : ""}`} type="button" aria-current={view === "sessions" ? "page" : undefined} onClick={() => navigateView("sessions")}>
+            {tx("Sessions", "会话")}
+          </button>
+          <button className={`ghost ${view === "bookmarks" ? "active" : ""}`} type="button" aria-current={view === "bookmarks" ? "page" : undefined} onClick={() => navigateView("bookmarks")}>
+            {tx("Bookmarks", "书签")}
+          </button>
+          <button className={`ghost ${view === "search" ? "active" : ""}`} type="button" aria-current={view === "search" ? "page" : undefined} onClick={() => navigateView("search")}>
+            {tx("Search", "搜索")}
+          </button>
+          <button className={`ghost ${view === "transfer" ? "active" : ""}`} type="button" aria-current={view === "transfer" ? "page" : undefined} onClick={() => navigateView("transfer")}>
+            {tx("Transfer", "导入导出")}
+          </button>
+          <button className={`ghost ${view === "extension" ? "active" : ""}`} type="button" aria-current={view === "extension" ? "page" : undefined} onClick={() => navigateView("extension")}>
+            {tx("Extension", "扩展")}
+          </button>
         </nav>
       </header>
 
@@ -567,11 +498,9 @@ export function App() {
         <BrowserExtensionManager />
       ) : (
         <>
-          <section className="hero">
-            <p className="eyebrow">YOUR PERSONAL LAUNCHER</p>
-            <h1>Everything you return to,<br />one command away.</h1>
+          <section className="hero launcher-hero">
             <div className={`command ${bridgeConnected ? "bridge-connected" : ""}`}>
-              <span className="search-icon">⌕</span>
+              <span className="search-icon" aria-hidden="true">⌕</span>
               <input
                 ref={commandInputRef}
                 autoFocus
@@ -579,76 +508,106 @@ export function App() {
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => void refreshBridge()}
                 onKeyDown={onCommandKeyDown}
-                placeholder="Search tabs, Sessions, Workspaces, Collections, bookmarks or #tags; type !g, !gh, !ddg…"
-                aria-label="Search Dockmark"
-                aria-controls="dockmark-command-results"
-                aria-activedescendant={results[selectedIndex] ? `command-result-${selectedIndex}` : undefined}
+                placeholder={tx(
+                  "Search tabs, Workspaces, Sessions, Collections, bookmarks or #tags…",
+                  "搜索标签页、工作区、会话、智能合集、书签或 #标签…",
+                )}
+                aria-label={tx("Search Dockmark", "搜索 Dockmark")}
+                aria-controls={hasQuery ? "dockmark-command-results" : undefined}
+                aria-activedescendant={hasQuery && results[selectedIndex] ? `command-result-${selectedIndex}` : undefined}
                 role="combobox"
-                aria-expanded="true"
+                aria-expanded={hasQuery}
               />
+              {hasQuery && (
+                <button
+                  className="command-clear"
+                  type="button"
+                  aria-label={tx("Clear search", "清空搜索")}
+                  onClick={() => {
+                    setQuery("");
+                    commandInputRef.current?.focus();
+                  }}
+                >
+                  ×
+                </button>
+              )}
               <span className="command-shortcuts"><kbd>⌘ K</kbd></span>
             </div>
-          </section>
 
-          <section className="panel" aria-label="Command results">
-            <div className="panel-heading">
-              <span>{query ? "Command results" : "Quick access"}</span>
-              <span className={`muted bridge-label ${bridgeConnected ? "connected" : ""}`}>{launcherStatus}</span>
-            </div>
-            {dataError ? (
-              <div className="panel-error">
-                <strong>Dockmark could not reach its database.</strong>
-                <span>{dataError}</span>
-                <button className="secondary" type="button" onClick={() => void refresh()}>Retry</button>
+            <div className="command-syntax-bar">
+              <div className="command-syntax-pills" aria-label={tx("Search syntax shortcuts", "搜索语法快捷入口")}>
+                <button type="button" className="syntax-pill" onClick={() => prefillSyntax(`!${primaryBangKeyword} `)}>
+                  <code>!{primaryBangKeyword}</code>
+                  <span>{tx("Search", "搜索")}</span>
+                </button>
+                <button type="button" className="syntax-pill" onClick={() => prefillSyntax("@")}>
+                  <code>@</code>
+                  <span>{tx("Collections", "合集")}</span>
+                </button>
+                <button type="button" className="syntax-pill" onClick={() => prefillSyntax("#")}>
+                  <code>#</code>
+                  <span>{tx("Tags", "标签")}</span>
+                </button>
               </div>
-            ) : (
-              <div className="results" id="dockmark-command-results" role="listbox">
-                {results.map((item, index) => {
-                  const isCollection = item.source === "collection";
-                  return (
-                    <button
-                      className={`result result-button ${selectedIndex === index ? "selected" : ""}`}
-                      type="button"
-                      role="option"
-                      aria-selected={selectedIndex === index}
-                      id={`command-result-${index}`}
-                      key={`${item.source}-${item.id}`}
-                      onMouseEnter={() => setSelectedIndex(index)}
-                      onClick={() => void executeResult(item)}
-                    >
-                      <span className="favicon">{isCollection ? "◇" : item.source === "tab" ? "↗" : item.source === "session" ? "↺" : item.source === "search" ? "⌕" : item.source === "navigation" ? "＋" : item.title.slice(0, 1)}</span>
-                      <span className="result-copy">
-                        <strong>{item.title}</strong>
-                        <small>{item.subtitle}</small>
-                      </span>
-                      <span className="pill">{item.source === "search" && item.id.startsWith("search-shortcut:") ? <span className="bang-token">Bang</span> : sourceLabel[item.source]}</span>
-                    </button>
-                  );
-                })}
-                {!loading && !results.length && <div className="empty-command">No matches. Configure a search engine or try another query.</div>}
-              </div>
-            )}
-            <div className="command-footer">
-              <span><kbd>↑</kbd><kbd>↓</kbd> select <kbd>Enter</kbd> run <kbd>Tab</kbd> accept bang</span>
-              <span><kbd>Shift</kbd>/<kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> new tab <kbd>/</kbd> focus <kbd>Esc</kbd> clear</span>
-            </div>
-          </section>
-
-          {!bridgeConnected && (
-            <button className="extension-nudge" type="button" onClick={() => navigateView("extension")}>
-              <span className="extension-nudge-copy">
-                <strong>Unlock browser integration</strong>
-                <span>Install Dockmark Extension for open tabs, pinned Session restore and native bookmark import.</span>
+              <span className={`launcher-status-pill ${bridgeConnected ? "connected" : ""}`}>
+                <span className="status-dot" aria-hidden="true" />
+                {launcherStatus}
               </span>
-              <span className="extension-nudge-action">Install / diagnostics →</span>
-            </button>
+            </div>
+          </section>
+
+          {dataError && (
+            <section className="panel launcher-error-panel" role="alert">
+              <div className="panel-error">
+                <strong>{tx("Dockmark could not reach its database.", "Dockmark 暂时无法连接数据库。")}</strong>
+                <span>{dataError}</span>
+                <button className="secondary" type="button" onClick={() => void refresh()}>
+                  {tx("Retry", "重试")}
+                </button>
+              </div>
+            </section>
           )}
 
-          <section className="feature-grid">
-            <article><span>01</span><h2>Open tabs</h2><p>With the browser bridge connected, jump to an existing tab before creating another copy.</p></article>
-            <article><span>02</span><h2>Smart workspaces</h2><p>Workspace reuse and pinned modes become real browser actions while Web mode stays portable.</p></article>
-            <article><span>03</span><h2>Cross-browser fallback</h2><p>Without the extension, the same launcher, workspaces, sessions and search still work normally.</p></article>
-          </section>
+          {hasQuery ? (
+            <LauncherCommandPanel
+              results={results}
+              selectedIndex={selectedIndex}
+              bookmarkById={bookmarkById}
+              bridgeConnected={bridgeConnected}
+              launcherStatus={launcherStatus}
+              loading={loading}
+              locale={locale}
+              onSelectIndex={setSelectedIndex}
+              onExecute={executeResult}
+            />
+          ) : (
+            <>
+              {!bridgeConnected && (
+                <button className="extension-nudge extension-nudge-compact" type="button" onClick={() => navigateView("extension")}>
+                  <span className="extension-nudge-copy">
+                    <strong>{tx("Browser bridge offline", "浏览器桥接未连接")}</strong>
+                    <span>{tx("Install Dockmark Extension for live tabs, pinned sessions and bookmark sync.", "安装 Dockmark 扩展即可解锁打开标签页切换、固定会话恢复与原生书签同步。")}</span>
+                  </span>
+                  <span className="extension-nudge-action">{tx("Extension →", "安装与诊断 →")}</span>
+                </button>
+              )}
+
+              <LauncherDashboard
+                bookmarks={bookmarks}
+                bookmarkTags={bookmarkTags}
+                categories={categories}
+                smartCollections={smartCollections}
+                inboxIds={inboxIds}
+                workspaces={workspaces}
+                openTabs={openTabs}
+                bridgeConnected={bridgeConnected}
+                loading={loading}
+                onLaunchWorkspace={launchWorkspace}
+                onActivateTab={activateTab}
+                onOpenView={(target) => navigateView(target)}
+              />
+            </>
+          )}
         </>
       )}
     </main>

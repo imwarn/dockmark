@@ -19,9 +19,23 @@
           document.documentElement.style.colorScheme = theme;
           const meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute("content", theme === "light" ? "#f4f7f5" : "#0a0f0c");
+
+          const isPrivate = location.pathname === "/app" || location.pathname.startsWith("/app/");
+          const storedLocale = localStorage.getItem(isPrivate ? "dockmarkLocaleV1" : "dockmarkPublicLocaleV1");
+          const localePref = storedLocale === "en" || storedLocale === "zh-CN" || storedLocale === "system"
+            ? storedLocale
+            : "system";
+          const resolvedLocale = localePref === "system"
+            ? ((navigator.language || "en").toLowerCase().startsWith("zh") ? "zh-CN" : "en")
+            : localePref;
+          document.documentElement.dataset.localePreference = localePref;
+          document.documentElement.dataset.locale = resolvedLocale;
+          document.documentElement.lang = resolvedLocale;
         } catch {
           document.documentElement.dataset.appearance = "system";
           document.documentElement.dataset.theme = "dark";
+          document.documentElement.dataset.localePreference = "system";
+          document.documentElement.dataset.locale = "en";
         }
       })();
     </script>
