@@ -223,7 +223,13 @@ export function AiProviderSettingsPage() {
           </p>
         </div>
         <div className="settings-sync-state">
-          <strong>{isDirty ? tx("Unsaved edits", "有未保存修改") : tx("Cloud synced", "云端已同步")}</strong>
+          <strong>
+            {isDirty
+              ? tx("Unsaved edits", "有未保存修改")
+              : settings.updatedAt
+                ? tx("Cloud synced", "云端已同步")
+                : tx("Default / Local", "默认配置")}
+          </strong>
           <span>{loading ? tx("Loading AI settings…", "正在加载配置…") : formatSyncTime(settings.updatedAt, locale, tx)}</span>
         </div>
       </div>
@@ -333,29 +339,32 @@ export function AiProviderSettingsPage() {
           </div>
 
           <div className="ai-status-row">
-            <span
-              className={`ai-status-badge ${
-                apiKeyConfigured === true
-                  ? "is-ready"
+            <div className="ai-status-meta">
+              <code className="ai-secret-name">DOCKMARK_AI_API_KEY</code>
+              <span
+                className={`ai-status-badge ${
+                  apiKeyConfigured === true
+                    ? "is-ready"
+                    : apiKeyConfigured === false
+                      ? "is-missing"
+                      : ""
+                }`}
+              >
+                <span className="status-dot" aria-hidden="true" />
+                {apiKeyConfigured === true
+                  ? tx("Ready", "已就绪")
                   : apiKeyConfigured === false
-                    ? "is-missing"
-                    : ""
-              }`}
-            >
-              <span className="status-dot" aria-hidden="true" />
-              {apiKeyConfigured === true
-                ? tx("DOCKMARK_AI_API_KEY · Ready", "DOCKMARK_AI_API_KEY · 已配置 Ready")
-                : apiKeyConfigured === false
-                  ? tx("DOCKMARK_AI_API_KEY · Missing", "DOCKMARK_AI_API_KEY · 未配置 Missing")
-                  : tx("Checking status…", "正在检测状态…")}
-            </span>
+                    ? tx("Not set", "未配置")
+                    : tx("Checking…", "检测中…")}
+              </span>
+            </div>
             <button
-              className="secondary"
+              className="secondary ai-recheck-btn"
               type="button"
               disabled={checkingKey || loading}
               onClick={() => void recheckStatus()}
             >
-              {checkingKey ? tx("Checking…", "检测中…") : tx("Recheck status", "重新检测状态")}
+              {checkingKey ? tx("Checking…", "检测中…") : tx("Recheck", "重新检测")}
             </button>
           </div>
 
