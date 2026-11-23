@@ -1,6 +1,6 @@
 /**
  * [INPUT]: depends on apps/web/src shell, settings, and ui-polish stylesheets and playwright Chromium
- * [OUTPUT]: verifies zero horizontal overflow, sticky 46px/64px/128px geometry, zero inner focus-outline on composite search boxes, 5-tab Settings subnav fit, and responsive nav behavior at 1280/900/720/390px in both English and Simplified Chinese
+ * [OUTPUT]: verifies zero horizontal overflow, sticky 46px/64px/128px geometry, zero inner focus-outline on composite search boxes, 5-tab Settings subnav fit, AI Service Worker Secret Status card zero-overflow geometry, and responsive nav behavior at 1280/900/720/390px in both English and Simplified Chinese
  * [POS]: Chromium responsive shell layout smoke test in scripts/
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
@@ -41,6 +41,18 @@ const LOCALE_FIXTURES = [
     resultHeading: "Command results",
     bridgeMeta: "Browser bridge · 20 open tabs",
     resultPill: "Open tab",
+    aiCard: {
+      providerTitle: "Provider Endpoint & Model",
+      providerDesc: "Pick a 1-click preset or enter any HTTPS OpenAI-compatible Chat Completions URL.",
+      secretTitle: "Worker Secret Status",
+      secretDesc: "Bound server-side via Cloudflare Workers secrets.",
+      readyLabel: "Ready",
+      recheckLabel: "Recheck",
+      copyLabel: "Copy",
+      footnote: "Run the Wrangler command above in your Dockmark deployment directory. Your API key stays encrypted inside Cloudflare Workers and never leaves the server.",
+      quickLink1: "Open Capture Inbox AI Triage",
+      quickLink2: "Open Bookmarks → Bulk & AI Organize",
+    },
     expectPhoneSectionOverflow: true,
   },
   {
@@ -61,6 +73,18 @@ const LOCALE_FIXTURES = [
     resultHeading: "命令结果",
     bridgeMeta: "浏览器桥接 · 20 个打开的标签页",
     resultPill: "打开的标签页",
+    aiCard: {
+      providerTitle: "服务商接口与模型",
+      providerDesc: "可一键填入常用服务商预设，或手动填写任意 HTTPS OpenAI 兼容接口地址。",
+      secretTitle: "Worker 密钥状态",
+      secretDesc: "由 Cloudflare Workers 服务端密钥安全注入。",
+      readyLabel: "已就绪",
+      recheckLabel: "重新检测",
+      copyLabel: "复制",
+      footnote: "在部署目录执行上方 Wrangler 命令即可写入密钥。密钥全程加密保存在 Cloudflare Workers 运行时内，不会暴露给前端或浏览器。",
+      quickLink1: "前往「收件箱 AI 分拣」",
+      quickLink2: "前往「书签库 → 批量与 AI 整理」",
+    },
     expectPhoneSectionOverflow: false,
   },
 ];
@@ -105,6 +129,65 @@ function fixture(copy) {
             <nav class="settings-subnav">
               ${copy.settingsTabs.map((tab, index) => `<button type="button" class="${index === 2 ? "active" : ""}"><strong>${tab.label}</strong><span>${tab.detail}</span></button>`).join("")}
             </nav>
+          </section>
+          <section class="ai-service-section" aria-label="Settings AI Service fixture">
+            <div class="ai-service-grid">
+              <article class="form-card">
+                <div class="card-heading">
+                  <div>
+                    <h2>${copy.aiCard.providerTitle}</h2>
+                    <p>${copy.aiCard.providerDesc}</p>
+                  </div>
+                </div>
+                <div class="ai-preset-block">
+                  <div class="ai-preset-chips">
+                    <button type="button" class="ai-preset-chip active">OpenAI</button>
+                    <button type="button" class="ai-preset-chip">DeepSeek</button>
+                    <button type="button" class="ai-preset-chip">OpenRouter</button>
+                    <button type="button" class="ai-preset-chip">SiliconFlow 硅基流动</button>
+                    <button type="button" class="ai-preset-chip">Gemini</button>
+                    <button type="button" class="ai-preset-chip">Groq</button>
+                  </div>
+                </div>
+                <form class="ai-service-form">
+                  <label class="settings-field">
+                    <span>Endpoint</span>
+                    <input type="url" value="https://api.openai.com/v1/chat/completions">
+                  </label>
+                  <div class="ai-service-form-row">
+                    <label class="settings-field"><span>Model</span><input type="text" value="gpt-4o-mini"></label>
+                    <label class="settings-field"><span>Timeout</span><input type="number" value="25"></label>
+                  </div>
+                </form>
+              </article>
+              <article class="form-card ai-secret-card">
+                <div class="card-heading">
+                  <div>
+                    <h2>${copy.aiCard.secretTitle}</h2>
+                    <p>${copy.aiCard.secretDesc}</p>
+                  </div>
+                </div>
+                <div class="ai-status-row">
+                  <div class="ai-status-meta">
+                    <code class="ai-secret-name">DOCKMARK_AI_API_KEY</code>
+                    <span class="ai-status-badge is-ready">
+                      <span class="status-dot" aria-hidden="true"></span>
+                      ${copy.aiCard.readyLabel}
+                    </span>
+                  </div>
+                  <button class="secondary ai-recheck-btn" type="button">${copy.aiCard.recheckLabel}</button>
+                </div>
+                <div class="ai-secret-cmd">
+                  <code>npx wrangler secret put DOCKMARK_AI_API_KEY</code>
+                  <button class="secondary" type="button">${copy.aiCard.copyLabel}</button>
+                </div>
+                <p class="settings-footnote">${copy.aiCard.footnote}</p>
+                <div class="ai-quick-links">
+                  <button class="ai-quick-link" type="button"><span>${copy.aiCard.quickLink1}</span><span aria-hidden="true">→</span></button>
+                  <button class="ai-quick-link" type="button"><span>${copy.aiCard.quickLink2}</span><span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+            </div>
           </section>
           <section class="management" style="min-height:1600px">
             <div class="management-grid">
@@ -184,6 +267,53 @@ try {
       assert.equal(settingsSubnav.overflowing, false, `[${copy.locale}] ${width}px Settings subnav should fit without horizontal overflow.`);
       assert.equal(settingsSubnav.allInsideViewport, true, `[${copy.locale}] ${width}px all 5 Settings tabs should remain within the viewport.`);
 
+      const aiSecretLayout = await page.evaluate(() => {
+        const grid = document.querySelector(".ai-service-grid");
+        const secretCard = document.querySelector(".ai-secret-card");
+        if (!(grid instanceof HTMLElement) || !(secretCard instanceof HTMLElement)) {
+          throw new Error("AI Service Worker Secret Status fixture is missing.");
+        }
+        const cardRect = secretCard.getBoundingClientRect();
+        const overflowingChildren = [...secretCard.querySelectorAll("*")]
+          .map((child) => {
+            const rect = child.getBoundingClientRect();
+            return {
+              tag: child.tagName.toLowerCase(),
+              className: child.className,
+              right: rect.right,
+              cardRight: cardRect.right,
+              delta: rect.right - cardRect.right,
+            };
+          })
+          .filter((item) => item.delta > 1);
+        return {
+          gridScrollWidth: grid.scrollWidth,
+          gridClientWidth: grid.clientWidth,
+          secretScrollWidth: secretCard.scrollWidth,
+          secretClientWidth: secretCard.clientWidth,
+          secretRight: cardRect.right,
+          viewportWidth: window.innerWidth,
+          overflowingChildren,
+        };
+      });
+      assert.ok(
+        aiSecretLayout.gridScrollWidth <= aiSecretLayout.gridClientWidth + 1,
+        `[${copy.locale}] ${width}px .ai-service-grid should not overflow horizontally (${aiSecretLayout.gridScrollWidth} > ${aiSecretLayout.gridClientWidth}).`,
+      );
+      assert.ok(
+        aiSecretLayout.secretScrollWidth <= aiSecretLayout.secretClientWidth + 1,
+        `[${copy.locale}] ${width}px .ai-secret-card should not overflow horizontally (${aiSecretLayout.secretScrollWidth} > ${aiSecretLayout.secretClientWidth}).`,
+      );
+      assert.ok(
+        aiSecretLayout.secretRight <= aiSecretLayout.viewportWidth + 1,
+        `[${copy.locale}] ${width}px .ai-secret-card right edge should remain inside viewport (${aiSecretLayout.secretRight} > ${aiSecretLayout.viewportWidth}).`,
+      );
+      assert.deepEqual(
+        aiSecretLayout.overflowingChildren,
+        [],
+        `[${copy.locale}] ${width}px all descendants of .ai-secret-card must stay inside card bounds.`,
+      );
+
       // Verify zero inner focus-outline bug on .command input while .command outer container highlights cleanly.
       const commandBefore = await page.evaluate(() => {
         const wrapper = document.querySelector(".command");
@@ -249,6 +379,7 @@ try {
   console.log("✓ Web shell has no document-level horizontal overflow at 1280/900/720/390px in both EN and zh-CN");
   console.log("✓ Utility and workspace navigation remain stacked, single-line, and sticky while scrolling");
   console.log("✓ All 5 Settings subnav tabs (including AI Service) fit cleanly across 1280/900/720/390px without overflow");
+  console.log("✓ Settings → AI Service (.ai-service-grid + .ai-secret-card) has zero horizontal overflow and all descendants stay within card bounds across 1280/900/720/390px in EN and zh-CN");
   console.log("✓ Focused .command input has zero inner outline while the outer .command wrapper highlights cleanly");
   console.log("✓ Tablet and phone breakpoints reclaim nav space without clipping the page");
   console.log("✓ Internal sticky sidebars offset below both navigation bars");
