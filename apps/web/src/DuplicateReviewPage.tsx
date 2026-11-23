@@ -1,24 +1,19 @@
 /**
- * [INPUT]: depends on useEffect, useMemo, useState from react; formatRelativeTime, HEALTH_POLICY_LABELS, HEALTH_STATUS_LABELS, ResolvedLocale from @dockmark/core; textMatchesQuery from ./bookmark-search; maintainLibraryBatch from ./library-maintenance-api; getDuplicateReview and DuplicateReview types from ./duplicate-review-api; useI18n from ./i18n; BookmarkFavicon, safeDomainLabel from ./BookmarkFavicon; ./duplicate-review.css
- * [OUTPUT]: exports DuplicateReviewPage component for side-by-side duplicate bookmark inspection, URL diff highlighting, safe reviewed archive/undo, and Library deep-linking
- * [POS]: top-level /app/duplicates workspace; never auto-mutates bookmarks and records explicit archive/restore actions in the Change Journal
+ * [INPUT]: depends on useEffect, useMemo, useState from react; type HealthPolicy from @dockmark/core; updateBookmarkWithTags from ./bookmark-details-api; textMatchesQuery from ./bookmark-search; computeDuplicateMerge, DuplicateCandidateCard from ./DuplicateCandidateCard; getDuplicateReview and DuplicateReview types from ./duplicate-review-api; useI18n from ./i18n; maintainLibraryBatch from ./library-maintenance-api; ./duplicate-review.css
+ * [OUTPUT]: exports DuplicateReviewPage component for side-by-side duplicate bookmark inspection, optional tag/description merging before archive, atomic-style undo, and Library deep-linking
+ * [POS]: top-level /app/duplicates workspace; never auto-mutates bookmarks and supports reversible tag/description merge + archive with Change Journal tracking
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  formatRelativeTime,
-  HEALTH_POLICY_LABELS,
-  HEALTH_STATUS_LABELS,
-  type ResolvedLocale,
-} from "@dockmark/core";
-import { BookmarkFavicon, safeDomainLabel } from "./BookmarkFavicon";
+import { useEffect, useMemo, useState } from "react";
+import type { HealthPolicy } from "@dockmark/core";
+import { updateBookmarkWithTags } from "./bookmark-details-api";
 import { textMatchesQuery } from "./bookmark-search";
+import { computeDuplicateMerge, DuplicateCandidateCard } from "./DuplicateCandidateCard";
 import {
   getDuplicateReview,
   type DuplicateCandidateKind,
   type DuplicateReviewCandidate,
-  type DuplicateReviewMember,
   type DuplicateReviewResult,
 } from "./duplicate-review-api";
 import { useI18n } from "./i18n";
@@ -27,103 +22,23 @@ import "./duplicate-review.css";
 
 type TxFn = (en: string, zh: string) => string;
 
+interface KeeperSnapshot {
+  id: string;
+  title: string;
+  url: string;
+  description: string | null;
+  categoryId: string | null;
+  healthPolicy: HealthPolicy;
+  tags: string[];
+}
+
 interface ArchiveNotice {
   archivedId: string;
   archivedTitle: string;
   keptTitle: string;
-}
-
-const KNOWN_REASON_ZH: Record<string, string> = {
-  "Saved page metadata points these bookmarks at the same canonical target.":
-    "已保存的页面元数据显示这两条书签指向同一个规范链接目标。",
-  "Saved metadata shows these bookmarks resolving to the same final target.":
-    "已保存的页面元数据显示这两条书签最终跳转到同一个目标地址。",
-  "The URLs become equivalent after ignoring protocol/www, fragments, trailing slashes and known tracking parameters.":
-    "忽略协议/www、文档锚点、末尾斜杠及常见追踪参数后，两条链接等价。",
-};
-
-function kindLabel(kind: DuplicateCandidateKind, tx: TxFn): string {
-  switch (kind) {
-    case "canonical":
-      return tx("Canonical target", "规范链接");
-    case "resolved":
-      return tx("Resolved target", "跳转目标");
-    case "normalized":
-      return tx("URL variant", "URL 变体");
-  }
-}
-
-function kindDescription(kind: DuplicateCandidateKind, tx: TxFn): string {
-  switch (kind) {
-    case "canonical":
-      return tx("Strong metadata evidence", "强元数据依据");
-    case "resolved":
-      return tx("Redirect / final-URL evidence", "重定向 / 最终地址依据");
-    case "normalized":
-      return tx("Conservative URL normalization", "保守 URL 归一化");
-  }
-}
-
-function localizedReason(candidate: DuplicateReviewCandidate, isZh: boolean): string {
-  if (!isZh) return candidate.reason;
-  return KNOWN_REASON_ZH[candidate.reason] ?? candidate.reason;
-}
-
-function healthPolicyLabel(policy: string, locale: ResolvedLocale): string {
-  const labels = HEALTH_POLICY_LABELS[locale] as Record<string, string>;
-  return labels[policy] ?? policy;
-}
-
-function healthStatusLabel(status: string, locale: ResolvedLocale): string {
-  const labels = HEALTH_STATUS_LABELS[locale] as Record<string, string>;
-  return labels[status] ?? status;
-}
-
-function formatFullDate(value: string, locale: ResolvedLocale): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function renderUrlWithDiff(url: string, otherUrl: string): ReactNode {
-  const leftChars = Array.from(url);
-  const rightChars = Array.from(otherUrl);
-  let prefixLen = 0;
-  while (
-    prefixLen < leftChars.length &&
-    prefixLen < rightChars.length &&
-    leftChars[prefixLen] === rightChars[prefixLen]
-  ) {
-    prefixLen += 1;
-  }
-
-  let suffixLen = 0;
-  while (
-    suffixLen < leftChars.length - prefixLen &&
-    suffixLen < rightChars.length - prefixLen &&
-    leftChars[leftChars.length - 1 - suffixLen] === rightChars[rightChars.length - 1 - suffixLen]
-  ) {
-    suffixLen += 1;
-  }
-
-  const diff = leftChars.slice(prefixLen, leftChars.length - suffixLen).join("");
-  if (!diff) return url;
-  const prefix = leftChars.slice(0, prefixLen).join("");
-  const suffix = suffixLen > 0 ? leftChars.slice(leftChars.length - suffixLen).join("") : "";
-
-  return (
-    <>
-      {prefix}
-      <mark className="duplicate-url-diff">{diff}</mark>
-      {suffix}
-    </>
-  );
+  mergedTagCount: number;
+  mergedDescription: boolean;
+  keeperSnapshot: KeeperSnapshot | null;
 }
 
 function matches(candidate: DuplicateReviewCandidate, query: string): boolean {
@@ -131,9 +46,11 @@ function matches(candidate: DuplicateReviewCandidate, query: string): boolean {
     candidate.left.title,
     candidate.left.url,
     candidate.left.categoryName ?? "",
+    ...(candidate.left.tags ?? []),
     candidate.right.title,
     candidate.right.url,
     candidate.right.categoryName ?? "",
+    ...(candidate.right.tags ?? []),
     candidate.evidenceUrl ?? "",
   ]);
 }
@@ -143,83 +60,31 @@ function locateInLibrary(title: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-function MemberCard({
-  side,
-  bookmark,
-  otherUrl,
-  locale,
-  tx,
-}: {
-  side: "left" | "right";
-  bookmark: DuplicateReviewMember;
-  otherUrl: string;
-  locale: ResolvedLocale;
-  tx: TxFn;
-}) {
-  const timestamp = bookmark.updatedAt ?? bookmark.createdAt ?? null;
-  const relativeUpdated = timestamp ? formatRelativeTime(timestamp, locale) : null;
-
-  return (
-    <article className="duplicate-member">
-      <div className="duplicate-member-heading">
-        <BookmarkFavicon
-          iconUrl={bookmark.iconUrl ?? null}
-          title={bookmark.title}
-          url={bookmark.url}
-          className="duplicate-member-icon"
-        />
-        <div className="duplicate-member-copy">
-          <div className="duplicate-member-title">
-            <span className="duplicate-side-badge">{side === "left" ? "A" : "B"}</span>
-            <strong>{bookmark.title}</strong>
-          </div>
-          <div className="duplicate-member-meta">
-            <span className="duplicate-meta-domain">{safeDomainLabel(bookmark.url)}</span>
-            <span className={`duplicate-meta-pill${bookmark.categoryName ? " is-categorized" : " is-muted"}`}>
-              {bookmark.categoryName ?? tx("Uncategorized", "未分类")}
-            </span>
-            <span className="duplicate-meta-pill">
-              {healthPolicyLabel(bookmark.healthPolicy, locale)} · {healthStatusLabel(bookmark.healthStatus, locale)}
-            </span>
-            {relativeUpdated && timestamp && (
-              <span className="duplicate-meta-pill" title={formatFullDate(timestamp, locale)}>
-                {tx(`Updated ${relativeUpdated}`, `更新于 ${relativeUpdated}`)}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <a className="duplicate-url" href={bookmark.url} target="_blank" rel="noreferrer" title={bookmark.url}>
-        {renderUrlWithDiff(bookmark.url, otherUrl)}
-      </a>
-      {bookmark.description && <p>{bookmark.description}</p>}
-
-      {(bookmark.canonicalUrl || bookmark.finalUrl || bookmark.metadataFetchedAt) && (
-        <div className="duplicate-member-evidence">
-          {bookmark.canonicalUrl && (
-            <div>
-              <span>{tx("Canonical", "规范链接")}</span>
-              <code>{bookmark.canonicalUrl}</code>
-            </div>
-          )}
-          {bookmark.finalUrl && (
-            <div>
-              <span>{tx("Resolved", "最终跳转")}</span>
-              <code>{bookmark.finalUrl}</code>
-            </div>
-          )}
-          {bookmark.metadataFetchedAt && (
-            <small>
-              {tx(
-                `Metadata fetched ${formatFullDate(bookmark.metadataFetchedAt, locale)}`,
-                `元数据抓取于 ${formatFullDate(bookmark.metadataFetchedAt, locale)}`,
-              )}
-            </small>
-          )}
-        </div>
-      )}
-    </article>
+function formatArchiveNotice(notice: ArchiveNotice, tx: TxFn): string {
+  const { archivedTitle, keptTitle, mergedTagCount, mergedDescription } = notice;
+  if (mergedTagCount > 0 && mergedDescription) {
+    const tagWord = mergedTagCount === 1 ? "tag" : "tags";
+    return tx(
+      `Kept “${keptTitle}” and archived “${archivedTitle}” (merged ${mergedTagCount} unique ${tagWord} and description).`,
+      `已保留“${keptTitle}”并归档“${archivedTitle}”（已合并 ${mergedTagCount} 个独有标签与描述）。`,
+    );
+  }
+  if (mergedTagCount > 0) {
+    const tagWord = mergedTagCount === 1 ? "tag" : "tags";
+    return tx(
+      `Kept “${keptTitle}” and archived “${archivedTitle}” (merged ${mergedTagCount} unique ${tagWord}).`,
+      `已保留“${keptTitle}”并归档“${archivedTitle}”（已合并 ${mergedTagCount} 个独有标签）。`,
+    );
+  }
+  if (mergedDescription) {
+    return tx(
+      `Kept “${keptTitle}” and archived “${archivedTitle}” (merged missing description).`,
+      `已保留“${keptTitle}”并归档“${archivedTitle}”（已合并缺失描述）。`,
+    );
+  }
+  return tx(
+    `Archived “${archivedTitle}” (kept “${keptTitle}”). Recorded in Change Journal.`,
+    `已归档“${archivedTitle}”（保留“${keptTitle}”），记录已写入变更日志。`,
   );
 }
 
@@ -276,21 +141,58 @@ export function DuplicateReviewPage() {
     setHiddenIds((current) => new Set(current).add(id));
   }
 
-  async function archiveDuplicate(candidate: DuplicateReviewCandidate, keepSide: "left" | "right") {
-    const kept = candidate[keepSide];
+  async function archiveDuplicate(
+    candidate: DuplicateReviewCandidate,
+    keepSide: "left" | "right",
+    mergeEnabled: boolean,
+  ) {
+    const keeper = candidate[keepSide];
     const archived = keepSide === "left" ? candidate.right : candidate.left;
+    const mergePlan = computeDuplicateMerge(keeper, archived);
+    const shouldMerge = mergeEnabled && mergePlan.hasMergeableData;
+    let keeperSnapshot: KeeperSnapshot | null = null;
+    let keeperMutated = false;
+
     setBusyCandidateId(candidate.id);
     setError(null);
     setRestoreNotice(null);
     try {
+      if (shouldMerge) {
+        keeperSnapshot = {
+          id: keeper.id,
+          title: keeper.title,
+          url: keeper.url,
+          description: keeper.description ?? null,
+          categoryId: keeper.categoryId,
+          healthPolicy: keeper.healthPolicy as HealthPolicy,
+          tags: [...(keeper.tags ?? [])],
+        };
+        await updateBookmarkWithTags(keeper.id, {
+          title: keeper.title,
+          url: keeper.url,
+          description: mergePlan.adoptDescription ?? keeper.description ?? null,
+          categoryId: keeper.categoryId,
+          healthPolicy: keeper.healthPolicy as HealthPolicy,
+          tags: [...(keeper.tags ?? []), ...mergePlan.tagsToAdd],
+        });
+        keeperMutated = true;
+      }
+
       await maintainLibraryBatch({ bookmarkIds: [archived.id], action: "archive" });
       setArchiveNotice({
         archivedId: archived.id,
         archivedTitle: archived.title,
-        keptTitle: kept.title,
+        keptTitle: keeper.title,
+        mergedTagCount: shouldMerge ? mergePlan.tagsToAdd.length : 0,
+        mergedDescription: shouldMerge ? mergePlan.adoptDescription !== null : false,
+        keeperSnapshot,
       });
       await refresh({ keepHidden: true, keepNotices: true });
     } catch (caught) {
+      if (keeperMutated && keeperSnapshot) {
+        const { id, ...revertInput } = keeperSnapshot;
+        await updateBookmarkWithTags(id, revertInput).catch(() => {});
+      }
       setError(
         caught instanceof Error
           ? caught.message
@@ -308,12 +210,21 @@ export function DuplicateReviewPage() {
     setError(null);
     try {
       await maintainLibraryBatch({ bookmarkIds: [target.archivedId], action: "restore" });
+      if (target.keeperSnapshot) {
+        const { id, ...revertInput } = target.keeperSnapshot;
+        await updateBookmarkWithTags(id, revertInput);
+      }
       setArchiveNotice(null);
       setRestoreNotice(
-        tx(
-          `Restored “${target.archivedTitle}” back to your library.`,
-          `已将「${target.archivedTitle}」恢复至书签库。`,
-        ),
+        target.keeperSnapshot
+          ? tx(
+              `Restored “${target.archivedTitle}” and reverted merged metadata on “${target.keptTitle}”.`,
+              `已恢复“${target.archivedTitle}”，并撤销对“${target.keptTitle}”的合并改动。`,
+            )
+          : tx(
+              `Restored “${target.archivedTitle}” back to your library.`,
+              `已将“${target.archivedTitle}”恢复至书签库。`,
+            ),
       );
       await refresh({ keepHidden: true, keepNotices: true });
     } catch (caught) {
@@ -342,8 +253,8 @@ export function DuplicateReviewPage() {
           <h1>{tx("Duplicate Review", "重复项审查")}</h1>
           <p>
             {tx(
-              "Compare saved URLs with canonical and resolved metadata evidence. Nothing mutates automatically — keep one side to safely archive the duplicate with instant undo and Change Journal tracking.",
-              "结合规范链接与跳转目标元数据识别候选重复书签。不会自动修改数据，可手动保留一侧并安全归档另一侧，支持一键撤销与变更日志追踪。",
+              "Compare saved URLs with canonical and resolved metadata evidence. Nothing mutates automatically — keep one side to optionally merge unique tags and missing description before safely archiving the duplicate with instant undo.",
+              "结合规范链接与跳转目标元数据识别候选重复书签。不会自动修改数据，可手动保留一侧并在归档前合并独有标签与缺失描述，支持一键完整撤销。",
             )}
           </p>
         </div>
@@ -367,12 +278,7 @@ export function DuplicateReviewPage() {
 
       {archiveNotice && (
         <div className="duplicate-action-banner" role="status">
-          <span>
-            {tx(
-              `Archived “${archiveNotice.archivedTitle}” (kept “${archiveNotice.keptTitle}”). Recorded in Change Journal.`,
-              `已归档“${archiveNotice.archivedTitle}”（保留“${archiveNotice.keptTitle}”），记录已写入变更日志。`,
-            )}
-          </span>
+          <span>{formatArchiveNotice(archiveNotice, tx)}</span>
           <div className="duplicate-action-banner-controls">
             <button
               className="secondary"
@@ -380,7 +286,7 @@ export function DuplicateReviewPage() {
               disabled={undoBusy || busyCandidateId !== null}
               onClick={() => void undoArchive()}
             >
-              {undoBusy ? tx("Restoring…", "撤销中…") : tx("Undo", "撤销归档")}
+              {undoBusy ? tx("Undoing…", "撤销中…") : tx("Undo", "撤销")}
             </button>
             <button
               className="command-clear"
@@ -461,7 +367,7 @@ export function DuplicateReviewPage() {
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={tx("Search title, URL, category, or Pinyin…", "搜索标题、链接、分类或拼音首字母…")}
+            placeholder={tx("Search title, URL, category, tag, or Pinyin…", "搜索标题、链接、分类、标签或拼音首字母…")}
             aria-label={tx("Search review queue", "搜索审查列表")}
           />
           {query && (
@@ -511,86 +417,22 @@ export function DuplicateReviewPage() {
             {tx("Analyzing saved bookmark and metadata evidence…", "正在分析书签与页面元数据依据…")}
           </div>
         ) : (
-          visible.map((candidate) => {
-            const archiving = busyCandidateId === candidate.id;
-            return (
-              <article className={`duplicate-candidate kind-${candidate.kind}`} key={candidate.id}>
-                <header className="duplicate-candidate-heading">
-                  <div className="duplicate-candidate-copy">
-                    <div className="duplicate-kind-row">
-                      <span className="duplicate-kind">{kindLabel(candidate.kind, tx)}</span>
-                      <small>{kindDescription(candidate.kind, tx)}</small>
-                    </div>
-                    <p>{localizedReason(candidate, isZh)}</p>
-                    {candidate.evidenceUrl && (
-                      <code className="duplicate-evidence-url">{candidate.evidenceUrl}</code>
-                    )}
-                  </div>
-                  <button
-                    className="text-action muted-action"
-                    type="button"
-                    onClick={() => hide(candidate.id)}
-                  >
-                    {tx("Hide for now", "暂时隐藏")}
-                  </button>
-                </header>
-
-                <div className="duplicate-pair">
-                  <MemberCard
-                    side="left"
-                    bookmark={candidate.left}
-                    otherUrl={candidate.right.url}
-                    locale={locale}
-                    tx={tx}
-                  />
-                  <span className="duplicate-divider-badge" aria-hidden="true">≈</span>
-                  <MemberCard
-                    side="right"
-                    bookmark={candidate.right}
-                    otherUrl={candidate.left.url}
-                    locale={locale}
-                    tx={tx}
-                  />
-                </div>
-
-                <footer className="duplicate-candidate-footer">
-                  <div className="duplicate-review-actions">
-                    <button
-                      className="secondary duplicate-keep-btn"
-                      type="button"
-                      disabled={archiving || undoBusy || busyCandidateId !== null}
-                      onClick={() => void archiveDuplicate(candidate, "left")}
-                    >
-                      {archiving ? tx("Archiving…", "归档中…") : tx("Keep A · Archive B", "保留 A · 归档 B")}
-                    </button>
-                    <button
-                      className="secondary duplicate-keep-btn"
-                      type="button"
-                      disabled={archiving || undoBusy || busyCandidateId !== null}
-                      onClick={() => void archiveDuplicate(candidate, "right")}
-                    >
-                      {archiving ? tx("Archiving…", "归档中…") : tx("Keep B · Archive A", "保留 B · 归档 A")}
-                    </button>
-                  </div>
-                  <div className="duplicate-utility-actions">
-                    <button
-                      className="text-action"
-                      type="button"
-                      onClick={() => locateInLibrary(candidate.left.title)}
-                    >
-                      {tx("Locate in Library", "在书签库定位")}
-                    </button>
-                    <a className="text-action duplicate-open-link" href={candidate.left.url} target="_blank" rel="noreferrer">
-                      {tx("Open A ↗", "打开 A ↗")}
-                    </a>
-                    <a className="text-action duplicate-open-link" href={candidate.right.url} target="_blank" rel="noreferrer">
-                      {tx("Open B ↗", "打开 B ↗")}
-                    </a>
-                  </div>
-                </footer>
-              </article>
-            );
-          })
+          visible.map((candidate) => (
+            <DuplicateCandidateCard
+              key={candidate.id}
+              candidate={candidate}
+              locale={locale}
+              isZh={isZh}
+              tx={tx}
+              archiving={busyCandidateId === candidate.id}
+              actionsDisabled={undoBusy || busyCandidateId !== null}
+              onHide={hide}
+              onArchive={(target, keepSide, mergeEnabled) => {
+                void archiveDuplicate(target, keepSide, mergeEnabled);
+              }}
+              onLocate={locateInLibrary}
+            />
+          ))
         )}
 
         {!loading && result && visible.length === 0 && (

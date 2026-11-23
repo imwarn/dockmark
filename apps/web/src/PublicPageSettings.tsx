@@ -1,11 +1,16 @@
 /**
- * [INPUT]: depends on Bookmark, Category, PublicPageLayout, PublicPageSettings from @dockmark/core; textMatchesQuery from ./bookmark-search; fetchPublicPageSettings, readLocalPublicPageSettings, savePublicPageSettings from ./public-settings-api; reorderBookmarks/reorderCategories from ./reorder-api; useI18n from ./i18n
- * [OUTPUT]: exports PublicPageSettings panel for Personal Navigation Station configuration, single/bulk bookmark publishing, and canonical public group ordering
- * [POS]: Mounted in SettingsPage under /app/settings/public. Manages /api/settings/public-page and /api/public/bookmarks/* selection while sharing canonical Library ordering.
+ * [INPUT]: depends on Bookmark, Category, MAX_PUBLIC_PINNED_BOOKMARKS, PublicPageSettings from @dockmark/core; textMatchesQuery from ./bookmark-search; useI18n from ./i18n; fetchPublicPageSettings, readLocalPublicPageSettings, savePublicPageSettings from ./public-settings-api; PublicSiteConfigCard from ./PublicSiteConfigCard; reorderBookmarks/reorderCategories from ./reorder-api
+ * [OUTPUT]: exports PublicPageSettings panel for Personal Navigation Station configuration, pinned favorites curation, single/bulk bookmark publishing, and canonical public group ordering
+ * [POS]: Mounted in SettingsPage under /app/settings/public. Manages /api/settings/public-page (including pinnedBookmarkIds) and /api/public/bookmarks/* selection while sharing canonical Library ordering.
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import type { Bookmark, Category, PublicPageLayout, PublicPageSettings as PublicSiteConfig } from "@dockmark/core";
+import {
+  MAX_PUBLIC_PINNED_BOOKMARKS,
+  type Bookmark,
+  type Category,
+  type PublicPageSettings as PublicSiteConfig,
+} from "@dockmark/core";
 import { textMatchesQuery } from "./bookmark-search";
 import { useI18n } from "./i18n";
 import {
@@ -13,6 +18,7 @@ import {
   readLocalPublicPageSettings,
   savePublicPageSettings,
 } from "./public-settings-api";
+import { PublicSiteConfigCard } from "./PublicSiteConfigCard";
 import { reorderBookmarks, reorderCategories } from "./reorder-api";
 
 interface Props {
@@ -52,6 +58,7 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
   const { tx } = useI18n();
   const [siteConfig, setSiteConfig] = useState<PublicSiteConfig>(() => readLocalPublicPageSettings());
   const [siteSaving, setSiteSaving] = useState(false);
+  const [pinSaving, setPinSaving] = useState(false);
   const [published, setPublishedIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -118,6 +125,11 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
     [categories],
   );
 
+  const bookmarksById = useMemo(
+    () => new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark])),
+    [bookmarks],
+  );
+
   const bookmarksByCategory = useMemo(() => {
     const map = new Map<string, Bookmark[]>();
     for (const bookmark of bookmarks) {
@@ -128,6 +140,23 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
     }
     return map;
   }, [bookmarks]);
+
+  const pinnedBookmarks = useMemo(() => {
+    const resolved: Bookmark[] = [];
+    for (const id of siteConfig.pinnedBookmarkIds) {
+      if (!published.has(id)) continue;
+      const bookmark = bookmarksById.get(id);
+      if (bookmark) resolved.push(bookmark);
+    }
+    return resolved;
+  }, [bookmarksById, published, siteConfig.pinnedBookmarkIds]);
+
+  const pinnedIdSet = useMemo(
+    () => new Set(pinnedBookmarks.map((bookmark) => bookmark.id)),
+    [pinnedBookmarks],
+  );
+
+  const pinLimitReached = pinnedBookmarks.length >= MAX_PUBLIC_PINNED_BOOKMARKS;
 
   const groups = useMemo(() => {
     const categoryGroups = categories.map((category) => ({
@@ -168,6 +197,60 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
       selectVisibleRef.current.indeterminate = visibleSelectedCount > 0 && !allVisibleSelected;
     }
   }, [allVisibleSelected, visibleSelectedCount]);
+
+  async function persistPinnedBookmarkIds(nextIds: string[], successMessage: string) {
+    const cleaned = [...new Set(nextIds)]
+      .filter((id) => published.has(id) && bookmarksById.has(id))
+      .slice(0, MAX_PUBLIC_PINNED_BOOKMARKS);
+    setPinSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const saved = await savePublicPageSettings({ pinnedBookmarkIds: cleaned });
+      setSiteConfig(saved);
+      setNotice(successMessage);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : tx("Could not update pinned favorites.", "更新置顶常用区失败。"));
+    } finally {
+      setPinSaving(false);
+    }
+  }
+
+  async function togglePin(bookmark: Bookmark) {
+    const currentIds = pinnedBookmarks.map((item) => item.id);
+    if (pinnedIdSet.has(bookmark.id)) {
+      const nextIds = currentIds.filter((id) => id !== bookmark.id);
+      await persistPinnedBookmarkIds(
+        nextIds,
+        tx(`Unpinned “${bookmark.title}”.`, `已取消置顶“${bookmark.title}”。`),
+      );
+      return;
+    }
+    if (currentIds.length >= MAX_PUBLIC_PINNED_BOOKMARKS) {
+      setError(
+        tx(
+          `You can pin up to ${MAX_PUBLIC_PINNED_BOOKMARKS} bookmarks.`,
+          `最多只能置顶 ${MAX_PUBLIC_PINNED_BOOKMARKS} 条书签。`,
+        ),
+      );
+      return;
+    }
+    await persistPinnedBookmarkIds(
+      [...currentIds, bookmark.id],
+      tx(`Pinned “${bookmark.title}” to top favorites.`, `已将“${bookmark.title}”置顶到公开主页常用区。`),
+    );
+  }
+
+  async function movePinned(bookmarkId: string, direction: -1 | 1) {
+    const currentIds = pinnedBookmarks.map((item) => item.id);
+    const index = currentIds.indexOf(bookmarkId);
+    const targetId = currentIds[index + direction];
+    if (!targetId) return;
+    await persistPinnedBookmarkIds(
+      swapIds(currentIds, bookmarkId, targetId),
+      tx("Updated pinned favorites order.", "已更新置顶常用区排序。"),
+    );
+  }
 
   async function toggle(bookmark: Bookmark) {
     const nextPublished = !published.has(bookmark.id);
@@ -349,133 +432,86 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
       {error && <div className="error-banner" role="alert">{error}</div>}
       {notice && <div className="success-banner" role="status">{notice}</div>}
 
-      <form className="form-card public-site-config-card" onSubmit={(event) => void saveSiteConfig(event)}>
-        <div className="card-heading">
-          <div>
-            <h2>{tx("Navigation Station Appearance & Behavior", "导航站外观与交互配置")}</h2>
-            <p>
-              {tx(
-                "Customize the public root page (/) title, default density, search engines, and link opening behavior.",
-                "自定义公开主页（/）的站点标题、默认视图密度、外网搜索引擎栏与链接打开方式。",
-              )}
-            </p>
-          </div>
-          <span>{tx("Applies to /", "生效于 /")}</span>
-        </div>
-
-        <div className="public-site-config-grid">
-          <label className="settings-field">
-            <span>{tx("Custom site title", "自定义站点标题")}</span>
-            <input
-              type="text"
-              value={siteConfig.siteTitle}
-              onChange={(event) => setSiteConfig((current) => ({ ...current, siteTitle: event.target.value }))}
-              placeholder={tx("Curated links", "个人导航")}
-              maxLength={80}
-            />
-          </label>
-          <label className="settings-field">
-            <span>{tx("Site subtitle / intro", "站点简介 / 副标题")}</span>
-            <input
-              type="text"
-              value={siteConfig.siteSubtitle}
-              onChange={(event) => setSiteConfig((current) => ({ ...current, siteSubtitle: event.target.value }))}
-              placeholder={tx("Curated bookmarks and quick web search.", "精选导航与快捷搜索。")}
-              maxLength={200}
-            />
-          </label>
-        </div>
-
-        <div className="public-site-config-layout">
-          <span>{tx("Default layout", "默认布局")}</span>
-          <div className="settings-segmented" role="group" aria-label={tx("Default public layout", "公开主页默认布局")}>
-            {([
-              ["grid", tx("Standard Grid", "标准卡片 Grid")],
-              ["compact", tx("Compact Nav", "紧凑导航 Compact")],
-              ["list", tx("Detailed List", "详情列表 List")],
-            ] as Array<[PublicPageLayout, string]>).map(([layoutValue, label]) => (
-              <button
-                key={layoutValue}
-                type="button"
-                className={siteConfig.defaultLayout === layoutValue ? "active" : ""}
-                onClick={() => setSiteConfig((current) => ({ ...current, defaultLayout: layoutValue }))}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="settings-options-grid">
-          <label className="settings-toggle">
-            <span>
-              <strong>{tx("Show startpage search bar", "显示导航搜索框")}</strong>
-              <small>{tx("Allow instant local filtering (with Pinyin initials) on /.", "在主页顶部显示搜索框，支持标题、域名与拼音首字母筛选。")}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={siteConfig.showSearchBar}
-              onChange={(event) => setSiteConfig((current) => ({ ...current, showSearchBar: event.target.checked }))}
-            />
-          </label>
-          <label className="settings-toggle">
-            <span>
-              <strong>{tx("Enable web search engines", "启用外网搜索引擎栏")}</strong>
-              <small>{tx("Show quick Google, Bing, GitHub, DuckDuckGo and Baidu search pills.", "在搜索框上方提供 Google、Bing、GitHub、DuckDuckGo、百度直达切换。")}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={siteConfig.showWebSearch}
-              disabled={!siteConfig.showSearchBar}
-              onChange={(event) => setSiteConfig((current) => ({ ...current, showWebSearch: event.target.checked }))}
-            />
-          </label>
-          <label className="settings-toggle">
-            <span>
-              <strong>{tx("Show category quick-filter bar", "显示分类快捷筛选栏")}</strong>
-              <small>{tx("Display scrollable category pills above bookmark groups.", "在书签分组上方展示横向分类标签栏，支持一键筛选。")}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={siteConfig.showCategoryNav}
-              onChange={(event) => setSiteConfig((current) => ({ ...current, showCategoryNav: event.target.checked }))}
-            />
-          </label>
-          <label className="settings-toggle">
-            <span>
-              <strong>{tx("Open links in new tab", "新标签页打开链接")}</strong>
-              <small>{tx("Applies to both public bookmark cards and web search actions.", "同时作用于公开书签卡片与外网搜索跳转。")}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={siteConfig.openInNewTab}
-              onChange={(event) => setSiteConfig((current) => ({ ...current, openInNewTab: event.target.checked }))}
-            />
-          </label>
-        </div>
-
-        <div className="public-site-config-footer">
-          <small>
-            {tx(
-              "Visitors can still switch Grid / Compact / List locally in their browser without changing your D1 defaults.",
-              "访客仍可在自己浏览器中本地切换网格 / 紧凑 / 列表视图，不会覆盖你的 D1 默认配置。",
-            )}
-          </small>
-          <button className="primary" type="submit" disabled={siteSaving}>
-            {siteSaving ? tx("Saving…", "保存中…") : tx("Save navigation settings", "保存导航站配置")}
-          </button>
-        </div>
-      </form>
+      <PublicSiteConfigCard
+        siteConfig={siteConfig}
+        saving={siteSaving}
+        onChange={setSiteConfig}
+        onSubmit={(event) => void saveSiteConfig(event)}
+      />
 
       <div className="public-curation-layout">
         <article className="form-card public-layout-card">
           <div className="card-heading">
             <div>
               <h2>{tx("Public layout", "公开列表预览与排序")}</h2>
-              <p>{tx("Reorder published categories and links directly here.", "直接上下调整已公开分类与链接顺序。")}</p>
+              <p>{tx("Pin top favorites and reorder published categories and links directly here.", "置顶高频常用链接，并直接调整已公开分类与书签顺序。")}</p>
             </div>
             <span>{tx(`${groups.length} groups`, `${groups.length} 个分组`)}</span>
           </div>
+
+          <section className="public-pinned-panel" aria-label={tx("Pinned Favorites", "置顶常用区")}>
+            <header className="public-pinned-panel-head">
+              <div>
+                <strong>
+                  <span className="public-pin-star" aria-hidden="true">★</span>
+                  {tx("Pinned Favorites", "置顶常用区")}
+                </strong>
+                <span>{tx("Featured above all category groups on /", "固定展示在公开主页顶部分类区上方")}</span>
+              </div>
+              <em className="public-pinned-quota">
+                {pinnedBookmarks.length} / {MAX_PUBLIC_PINNED_BOOKMARKS}
+              </em>
+            </header>
+
+            {pinnedBookmarks.length > 0 ? (
+              <div className="public-layout-items">
+                {pinnedBookmarks.map((bookmark, index) => (
+                  <div className="public-layout-item public-pinned-item" key={bookmark.id}>
+                    <span className="public-pin-star" aria-hidden="true">★</span>
+                    <span>
+                      <strong>{bookmark.title}</strong>
+                      <small>{bookmark.url}</small>
+                    </span>
+                    <div className="public-order-actions">
+                      <button
+                        className="text-action"
+                        type="button"
+                        aria-label={tx("Move pinned up", "上移置顶项")}
+                        disabled={pinSaving || index === 0}
+                        onClick={() => void movePinned(bookmark.id, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        className="text-action"
+                        type="button"
+                        aria-label={tx("Move pinned down", "下移置顶项")}
+                        disabled={pinSaving || index === pinnedBookmarks.length - 1}
+                        onClick={() => void movePinned(bookmark.id, 1)}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        className="text-action"
+                        type="button"
+                        disabled={pinSaving}
+                        onClick={() => void togglePin(bookmark)}
+                      >
+                        {tx("Unpin", "取消置顶")}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="public-pinned-empty">
+                {tx(
+                  "Click “★ Pin” on any published bookmark below to pin it to the top favorites bar.",
+                  "点击下方已公开书签右侧的「★ 置顶」即可固定到公开主页顶部常用区。",
+                )}
+              </p>
+            )}
+          </section>
 
           <div className="public-layout-groups">
             {groups.map((group, groupIndex) => (
@@ -508,43 +544,60 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
                 </header>
 
                 <div className="public-layout-items">
-                  {group.bookmarks.map((bookmark, index) => (
-                    <div className="public-layout-item" key={bookmark.id}>
-                      <span className="drag-handle" aria-hidden="true">⠿</span>
-                      <span>
-                        <strong>{bookmark.title}</strong>
-                        <small>{bookmark.url}</small>
-                      </span>
-                      <div className="public-order-actions">
-                        <button
-                          className="text-action"
-                          type="button"
-                          aria-label={tx("Move up", "上移")}
-                          disabled={sorting || index === 0}
-                          onClick={() => void moveBookmark(bookmark, -1)}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          className="text-action"
-                          type="button"
-                          aria-label={tx("Move down", "下移")}
-                          disabled={sorting || index === group.bookmarks.length - 1}
-                          onClick={() => void moveBookmark(bookmark, 1)}
-                        >
-                          ↓
-                        </button>
-                        <button
-                          className="danger-text text-action"
-                          type="button"
-                          disabled={mutationBusy}
-                          onClick={() => void toggle(bookmark)}
-                        >
-                          {tx("Unpublish", "取消公开")}
-                        </button>
+                  {group.bookmarks.map((bookmark, index) => {
+                    const isPinned = pinnedIdSet.has(bookmark.id);
+                    const pinDisabled = pinSaving || (!isPinned && pinLimitReached);
+                    return (
+                      <div className="public-layout-item" key={bookmark.id}>
+                        <span className="drag-handle" aria-hidden="true">⠿</span>
+                        <span>
+                          <strong>{bookmark.title}</strong>
+                          <small>{bookmark.url}</small>
+                        </span>
+                        <div className="public-order-actions">
+                          <button
+                            className={`public-pin-btn${isPinned ? " is-pinned" : ""}`}
+                            type="button"
+                            disabled={pinDisabled}
+                            title={
+                              !isPinned && pinLimitReached
+                                ? tx(`Maximum ${MAX_PUBLIC_PINNED_BOOKMARKS} pinned bookmarks reached`, `最多可置顶 ${MAX_PUBLIC_PINNED_BOOKMARKS} 条书签`)
+                                : undefined
+                            }
+                            onClick={() => void togglePin(bookmark)}
+                          >
+                            {isPinned ? tx("★ Pinned", "★ 已置顶") : tx("★ Pin", "★ 置顶")}
+                          </button>
+                          <button
+                            className="text-action"
+                            type="button"
+                            aria-label={tx("Move up", "上移")}
+                            disabled={sorting || index === 0}
+                            onClick={() => void moveBookmark(bookmark, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            className="text-action"
+                            type="button"
+                            aria-label={tx("Move down", "下移")}
+                            disabled={sorting || index === group.bookmarks.length - 1}
+                            onClick={() => void moveBookmark(bookmark, 1)}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            className="danger-text text-action"
+                            type="button"
+                            disabled={mutationBusy}
+                            onClick={() => void toggle(bookmark)}
+                          >
+                            {tx("Unpublish", "取消公开")}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             ))}

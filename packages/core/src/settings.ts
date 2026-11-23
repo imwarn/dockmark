@@ -1,6 +1,6 @@
 /**
  * [INPUT]: depends on Id from ./models; depends on LocalePreference and normalizeLocalePreference from ./i18n
- * [OUTPUT]: provides browser (with launcher shortcuts), appearance, public-page, and non-secret AI settings contracts, defaults, normalizers, and merge helpers
+ * [OUTPUT]: provides browser (with launcher shortcuts), appearance, public-page (with MAX_PUBLIC_PINNED_BOOKMARKS and pinnedBookmarkIds), and non-secret AI settings contracts, defaults, normalizers, and merge helpers
  * [POS]: schema and normalization boundary for persisted app_settings payloads in packages/core/src
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
@@ -10,6 +10,7 @@ import { normalizeLocalePreference, type LocalePreference } from "./i18n";
 export const BROWSER_SETTINGS_VERSION = 1;
 export const APPEARANCE_SETTINGS_VERSION = 1;
 export const PUBLIC_PAGE_SETTINGS_VERSION = 1;
+export const MAX_PUBLIC_PINNED_BOOKMARKS = 24;
 export const AI_SETTINGS_VERSION = 1;
 
 export type BookmarkConflictPreference = "ask" | "browser" | "dockmark";
@@ -62,6 +63,7 @@ export interface PublicPageSettings {
   showWebSearch: boolean;
   showCategoryNav: boolean;
   openInNewTab: boolean;
+  pinnedBookmarkIds: Id[];
   updatedAt: string | null;
 }
 
@@ -73,6 +75,7 @@ export interface UpdatePublicPageSettingsInput {
   showWebSearch?: boolean;
   showCategoryNav?: boolean;
   openInNewTab?: boolean;
+  pinnedBookmarkIds?: Id[];
 }
 
 export interface AiSettings {
@@ -120,6 +123,7 @@ export const DEFAULT_PUBLIC_PAGE_SETTINGS: PublicPageSettings = {
   showWebSearch: true,
   showCategoryNav: true,
   openInNewTab: true,
+  pinnedBookmarkIds: [],
   updatedAt: null,
 };
 
@@ -154,6 +158,21 @@ export function normalizePublicPageLayout(value: unknown): PublicPageLayout {
 
 function trimmedCappedString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function normalizePinnedBookmarkIds(value: unknown): Id[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const normalized: Id[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || trimmed.length > 120 || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+    if (normalized.length >= MAX_PUBLIC_PINNED_BOOKMARKS) break;
+  }
+  return normalized;
 }
 
 export function normalizeBrowserSettings(value: unknown): BrowserSettings {
@@ -237,6 +256,7 @@ export function normalizePublicPageSettings(value: unknown): PublicPageSettings 
     openInNewTab: typeof record.openInNewTab === "boolean"
       ? record.openInNewTab
       : DEFAULT_PUBLIC_PAGE_SETTINGS.openInNewTab,
+    pinnedBookmarkIds: normalizePinnedBookmarkIds(record.pinnedBookmarkIds),
     updatedAt: typeof record.updatedAt === "string" && record.updatedAt ? record.updatedAt : null,
   };
 }
@@ -306,6 +326,7 @@ export function mergePublicPageSettings(
     ...(input.showWebSearch === undefined ? {} : { showWebSearch: input.showWebSearch }),
     ...(input.showCategoryNav === undefined ? {} : { showCategoryNav: input.showCategoryNav }),
     ...(input.openInNewTab === undefined ? {} : { openInNewTab: input.openInNewTab }),
+    ...(input.pinnedBookmarkIds === undefined ? {} : { pinnedBookmarkIds: input.pinnedBookmarkIds }),
     updatedAt,
   });
 }

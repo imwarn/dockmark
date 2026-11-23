@@ -19,13 +19,14 @@ src/main.tsx: SPA bootstrapper applying local appearance/locale before paint, bi
 src/PrivateRoot.tsx: Session auth gate (`LoginCard`, `SetupRequired`) and sticky 46px private utility bar with inbox badge and 1-click theme/locale quick-toggles
 src/App.tsx: Authenticated workspace shell with sticky 64px topbar, Raycast-style command bar (`!bang`, `@collection`, `#tag`, Pinyin initials, customizable `launcherShortcut`/`slashFocus`), keyboard-navigable results, and section router
 src/LauncherDashboard.tsx: Command ranking (`buildLauncherResults`), keyboard-navigable `LauncherCommandPanel`, empty-query dashboard (open tabs, workspaces, filterable bookmarks), and `SafeFavicon`
-src/PublicPage.tsx: Read-only Personal Navigation Station (`/`) loading `/api/settings/public-page` + `/api/public/bookmarks` with customizable site title/subtitle, Pinyin search + web engine switcher, category nav pills, visitor-local 3-way layout (`grid`/`compact`/`list`), `usePublicI18n()`, and local theme toggle
+src/PublicPage.tsx: Read-only Personal Navigation Station (`/`) loading `/api/settings/public-page` + `/api/public/bookmarks` with customizable site title/subtitle, ordered `★ Pinned Favorites` section, collapsible category headers persisted in visitor-local `dockmarkPublicCollapsedV1` (with Collapse/Expand all and search auto-expand), Pinyin search + web engine switcher, category nav pills, visitor-local 3-way layout (`grid`/`compact`/`list`), `usePublicI18n()`, and local theme toggle
 src/SettingsPage.tsx: Client-side `/app/settings/*` router coordinating 5 tabs: Appearance & Language, Browser, AI Service, Security, and Public Page
 src/AppearanceSettings.tsx: Theme (`System / Light / Dark`) and Language (`System / English / 简体中文`) selector cards synced via `PATCH /api/settings/appearance`
 src/BrowserSettingsManager.tsx: Local-first and D1-synced New Tab launcher limits, default engine, launcher shortcut (`⌘K`/`⌘J`/`Alt+K` + `/` focus), and bookmark conflict policy settings
-src/AiProviderSettingsPage.tsx: Dedicated `/app/settings/ai` panel with 6 OpenAI-compatible provider presets, D1-synced non-secret endpoint/model/timeout form (`saveCloudAiSettings`), `DOCKMARK_AI_API_KEY` Worker secret status check, and Inbox/Organize quick links
+src/AiProviderSettingsPage.tsx: Dedicated `/app/settings/ai` panel with 6 OpenAI-compatible provider presets, D1-synced non-secret endpoint/model/timeout form (`saveCloudAiSettings`), `Default / Local` vs `Cloud synced` state badge, wrapped `DOCKMARK_AI_API_KEY` Worker secret status check, and Inbox/Organize quick links
 src/SecuritySettings.tsx: One-time extension pairing code generator and active/revoked paired-device management
-src/PublicPageSettings.tsx: Personal Navigation Station appearance/behavior editor (`/api/settings/public-page`), single and bulk bookmark publication manager, and canonical category/bookmark public ordering
+src/PublicPageSettings.tsx: Personal Navigation Station settings view orchestrating `PublicSiteConfigCard`, ordered `★ Pinned Favorites` curation (up to `MAX_PUBLIC_PINNED_BOOKMARKS = 24`), single and bulk bookmark publication, and canonical category/bookmark public ordering
+src/PublicSiteConfigCard.tsx: Extracted top configuration card for `PublicPageSettings` editing public root (`/`) site title/subtitle, default layout, search bar, web search, category nav, and new-tab behavior
 src/BrowserExtensionManager.tsx: Extension hub (`/app/extension`) with Chromium New Tab, Chromium Standard, and Firefox MV3 profiles, install guide, and live bridge diagnostics
 
 ## `src/` — Library, Workspace & Triage Managers
@@ -48,7 +49,8 @@ src/NativeBookmarkSyncPanels.tsx: Extracted mapping preview (`NativeMappingPrevi
 src/InboxPage.tsx: Capture Inbox triage view with cloud-hydrated AI provider status, `/app/settings/ai` quick link, metadata review, and filing/archiving actions
 src/InboxReviewCard.tsx: Single-bookmark Inbox review card handling filing, AI triage selection, and opt-in metadata suggestions
 src/SmartCollectionsPage.tsx: Saved dynamic filter collection builder, live preview, and bulk handoff
-src/DuplicateReviewPage.tsx: Duplicate URL group detector with Pinyin search, segmented evidence filters, side-by-side URL diff highlighting, 1-click Keep & Archive with Change Journal undo, and Locate in Library handoff
+src/DuplicateReviewPage.tsx: Duplicate URL group review workbench with Pinyin search, segmented evidence filters, atomic-style tag/description merge + Keep & Archive execution, full Undo (restoring archived bookmark and reverting merged metadata), and Locate in Library handoff
+src/DuplicateCandidateCard.tsx: Extracted duplicate pair comparison card (`computeDuplicateMerge`) displaying side-by-side URL diff highlighting, unique `#tag` chips, contextual merge preview toggle, and Keep/Archive actions
 
 ## `src/` — Client Data, Bridge, Theme & i18n Modules
 src/i18n.ts: Web locale state (`dockmarkLocaleV1`, `dockmarkPublicLocaleV1`), cloud sync, `useI18n()`, and visitor-only `usePublicI18n()`
@@ -63,7 +65,7 @@ src/bookmark-details-api.ts: Composite bookmark + tag mutation API client
 src/bookmark-search.ts: Tokenized bookmark, `#tag`, and Hanzi Pinyin initial client-side search predicates
 src/bookmark-transfer.ts: Netscape HTML and Dockmark JSON bookmark parsers and serializers
 src/change-journal-api.ts: Change journal listing API client
-src/duplicate-review-api.ts: Duplicate group listing (`iconUrl`, timestamps) and resolution API client
+src/duplicate-review-api.ts: Duplicate group listing (`iconUrl`, `tags`, timestamps) and resolution API client
 src/inbox-api.ts: Capture Inbox listing, count, filing, and `INBOX_CHANGED_EVENT` broadcaster
 src/library-batch-api.ts: Bulk library category/tag batch API client
 src/library-maintenance-api.ts: Archived bookmark listing and bulk maintenance API client
@@ -80,10 +82,10 @@ src/theme.css: Dark (`#0a0f0c`) and light (`#f4f7f5`) semantic `--dm-*` design t
 src/ui-polish.css: Outer-only `:focus-within` rings for composite search boxes (zero inner outline), custom SVG-chevron `<select>` styling, reusable `.dm-search-box`, and light-theme surface alignment
 src/light-theme-consistency.css: Light-theme overrides for Extension, Transfer, Auth, and Public Page curation cards
 src/responsive-shell.css: Sticky 46px utility bar, sticky 64px topbar (`top: 46px`), 128px sticky sidebar offset, and 900/720/520px responsive nav rules
-src/settings.css: 5-tab Settings subnav, preference cards, AI provider preset grid, segmented controls, and public curation layout styles
+src/settings.css: 5-tab Settings subnav, preference cards, overflow-safe AI provider/secret grid, segmented controls, and public pinning/curation layout styles
 src/security.css: Private utility bar, quick theme/locale pills, auth screens, and paired-device list styles
 src/extension.css: Extension hub hero, profile cards, installation guide, diagnostics, and compact launcher nudge strip
-src/public-page.css: Personal Navigation Station topbar, visitor controls, Pinyin/web search bar, category nav pills, and `grid`/`compact`/`list` layouts
+src/public-page.css: Personal Navigation Station topbar, visitor controls, Pinyin/web search bar, category nav pills, `★ Pinned Favorites` section, collapsible group headers, and `grid`/`compact`/`list` layouts
 src/*.css (feature sheets): Scoped styles for `ai-organization`, `bookmark-tags`, `bridge`, `change-journal`, `duplicate-review`, `health`, `inbox`, `library-bulk`, `maintenance`, `reorder`, `search-engines`, `session`, `smart-collections`, `transfer`, and `workspaces`
 
 [PROTOCOL]: Update this header on change, then check GEMINI.md

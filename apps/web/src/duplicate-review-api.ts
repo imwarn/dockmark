@@ -1,7 +1,7 @@
 /**
  * [INPUT]: calls GET /api/library/duplicates via fetch
- * [OUTPUT]: exports getDuplicateReview and duplicate review response/member types
- * [POS]: Web API client for DuplicateReviewPage in apps/web/src
+ * [OUTPUT]: exports getDuplicateReview and normalized duplicate review response/member types (including bookmark tags)
+ * [POS]: Web API client for DuplicateReviewPage and DuplicateCandidateCard in apps/web/src
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 
@@ -17,6 +17,7 @@ export interface DuplicateReviewMember {
   categoryName?: string;
   healthPolicy: string;
   healthStatus: string;
+  tags: string[];
   createdAt?: string;
   updatedAt?: string;
   canonicalUrl?: string;
@@ -57,6 +58,14 @@ interface ErrorEnvelope {
   };
 }
 
+function normalizeMember(member: DuplicateReviewMember): DuplicateReviewMember {
+  const rawTags = (member as { tags?: unknown }).tags;
+  const tags = Array.isArray(rawTags)
+    ? rawTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+    : [];
+  return { ...member, tags };
+}
+
 export async function getDuplicateReview(): Promise<DuplicateReviewResult> {
   const response = await fetch("/api/library/duplicates", {
     headers: { accept: "application/json" },
@@ -65,5 +74,12 @@ export async function getDuplicateReview(): Promise<DuplicateReviewResult> {
   if (!response.ok) {
     throw new Error(payload.error?.message ?? `Duplicate review failed with status ${response.status}.`);
   }
-  return payload;
+  return {
+    ...payload,
+    candidates: (payload.candidates ?? []).map((candidate) => ({
+      ...candidate,
+      left: normalizeMember(candidate.left),
+      right: normalizeMember(candidate.right),
+    })),
+  };
 }

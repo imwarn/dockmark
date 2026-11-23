@@ -1,5 +1,5 @@
 /**
- * [INPUT]: depends on browser, appearance, public-page, and AI settings helpers plus URL policy checks from @dockmark/core; queries D1 app_settings, bookmark_tags, smart_collections, and bookmarks tables
+ * [INPUT]: depends on browser, appearance, public-page (including MAX_PUBLIC_PINNED_BOOKMARKS), and AI settings helpers plus URL policy checks from @dockmark/core; queries D1 app_settings, bookmark_tags, smart_collections, and bookmarks tables
  * [OUTPUT]: exports SettingsDbLike, SettingsHttpError, loadAppearanceSettings, loadPublicPageSettings, loadAiSettings, and handleSettingsApi
  * [POS]: Worker HTTP handler for /api/settings/browser, /api/settings/appearance, /api/settings/public-page, and /api/settings/ai in apps/web/worker
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
@@ -9,6 +9,7 @@ import {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_BROWSER_SETTINGS,
   DEFAULT_PUBLIC_PAGE_SETTINGS,
+  MAX_PUBLIC_PINNED_BOOKMARKS,
   inferHealthPolicy,
   mergeAiSettings,
   mergeAppearanceSettings,
@@ -26,6 +27,7 @@ import {
   type BookmarkConflictPreference,
   type BrowserNewTabSettings,
   type BrowserSettings,
+  type Id,
   type LauncherShortcutKey,
   type LocalePreference,
   type PublicPageLayout,
@@ -130,6 +132,43 @@ function parseLocalePreference(value: unknown): LocalePreference {
 function parsePublicPageLayout(value: unknown): PublicPageLayout {
   if (value === "grid" || value === "compact" || value === "list") return value;
   throw new SettingsHttpError(400, "invalid_field", "defaultLayout must be grid, compact or list.");
+}
+
+function parsePinnedBookmarkIds(value: unknown): Id[] {
+  if (!Array.isArray(value)) {
+    throw new SettingsHttpError(400, "invalid_field", "pinnedBookmarkIds must be an array.");
+  }
+  if (value.length > MAX_PUBLIC_PINNED_BOOKMARKS) {
+    throw new SettingsHttpError(
+      400,
+      "invalid_field",
+      `pinnedBookmarkIds must contain at most ${MAX_PUBLIC_PINNED_BOOKMARKS} items.`,
+    );
+  }
+  const seen = new Set<string>();
+  const ids: Id[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new SettingsHttpError(
+        400,
+        "invalid_field",
+        "pinnedBookmarkIds items must be non-empty strings of at most 120 characters.",
+      );
+    }
+    const trimmed = item.trim();
+    if (!trimmed || trimmed.length > 120) {
+      throw new SettingsHttpError(
+        400,
+        "invalid_field",
+        "pinnedBookmarkIds items must be non-empty strings of at most 120 characters.",
+      );
+    }
+    if (!seen.has(trimmed)) {
+      seen.add(trimmed);
+      ids.push(trimmed);
+    }
+  }
+  return ids;
 }
 
 function parseBoolean(value: unknown, key: string): boolean {
@@ -324,6 +363,7 @@ function parsePublicPageUpdate(body: Record<string, unknown>): UpdatePublicPageS
   if (hasOwn(body, "showWebSearch")) update.showWebSearch = parseBoolean(body.showWebSearch, "showWebSearch");
   if (hasOwn(body, "showCategoryNav")) update.showCategoryNav = parseBoolean(body.showCategoryNav, "showCategoryNav");
   if (hasOwn(body, "openInNewTab")) update.openInNewTab = parseBoolean(body.openInNewTab, "openInNewTab");
+  if (hasOwn(body, "pinnedBookmarkIds")) update.pinnedBookmarkIds = parsePinnedBookmarkIds(body.pinnedBookmarkIds);
   return update;
 }
 

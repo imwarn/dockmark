@@ -1,7 +1,7 @@
 /**
  * [INPUT]: depends on AppearancePreference, PublicPageLayout, PublicPageSettings from @dockmark/core; textMatchesQuery from ./bookmark-search; usePublicI18n from ./i18n; hostLabel, SafeFavicon, safeHttpUrl from ./LauncherDashboard; public settings API/cache helpers from ./public-settings-api; theme helpers from ./theme; and ./public-page.css
- * [OUTPUT]: exports PublicPage Personal Navigation Station with custom branding, Pinyin-aware filter & web search engines, category jump pills, and visitor-local 3-mode layout switcher
- * [POS]: Public root route (/) rendered by main.tsx for visitors. Reads /api/public/bookmarks and /api/settings/public-page in parallel and never mutates owner D1 preferences.
+ * [OUTPUT]: exports PublicPage Personal Navigation Station with custom branding, Pinyin-aware filter & web search engines, pinned favorites section, collapsible category groups with visitor-local storage (dockmarkPublicCollapsedV1), category jump pills, and visitor-local 3-mode layout switcher
+ * [POS]: Public root route (/) rendered by main.tsx for visitors. Reads /api/public/bookmarks and /api/settings/public-page in parallel and keeps visitor layout and collapsed-group memory strictly local without mutating owner D1 preferences.
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -49,12 +49,34 @@ const WEB_SEARCH_ENGINES: WebSearchEngineOption[] = [
 ];
 
 const THEME_CYCLE: AppearancePreference[] = ["system", "light", "dark"];
+const PUBLIC_COLLAPSED_STORAGE_KEY = "dockmarkPublicCollapsedV1";
+
+function readCollapsedGroups(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(PUBLIC_COLLAPSED_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((item): item is string => typeof item === "string" && item.length > 0));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCollapsedGroups(keys: Set<string>) {
+  try {
+    window.localStorage.setItem(PUBLIC_COLLAPSED_STORAGE_KEY, JSON.stringify([...keys]));
+  } catch {
+    // Ignore storage quota or private-browsing failures.
+  }
+}
 
 export function PublicPage() {
   const { isZh, tx, setLocalePreference } = usePublicI18n();
   const [appearance, setAppearance] = useState<AppearancePreference>(() => localAppearance());
   const [siteSettings, setSiteSettings] = useState<PublicPageSettings>(() => readLocalPublicPageSettings());
   const [visitorLayout, setVisitorLayout] = useState<PublicPageLayout | null>(() => readVisitorPublicLayout());
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(() => readCollapsedGroups());
   const [bookmarks, setBookmarks] = useState<PublicBookmark[]>([]);
   const [query, setQuery] = useState("");
   const [searchMode, setSearchMode] = useState<SearchEngineMode>("filter");
@@ -100,6 +122,7 @@ export function PublicPage() {
     const onStorage = (event: StorageEvent) => {
       if (event.key === APPEARANCE_STORAGE_KEY) syncAppearance();
       if (event.key === PUBLIC_SITE_CONFIG_STORAGE_KEY) setSiteSettings(readLocalPublicPageSettings());
+      if (event.key === PUBLIC_COLLAPSED_STORAGE_KEY) setCollapsedKeys(readCollapsedGroups());
     };
     window.addEventListener("dockmark:appearance", onAppearance);
     window.addEventListener(PUBLIC_SITE_CONFIG_EVENT, onSiteConfig);
@@ -165,6 +188,11 @@ export function PublicPage() {
     };
   }, [tx]);
 
+  const bookmarksById = useMemo(
+    () => new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark])),
+    [bookmarks],
+  );
+
   const categories = useMemo(() => {
     const map = new Map<string, { key: string; name: string; icon?: string; count: number }>();
     for (const bookmark of bookmarks) {
@@ -187,21 +215,41 @@ export function PublicPage() {
     }
   }, [categories, selectedCategoryKey]);
 
+  const trimmedQuery = query.trim();
+
   const filtered = useMemo(() => {
     const byCategory = selectedCategoryKey === "all"
       ? bookmarks
       : bookmarks.filter((bookmark) => (bookmark.category?.id ?? "uncategorized") === selectedCategoryKey);
-    const trimmed = query.trim();
-    if (!trimmed || searchMode !== "filter") return byCategory;
+    if (!trimmedQuery || searchMode !== "filter") return byCategory;
     return byCategory.filter((bookmark) =>
-      textMatchesQuery(trimmed, [
+      textMatchesQuery(trimmedQuery, [
         bookmark.title,
         bookmark.url,
         bookmark.description ?? "",
         bookmark.category?.name ?? "",
       ]),
     );
-  }, [bookmarks, query, searchMode, selectedCategoryKey]);
+  }, [bookmarks, searchMode, selectedCategoryKey, trimmedQuery]);
+
+  const pinnedIdSet = useMemo(
+    () => new Set(siteSettings.pinnedBookmarkIds),
+    [siteSettings.pinnedBookmarkIds],
+  );
+
+  const pinnedItems = useMemo(() => {
+    const matchingIds = trimmedQuery && searchMode === "filter"
+      ? new Set(filtered.map((bookmark) => bookmark.id))
+      : null;
+    const resolved: PublicBookmark[] = [];
+    for (const id of siteSettings.pinnedBookmarkIds) {
+      const bookmark = bookmarksById.get(id);
+      if (!bookmark) continue;
+      if (matchingIds && !matchingIds.has(id)) continue;
+      resolved.push(bookmark);
+    }
+    return resolved;
+  }, [bookmarksById, filtered, searchMode, siteSettings.pinnedBookmarkIds, trimmedQuery]);
 
   const groups = useMemo(() => {
     const map = new Map<string, { key: string; name: string; icon?: string; items: PublicBookmark[] }>();
@@ -219,6 +267,11 @@ export function PublicPage() {
     return Array.from(map.values());
   }, [filtered, tx]);
 
+  const isFilterOverride = Boolean(trimmedQuery) || selectedCategoryKey !== "all";
+  const showCollapseAllControl = groups.length >= 2 && selectedCategoryKey === "all" && !trimmedQuery;
+  const allGroupsCollapsed = groups.length > 0 && groups.every((group) => collapsedKeys.has(group.key));
+  const showPinnedSection = !loading && !error && selectedCategoryKey === "all" && pinnedItems.length > 0;
+
   const nextAppearance = THEME_CYCLE[(THEME_CYCLE.indexOf(appearance) + 1) % THEME_CYCLE.length] ?? "system";
   const themeIcon = appearance === "light" ? "☀" : appearance === "dark" ? "☾" : "◐";
   const themeLabel = appearance === "light"
@@ -235,6 +288,30 @@ export function PublicPage() {
   function chooseLayout(layout: PublicPageLayout) {
     setVisitorLayout(layout);
     writeVisitorPublicLayout(layout);
+  }
+
+  function toggleGroup(key: string) {
+    if (isFilterOverride) return;
+    setCollapsedKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      writeCollapsedGroups(next);
+      return next;
+    });
+  }
+
+  function toggleAllGroups() {
+    setCollapsedKeys((current) => {
+      const next = new Set(current);
+      if (allGroupsCollapsed) {
+        groups.forEach((group) => next.delete(group.key));
+      } else {
+        groups.forEach((group) => next.add(group.key));
+      }
+      writeCollapsedGroups(next);
+      return next;
+    });
   }
 
   function openExternalUrl(url: string) {
@@ -285,6 +362,55 @@ export function PublicPage() {
     : effectiveLayout === "list"
       ? "public-grid-list"
       : "public-grid";
+
+  function renderBookmarkCard(bookmark: PublicBookmark, options?: { keyPrefix?: string; showPinIndicator?: boolean }) {
+    const host = hostLabel(bookmark.url);
+    const href = safeHttpUrl(bookmark.url) ?? "#";
+    const cardClass = effectiveLayout === "compact"
+      ? "public-card public-card-compact"
+      : effectiveLayout === "list"
+        ? "public-card public-card-list"
+        : "public-card";
+    const isPinned = options?.showPinIndicator && pinnedIdSet.has(bookmark.id);
+    return (
+      <a
+        className={cardClass}
+        href={href}
+        target={siteSettings.openInNewTab ? "_blank" : undefined}
+        rel={siteSettings.openInNewTab ? "noopener noreferrer" : undefined}
+        title={`${bookmark.title} — ${host}`}
+        key={`${options?.keyPrefix ?? ""}${bookmark.id}`}
+      >
+        <SafeFavicon
+          iconUrl={bookmark.iconUrl}
+          title={bookmark.title}
+          url={bookmark.url}
+          className="public-card-icon"
+        />
+        <span className="public-card-copy">
+          <strong>{bookmark.title}</strong>
+          {effectiveLayout !== "compact" && (
+            <small>{bookmark.description || host}</small>
+          )}
+        </span>
+        {isPinned && (
+          <span
+            className="public-card-pin-mark"
+            aria-label={tx("Pinned", "已置顶")}
+            title={tx("Pinned favorite", "置顶常用")}
+          >
+            ★
+          </span>
+        )}
+        {effectiveLayout === "list" && (
+          <span className="public-domain-badge">{host}</span>
+        )}
+        {effectiveLayout !== "compact" && (
+          <span className="public-card-arrow" aria-hidden="true">↗</span>
+        )}
+      </a>
+    );
+  }
 
   return (
     <main className="public-shell">
@@ -387,7 +513,7 @@ export function PublicPage() {
                   ×
                 </button>
               )}
-              {activeWebEngine && query.trim() ? (
+              {activeWebEngine && trimmedQuery ? (
                 <button
                   className="public-search-submit"
                   type="button"
@@ -434,22 +560,35 @@ export function PublicPage() {
             </div>
           )}
 
-          <div className="public-layout-switcher" role="group" aria-label={tx("Layout density", "切换视图布局")}>
-            {([
-              ["grid", tx("Grid", "网格")],
-              ["compact", tx("Compact", "紧凑")],
-              ["list", tx("List", "列表")],
-            ] as const).map(([mode, label]) => (
+          <div className="public-toolbar-controls">
+            {showCollapseAllControl && (
               <button
-                key={mode}
                 type="button"
-                className={effectiveLayout === mode ? "active" : ""}
-                aria-pressed={effectiveLayout === mode}
-                onClick={() => chooseLayout(mode)}
+                className="public-collapse-all-btn"
+                onClick={toggleAllGroups}
               >
-                {label}
+                <span aria-hidden="true">{allGroupsCollapsed ? "▸" : "▾"}</span>
+                <span>{allGroupsCollapsed ? tx("Expand all", "全部展开") : tx("Collapse all", "全部收起")}</span>
               </button>
-            ))}
+            )}
+
+            <div className="public-layout-switcher" role="group" aria-label={tx("Layout density", "切换视图布局")}>
+              {([
+                ["grid", tx("Grid", "网格")],
+                ["compact", tx("Compact", "紧凑")],
+                ["list", tx("List", "列表")],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={effectiveLayout === mode ? "active" : ""}
+                  aria-pressed={effectiveLayout === mode}
+                  onClick={() => chooseLayout(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -457,71 +596,58 @@ export function PublicPage() {
       {error && <div className="public-message public-error" role="alert">{error}</div>}
       {!error && loading && <div className="public-message">{tx("Loading curated links…", "正在加载公开书签…")}</div>}
 
+      {showPinnedSection && (
+        <section className="public-pinned-section" aria-label={tx("Pinned", "置顶常用")}>
+          <div className="public-group-heading public-pinned-heading">
+            <span className="public-pinned-star" aria-hidden="true">★</span>
+            <h2>{tx("Pinned", "置顶常用")}</h2>
+            <small>{pinnedItems.length}</small>
+          </div>
+          <div className={gridClass}>
+            {pinnedItems.map((bookmark) => renderBookmarkCard(bookmark, { keyPrefix: "pin-" }))}
+          </div>
+        </section>
+      )}
+
       {!loading && !error && groups.length > 0 && (
         <section className="public-groups">
-          {groups.map((group) => (
-            <article className="public-group" key={group.key}>
-              <div className="public-group-heading">
-                <span>{group.icon ?? "#"}</span>
-                <h2>{group.name}</h2>
-                <small>{group.items.length}</small>
-              </div>
-              <div className={gridClass}>
-                {group.items.map((bookmark) => {
-                  const host = hostLabel(bookmark.url);
-                  const href = safeHttpUrl(bookmark.url) ?? "#";
-                  const cardClass = effectiveLayout === "compact"
-                    ? "public-card public-card-compact"
-                    : effectiveLayout === "list"
-                      ? "public-card public-card-list"
-                      : "public-card";
-                  return (
-                    <a
-                      className={cardClass}
-                      href={href}
-                      target={siteSettings.openInNewTab ? "_blank" : undefined}
-                      rel={siteSettings.openInNewTab ? "noopener noreferrer" : undefined}
-                      title={`${bookmark.title} — ${host}`}
-                      key={bookmark.id}
-                    >
-                      <SafeFavicon
-                        iconUrl={bookmark.iconUrl}
-                        title={bookmark.title}
-                        url={bookmark.url}
-                        className="public-card-icon"
-                      />
-                      <span className="public-card-copy">
-                        <strong>{bookmark.title}</strong>
-                        {effectiveLayout !== "compact" && (
-                          <small>{bookmark.description || host}</small>
-                        )}
-                      </span>
-                      {effectiveLayout === "list" && (
-                        <span className="public-domain-badge">{host}</span>
-                      )}
-                      {effectiveLayout !== "compact" && (
-                        <span className="public-card-arrow" aria-hidden="true">↗</span>
-                      )}
-                    </a>
-                  );
-                })}
-              </div>
-            </article>
-          ))}
+          {groups.map((group) => {
+            const isCollapsed = !isFilterOverride && collapsedKeys.has(group.key);
+            return (
+              <article className={`public-group${isCollapsed ? " is-collapsed" : ""}`} key={group.key}>
+                <button
+                  type="button"
+                  className={`public-group-heading public-group-toggle${isCollapsed ? " is-collapsed" : ""}`}
+                  aria-expanded={!isCollapsed}
+                  onClick={() => toggleGroup(group.key)}
+                >
+                  <span className="public-group-chevron" aria-hidden="true">{isCollapsed ? "▸" : "▾"}</span>
+                  <span className="public-group-icon" aria-hidden="true">{group.icon ?? "#"}</span>
+                  <h2>{group.name}</h2>
+                  <small>{group.items.length}</small>
+                </button>
+                {!isCollapsed && (
+                  <div className={gridClass}>
+                    {group.items.map((bookmark) => renderBookmarkCard(bookmark, { showPinIndicator: true }))}
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </section>
       )}
 
       {!loading && !error && !groups.length && (
         <section className="public-empty">
-          <strong>{query.trim() ? tx("No public links match that filter.", "没有匹配的公开链接。") : tx("Nothing is public yet.", "暂未发布公开链接。")}</strong>
+          <strong>{trimmedQuery ? tx("No public links match that filter.", "没有匹配的公开链接。") : tx("Nothing is public yet.", "暂未发布公开链接。")}</strong>
           <span>
-            {query.trim()
+            {trimmedQuery
               ? siteSettings.showWebSearch
                 ? tx("Press Enter to search Google, or pick a web search engine below.", "按 Enter 使用 Google 搜索，或直接选择下方外网引擎。")
                 : tx("Try another keyword or switch category.", "请尝试其他关键词或切换分类。")
               : tx("The owner can publish selected bookmarks from Settings.", "站点所有者可在「设置 → 公开主页」中选择发布书签。")}
           </span>
-          {query.trim() && siteSettings.showWebSearch && (
+          {trimmedQuery && siteSettings.showWebSearch && (
             <div className="public-fallback-engines">
               {WEB_SEARCH_ENGINES.slice(0, 4).map((engine) => (
                 <button
