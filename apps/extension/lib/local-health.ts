@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on inferHealthPolicy and HealthStatus from @dockmark/core; depends on browser from wxt/browser
+ * [OUTPUT]: exports LOCAL_HEALTH_PENDING_KEY, localHealthPermissionPattern, checkLocalHealth, and probe result types
+ * [POS]: local/private bookmark health probe runner in apps/extension/lib invoked by background.ts and paired with local-health-permission page
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import { inferHealthPolicy, type HealthStatus } from "@dockmark/core";
 import { browser } from "wxt/browser";
 

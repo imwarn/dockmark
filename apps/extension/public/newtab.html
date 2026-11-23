@@ -8,47 +8,115 @@
     <title>Dockmark New Tab</title>
     <link rel="icon" href="newtab-icon.svg" type="image/svg+xml" />
     <script src="newtab-theme.js"></script>
+    <script src="newtab-i18n.js"></script>
     <link rel="stylesheet" href="newtab.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="brand">
-          <div class="brand-mark">D·</div>
-          <div class="brand-copy"><strong>Dockmark</strong><span>Local-first launcher</span></div>
+          <div class="brand-mark" aria-hidden="true">D·</div>
+          <div class="brand-copy">
+            <strong>Dockmark</strong>
+            <span data-i18n-en="Launcher" data-i18n-zh="启动台">Launcher</span>
+          </div>
         </div>
         <div class="top-actions">
           <span id="connection-state" class="state-chip">Starting…</span>
-          <button id="refresh" class="icon-button" type="button" title="Refresh cloud snapshot" aria-label="Refresh cloud snapshot">↻</button>
-          <button id="manage" class="ghost-button" type="button">Manage Dockmark</button>
+          <button
+            id="theme-toggle"
+            class="icon-button"
+            type="button"
+            title="Switch theme (System / Light / Dark)"
+            aria-label="Switch theme"
+          >◐</button>
+          <button
+            id="locale-toggle"
+            class="pill-button"
+            type="button"
+            title="Switch language (English / 简体中文)"
+            aria-label="Switch language"
+          >中文</button>
+          <button
+            id="refresh"
+            class="icon-button"
+            type="button"
+            data-i18n-title-en="Refresh cloud snapshot"
+            data-i18n-title-zh="刷新云端快照"
+            title="Refresh cloud snapshot"
+            aria-label="Refresh cloud snapshot"
+          >↻</button>
+          <button
+            id="manage"
+            class="ghost-button"
+            type="button"
+            data-i18n-en="Manage Dockmark"
+            data-i18n-zh="管理 Dockmark"
+          >Manage Dockmark</button>
         </div>
       </header>
 
       <main>
-        <section class="hero">
-          <p class="eyebrow">NEW TAB · LOCAL FIRST</p>
-          <h1>Your Dockmark, ready before the network is.</h1>
-          <p class="hero-subtitle">Search cached Smart Collections, bookmarks, Sessions, Workspaces and open tabs. Use <strong>!g</strong> / <strong>!gh</strong> for search engines, <strong>@Collection</strong> to browse a Collection, and <strong>#tag</strong> for tag filters. From anywhere in the browser, press <strong>Alt+Shift+D</strong> to return here or type <strong>d</strong> + <strong>Space</strong> in the address bar for Dockmark Omnibox search.</p>
-
+        <section class="hero" aria-label="Launcher command bar">
           <div class="command-wrap">
-            <input id="search" class="command-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search Dockmark, type ! for engines, @ for Collections, or #tag…" autofocus />
-            <span class="command-hint" title="Enter opens here · Shift+Enter opens a new tab · Command/Ctrl+Enter opens a background tab">↵</span>
+            <span class="command-icon" aria-hidden="true">⌕</span>
+            <input
+              id="search"
+              class="command-input"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              data-i18n-placeholder-en="Search bookmarks, tabs, Workspaces, Sessions… (!g, @Collection, #tag)"
+              data-i18n-placeholder-zh="搜索书签、打开的标签页、工作区、会话…（!g、@智能合集、#标签）"
+              placeholder="Search bookmarks, tabs, Workspaces, Sessions… (!g, @Collection, #tag)"
+              autofocus
+            />
+            <span
+              class="command-hint"
+              data-i18n-title-en="Enter opens here · Shift+Enter opens a new tab · Command/Ctrl+Enter opens a background tab"
+              data-i18n-title-zh="Enter 当前页打开 · Shift+Enter 新标签页打开 · Command/Ctrl+Enter 后台打开"
+              title="Enter opens here · Shift+Enter opens a new tab · Command/Ctrl+Enter opens a background tab"
+            >↵</span>
             <div id="command-results" class="command-results" hidden></div>
           </div>
+
+          <div class="syntax-hints" aria-label="Search syntax hints">
+            <span><kbd>!g</kbd> <em data-i18n-en="Search" data-i18n-zh="搜索">Search</em></span>
+            <span class="hint-sep" aria-hidden="true">·</span>
+            <span><kbd>@</kbd> <em data-i18n-en="Collection" data-i18n-zh="智能合集">Collection</em></span>
+            <span class="hint-sep" aria-hidden="true">·</span>
+            <span><kbd>#</kbd> <em data-i18n-en="Tag" data-i18n-zh="标签">Tag</em></span>
+            <span class="hint-sep" aria-hidden="true">·</span>
+            <span><kbd>Alt+Shift+D</kbd> <em data-i18n-en="Focus launcher" data-i18n-zh="唤起启动台">Focus launcher</em></span>
+          </div>
+
           <div id="offline-banner" class="offline-banner" hidden></div>
           <div id="setup-card" class="setup-card" hidden>
-            <h2>Connect and pair Dockmark once to seed this launcher.</h2>
-            <p>Open the Dockmark extension popup, connect it to your Dockmark server, then pair the device with a one-time code from Dockmark Settings → Security. This New Tab page keeps a last-known-good local snapshot for fast startup and offline use.</p>
+            <h2
+              data-i18n-en="Connect and pair Dockmark once to seed this launcher."
+              data-i18n-zh="连接并配对 Dockmark 一次即可初始化本地启动台。"
+            >Connect and pair Dockmark once to seed this launcher.</h2>
+            <p
+              data-i18n-en="Open the Dockmark extension popup, connect your server URL, then pair with a one-time code from Settings → Security. New Tab keeps a local snapshot for instant startup and offline search."
+              data-i18n-zh="打开 Dockmark 扩展弹窗，连接服务器地址并使用“设置 → 安全”中的一次性配对码完成配对。新标签页将保留本地快照，实现秒开与离线检索。"
+            >Open the Dockmark extension popup, connect your server URL, then pair with a one-time code from Settings → Security. New Tab keeps a local snapshot for instant startup and offline search.</p>
           </div>
         </section>
 
         <section class="dashboard" aria-label="Dockmark local snapshot">
-          <article class="panel">
-            <div class="panel-heading"><h2>Bookmarks</h2><span id="bookmark-count">0 cached</span></div>
+          <article class="panel panel-bookmarks">
+            <div class="panel-heading">
+              <h2 data-i18n-en="Bookmarks" data-i18n-zh="书签">Bookmarks</h2>
+              <span id="bookmark-count">0 cached</span>
+            </div>
+            <div id="bookmark-filters" class="filter-strip" hidden role="tablist" aria-label="Bookmark filters"></div>
             <div id="bookmarks" class="bookmark-grid"></div>
           </article>
-          <article class="panel">
-            <div class="panel-heading"><h2>Workspaces</h2><span id="workspace-count">0 cached</span></div>
+          <article class="panel panel-workspaces">
+            <div class="panel-heading">
+              <h2 data-i18n-en="Workspaces" data-i18n-zh="工作区">Workspaces</h2>
+              <span id="workspace-count">0 cached</span>
+            </div>
             <div id="workspaces" class="workspace-list"></div>
           </article>
         </section>
@@ -58,7 +126,16 @@
         <span id="sync-status">No local snapshot yet.</span>
         <div class="footer-actions">
           <span id="settings-status">Default launcher settings</span>
-          <button id="clear-cache" class="footer-button" type="button" title="Remove all cached bookmarks, tags, categories, Smart Collections, Sessions and workspaces from this browser only">Clear local snapshot</button>
+          <button
+            id="clear-cache"
+            class="footer-button"
+            type="button"
+            data-i18n-en="Clear local snapshot"
+            data-i18n-zh="清除本地快照"
+            data-i18n-title-en="Remove all cached bookmarks, tags, categories, Smart Collections, Sessions and workspaces from this browser only"
+            data-i18n-title-zh="仅清除当前浏览器中缓存的书签、标签、分类、智能合集、会话与工作区快照"
+            title="Remove all cached bookmarks, tags, categories, Smart Collections, Sessions and workspaces from this browser only"
+          >Clear local snapshot</button>
         </div>
       </footer>
     </div>

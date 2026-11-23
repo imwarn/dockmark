@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on apps/extension/.output/chrome-mv3 and apps/extension/package.json
+ * [OUTPUT]: produces apps/extension/.output/chrome-mv3-newtab and dockmark-newtab-chrome-v<version>.zip
+ * [POS]: release packaging script for the opt-in Dockmark New Tab Chromium variant
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import { cp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -21,11 +27,22 @@ await cp(sourceDir, variantDir, { recursive: true });
 const manifestPath = path.join(variantDir, "manifest.json");
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 manifest.name = "Dockmark New Tab";
-manifest.description = "Dockmark browser bridge with a local-first, offline-capable Dockmark launcher on every new tab.";
+manifest.description = "__MSG_newtabDescription__";
 manifest.chrome_url_overrides = { newtab: "newtab.html" };
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-for (const required of ["newtab.html", "newtab.js", "newtab-search.js", "newtab-ux.js", "newtab-parity.js", "newtab-auth.js", "newtab-theme.js", "newtab.css", "newtab-icon.svg"]) {
+for (const required of [
+  "newtab.html",
+  "newtab.js",
+  "newtab-i18n.js",
+  "newtab-search.js",
+  "newtab-ux.js",
+  "newtab-parity.js",
+  "newtab-auth.js",
+  "newtab-theme.js",
+  "newtab.css",
+  "newtab-icon.svg",
+]) {
   await readFile(path.join(variantDir, required));
 }
 

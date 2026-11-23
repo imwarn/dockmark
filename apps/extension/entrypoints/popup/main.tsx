@@ -1,137 +1,76 @@
+/**
+ * [INPUT]: depends on React 19, browser from wxt/browser, ext-locale helpers from ../../lib/ext-locale, and popup submodules (api, OpenTabsPanel, ReviewedCapture, SessionsPanel, SettingsDrawer, SetupWizard)
+ * [OUTPUT]: mounts the state-aware Dockmark browser extension popup workbench (384px) with EN/zh-CN localization and light/dark themes
+ * [POS]: primary popup UI entrypoint in apps/extension/entrypoints/popup
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { browser } from "wxt/browser";
+import {
+  applyExtensionAppearance,
+  applyExtensionLocale,
+  hydrateExtensionPreferences,
+  readLocalAppearance,
+  readLocalLocalePreference,
+  subscribeExtensionPreferences,
+  tx,
+  type AppearancePreference,
+  type LocalePreference,
+  type ResolvedLocale,
+} from "../../lib/ext-locale";
+import {
+  DEVICE_KEY,
+  DockmarkRequestError,
+  SERVER_KEY,
+  TOKEN_KEY,
+  apiUrl,
+  hostLabel,
+  hostMonogram,
+  hostPattern,
+  normalizeServerUrl,
+  patchRemoteAppearance,
+  requestJson,
+  type CaptureResult,
+  type RemoteAppearanceResponse,
+  type SavableTab,
+  type SessionSummary,
+  type TabSummary,
+} from "./api";
+import { OpenTabsPanel } from "./OpenTabsPanel";
 import { ReviewedCapture } from "./ReviewedCapture";
+import { SessionsPanel } from "./SessionsPanel";
+import { SettingsDrawer } from "./SettingsDrawer";
+import { SetupWizard } from "./SetupWizard";
 import "./style.css";
 
-// The popup shares the Dockmark appearance preference with New Tab and Web, so it
-// resolves the same storage key instead of staying pinned to dark.
-const APPEARANCE_KEY = "dockmarkAppearanceV1";
+const initialAppearance = applyExtensionAppearance(readLocalAppearance(), false);
+const initialLocaleState = applyExtensionLocale(readLocalLocalePreference(), false);
 
-function applyAppearance(preference: string, persist = true) {
-  const normalized = preference === "light" || preference === "dark" || preference === "system" ? preference : "system";
-  const theme = normalized === "system"
-    ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
-    : normalized;
-  document.documentElement.dataset.appearance = normalized;
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "light" ? "#f4f7f5" : "#0a0f0c");
-  if (persist) localStorage.setItem(APPEARANCE_KEY, normalized);
-  return normalized;
-}
+type WorkbenchTab = "capture" | "multitab" | "sessions";
 
-applyAppearance(localStorage.getItem(APPEARANCE_KEY) ?? "system", false);
-matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
-  applyAppearance(localStorage.getItem(APPEARANCE_KEY) ?? "system", false);
-});
-
-type TabSummary = {
-  id?: number;
-  title: string;
-  url?: string;
-  pinned: boolean;
-  active: boolean;
-};
-
-type SessionItem = {
-  id: string;
-  title: string;
-  url: string;
-  pinned: boolean;
-  position: number;
-};
-
-type SessionSummary = {
-  id: string;
-  name: string;
-  sourceDevice?: string;
-  createdAt: string;
-  items: SessionItem[];
-};
-
-type CaptureBookmark = {
-  id: string;
-  title: string;
-  url: string;
-  categoryId?: string;
-  categoryName?: string;
-  inboxAt?: string;
-};
-
-type CaptureResult = {
-  result: "created" | "duplicate";
-  bookmark: CaptureBookmark;
-  duplicateState?: "inbox" | "library";
-};
-
-const SERVER_KEY = "dockmarkServerUrl";
-const DEVICE_KEY = "dockmarkDeviceLabel";
-const TOKEN_KEY = "dockmarkDeviceToken";
-
-class DockmarkRequestError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message);
-  }
-}
-
-function defaultSessionName() {
-  return `Window · ${new Intl.DateTimeFormat(undefined, {
+function defaultSessionName(locale: ResolvedLocale) {
+  const formatted = new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date())}`;
-}
-
-function normalizeServerUrl(value: string) {
-  const url = new URL(value.trim());
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Dockmark URL must use HTTP or HTTPS.");
-  }
-  return url.origin;
-}
-
-function hostPattern(origin: string) {
-  return `${origin}/*`;
-}
-
-function apiUrl(origin: string, path: string) {
-  return new URL(path, `${origin}/`).toString();
-}
-
-function hostLabel(value: string) {
-  try {
-    return new URL(value).host;
-  } catch {
-    return value;
-  }
-}
-
-async function requestJson<T>(url: string, init: RequestInit = {}, includeDeviceToken = true): Promise<T> {
-  const headers = new Headers(init.headers);
-  headers.set("accept", "application/json");
-  if (init.body) headers.set("content-type", "application/json");
-  if (includeDeviceToken) {
-    const stored = await browser.storage.local.get(TOKEN_KEY);
-    const token = typeof stored[TOKEN_KEY] === "string" ? stored[TOKEN_KEY] : "";
-    if (token) headers.set("authorization", `Bearer ${token}`);
-  }
-  const response = await fetch(url, { ...init, headers, cache: "no-store" });
-  const body = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
-  if (!response.ok) {
-    throw new DockmarkRequestError(response.status, body.error?.message ?? `Dockmark request failed (${response.status}).`);
-  }
-  return body;
+  }).format(new Date());
+  return tx(locale, `Window · ${formatted}`, `窗口 · ${formatted}`);
 }
 
 function Popup() {
+  const [appearance, setAppearance] = useState<AppearancePreference>(initialAppearance);
+  const [localePreference, setLocalePreference] = useState<LocalePreference>(initialLocaleState.preference);
+  const [locale, setLocale] = useState<ResolvedLocale>(initialLocaleState.locale);
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>("capture");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   const [tabs, setTabs] = useState<TabSummary[]>([]);
   const [serverUrl, setServerUrl] = useState("");
   const [deviceLabel, setDeviceLabel] = useState("Main browser");
   const [pairCode, setPairCode] = useState("");
-  const [sessionName, setSessionName] = useState(defaultSessionName);
+  const [sessionName, setSessionName] = useState(() => defaultSessionName(initialLocaleState.locale));
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [captureResult, setCaptureResult] = useState<CaptureResult | null>(null);
   const [connected, setConnected] = useState(false);
@@ -143,7 +82,7 @@ function Popup() {
   const [error, setError] = useState<string | null>(null);
 
   const savableTabs = useMemo(
-    () => tabs.filter((tab): tab is TabSummary & { url: string } => Boolean(tab.url && /^https?:\/\//i.test(tab.url))),
+    () => tabs.filter((tab): tab is SavableTab => Boolean(tab.url && /^https?:\/\//i.test(tab.url))),
     [tabs],
   );
   const activeSavableTab = useMemo(
@@ -153,16 +92,30 @@ function Popup() {
 
   useEffect(() => {
     let cancelled = false;
+    const unsubscribe = subscribeExtensionPreferences({
+      onAppearance: (pref) => { if (!cancelled) setAppearance(pref); },
+      onLocale: (pref, resolved) => {
+        if (!cancelled) {
+          setLocalePreference(pref);
+          setLocale(resolved);
+        }
+      },
+    });
 
     void (async () => {
       try {
-        const [openTabs, hasBookmarks, stored] = await Promise.all([
+        const [hydrated, openTabs, hasBookmarks, stored] = await Promise.all([
+          hydrateExtensionPreferences(),
           browser.runtime.sendMessage({ type: "dockmark:get-open-tabs" }),
           browser.permissions.contains({ permissions: ["bookmarks"] }),
           browser.storage.local.get([SERVER_KEY, DEVICE_KEY, TOKEN_KEY]),
         ]);
         if (cancelled) return;
 
+        setAppearance(hydrated.appearance);
+        setLocalePreference(hydrated.localePreference);
+        setLocale(hydrated.locale);
+        setSessionName(defaultSessionName(hydrated.locale));
         setTabs((openTabs as TabSummary[]) ?? []);
         setBookmarkAccess(hasBookmarks);
 
@@ -183,6 +136,7 @@ function Popup() {
           try {
             await refreshSessions(storedServer);
             if (!cancelled) setPaired(true);
+            void syncAppearanceFromServer(storedServer, () => cancelled);
           } catch (caught) {
             if (caught instanceof DockmarkRequestError && (caught.status === 401 || caught.status === 403)) {
               await browser.storage.local.remove(TOKEN_KEY);
@@ -204,8 +158,24 @@ function Popup() {
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
+
+  async function syncAppearanceFromServer(origin: string, isCancelled: () => boolean) {
+    try {
+      const payload = await requestJson<RemoteAppearanceResponse>(apiUrl(origin, "/api/settings/appearance"));
+      if (isCancelled() || !payload?.settings) return;
+      if (payload.settings.preference) setAppearance(applyExtensionAppearance(payload.settings.preference, true));
+      if (payload.settings.locale) {
+        const applied = applyExtensionLocale(payload.settings.locale, true);
+        setLocalePreference(applied.preference);
+        setLocale(applied.locale);
+      }
+    } catch {
+      // Cloud appearance read is best-effort.
+    }
+  }
 
   async function refreshSessions(origin = serverUrl) {
     if (!origin) return;
@@ -220,7 +190,7 @@ function Popup() {
     try {
       await action();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Something went wrong.");
+      setError(caught instanceof Error ? caught.message : tx(locale, "Something went wrong.", "操作失败，请重试。"));
     } finally {
       setBusy(false);
     }
@@ -234,11 +204,9 @@ function Popup() {
 
     try {
       const origin = normalizeServerUrl(serverUrl);
-
-      // Firefox requires permissions.request to run directly from the user gesture.
-      // Do not await storage or any other async work before this request.
+      // Call permissions.request synchronously on user gesture with no await beforehand.
       const granted = await browser.permissions.request({ origins: [hostPattern(origin)] });
-      if (!granted) throw new Error("Dockmark site access was not granted.");
+      if (!granted) throw new Error(tx(locale, "Dockmark site access was not granted.", "未授予 Dockmark 站点访问权限。"));
 
       const stored = await browser.storage.local.get([SERVER_KEY, TOKEN_KEY]);
       const previousOrigin = typeof stored[SERVER_KEY] === "string" ? stored[SERVER_KEY] : "";
@@ -253,9 +221,7 @@ function Popup() {
       await browser.storage.local.set({ [SERVER_KEY]: origin, [DEVICE_KEY]: label });
       setServerUrl(origin);
       setDeviceLabel(label);
-
       await browser.runtime.sendMessage({ type: "dockmark:configure-bridge", origin });
-
       if (previousOrigin && previousOrigin !== origin) {
         await browser.permissions.remove({ origins: [hostPattern(previousOrigin)] }).catch(() => false);
       }
@@ -265,7 +231,7 @@ function Popup() {
         try {
           await refreshSessions(origin);
           setPaired(true);
-          setStatus("Connected and paired. Browser bridge, Quick Capture and private cloud access are ready.");
+          setStatus(tx(locale, "Connected and paired.", "已连接并完成配对。"));
           return;
         } catch (caught) {
           if (caught instanceof DockmarkRequestError && (caught.status === 401 || caught.status === 403)) {
@@ -276,9 +242,9 @@ function Popup() {
           }
         }
       }
-      setStatus("Site access connected. Create a pairing code in Dockmark Settings → Security, then enter it below for private cloud access.");
+      setStatus(tx(locale, "Site access granted. Enter a pairing code from Settings → Security.", "站点权限已连接，请输入设置 → 安全中的一次性配对码。"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Something went wrong.");
+      setError(caught instanceof Error ? caught.message : tx(locale, "Something went wrong.", "操作失败，请重试。"));
     } finally {
       setBusy(false);
     }
@@ -286,24 +252,23 @@ function Popup() {
 
   async function pairDevice() {
     await run(async () => {
-      if (!connected) throw new Error("Connect this Dockmark origin first.");
+      if (!connected) throw new Error(tx(locale, "Connect this Dockmark origin first.", "请先连接 Dockmark 服务器。"));
       const code = pairCode.trim();
-      if (!code) throw new Error("Enter the pairing code from Dockmark Settings → Security.");
+      if (!code) throw new Error(tx(locale, "Enter the pairing code from Settings → Security.", "请输入设置 → 安全中的配对码。"));
       const label = deviceLabel.trim() || "Main browser";
       const result = await requestJson<{ token: string; device: { id: string; name: string } }>(
         apiUrl(serverUrl, "/api/auth/pair/exchange"),
-        {
-          method: "POST",
-          body: JSON.stringify({ code, name: label }),
-        },
+        { method: "POST", body: JSON.stringify({ code, name: label }) },
         false,
       );
       await browser.storage.local.set({ [TOKEN_KEY]: result.token, [DEVICE_KEY]: label });
       setDeviceLabel(label);
       setPairCode("");
       setPaired(true);
+      setSettingsOpen(false);
       await refreshSessions();
-      setStatus(`Paired as “${result.device.name}”. Quick Capture and private cloud Session save are enabled.`);
+      void syncAppearanceFromServer(serverUrl, () => false);
+      setStatus(tx(locale, `Paired as “${result.device.name}”.`, `已配对设备“${result.device.name}”。`));
     });
   }
 
@@ -313,214 +278,249 @@ function Popup() {
       setPaired(false);
       setSessions([]);
       setCaptureResult(null);
-      setStatus("Removed this device token locally. To invalidate a copied token everywhere, revoke this device from Dockmark Settings → Security.");
+      setStatus(tx(locale, "Removed local device token. Revoke in Settings → Security to invalidate copies.", "已清除本地设备令牌。如需彻底作废，请在设置 → 安全中撤销该设备。"));
     });
   }
 
-  async function enableBookmarkAccess() {
-    await run(async () => {
-      const granted = await browser.permissions.request({ permissions: ["bookmarks"] });
-      if (!granted) throw new Error("Native bookmark access was not granted.");
-      setBookmarkAccess(true);
-      setStatus("Native bookmark access enabled. Dockmark can review imports and mapping changes, and can update a mapped bookmark title/URL only after an explicit Web review action.");
-    });
+  async function toggleBookmarkAccess() {
+    setBusy(true);
+    setStatus(null);
+    setError(null);
+    try {
+      if (bookmarkAccess) {
+        const removed = await browser.permissions.remove({ permissions: ["bookmarks"] });
+        setBookmarkAccess(!removed);
+        setStatus(removed ? tx(locale, "Native bookmark access disabled.", "已关闭浏览器原生书签权限。") : tx(locale, "Native bookmark access is still enabled.", "浏览器原生书签权限仍处于开启状态。"));
+      } else {
+        const granted = await browser.permissions.request({ permissions: ["bookmarks"] });
+        if (!granted) throw new Error(tx(locale, "Native bookmark access was not granted.", "未授予浏览器原生书签权限。"));
+        setBookmarkAccess(true);
+        setStatus(tx(locale, "Native bookmark access enabled.", "已开启浏览器原生书签权限。"));
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : tx(locale, "Something went wrong.", "操作失败，请重试。"));
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function disableBookmarkAccess() {
-    await run(async () => {
-      const removed = await browser.permissions.remove({ permissions: ["bookmarks"] });
-      setBookmarkAccess(!removed);
-      setStatus(removed ? "Native bookmark access disabled." : "Native bookmark access is still enabled.");
-    });
+  function handleSelectAppearance(next: AppearancePreference) {
+    const applied = applyExtensionAppearance(next, true);
+    setAppearance(applied);
+    if (connected && paired && serverUrl) void patchRemoteAppearance(serverUrl, { preference: applied });
+  }
+
+  function handleSelectLocale(next: LocalePreference) {
+    const applied = applyExtensionLocale(next, true);
+    setLocalePreference(applied.preference);
+    setLocale(applied.locale);
+    if (connected && paired && serverUrl) void patchRemoteAppearance(serverUrl, { locale: applied.preference });
   }
 
   async function saveCurrentTab() {
     await run(async () => {
-      if (!connected) throw new Error("Connect the extension to your Dockmark site first.");
-      if (!paired) throw new Error("Pair this extension before using Quick Capture.");
-      if (!activeSavableTab?.url) throw new Error("The current tab is not an HTTP/HTTPS page that Dockmark can save.");
+      if (!connected) throw new Error(tx(locale, "Connect the extension to Dockmark first.", "请先连接 Dockmark 服务器。"));
+      if (!paired) throw new Error(tx(locale, "Pair this extension before Quick Capture.", "请先配对设备后再使用快速收录。"));
+      if (!activeSavableTab?.url) throw new Error(tx(locale, "Current tab is not a savable HTTP/HTTPS page.", "当前标签页不是可收录的 HTTP/HTTPS 网页。"));
       if (new URL(activeSavableTab.url).origin === normalizeServerUrl(serverUrl)) {
-        throw new Error("Dockmark does not capture its own management page.");
+        throw new Error(tx(locale, "Dockmark does not capture its own management page.", "Dockmark 不会收录自身的管理页面。"));
       }
-
       const result = await requestJson<CaptureResult>(apiUrl(serverUrl, "/api/capture/bookmark"), {
         method: "POST",
-        body: JSON.stringify({
-          title: activeSavableTab.title || activeSavableTab.url,
-          url: activeSavableTab.url,
-        }),
+        body: JSON.stringify({ title: activeSavableTab.title || activeSavableTab.url, url: activeSavableTab.url }),
       });
       setCaptureResult(result);
-      if (result.result === "created") {
-        setStatus("Saved current tab to Dockmark Inbox. Review and file it from Web → Inbox.");
-      } else {
-        setStatus(null);
-      }
+      setStatus(result.result === "created" ? tx(locale, "Saved to Inbox.", "已保存到收件箱。") : null);
     });
-  }
-
-  async function openCaptureReview() {
-    const path = captureResult?.duplicateState === "library" ? "/app" : "/app/inbox";
-    await browser.tabs.create({ url: apiUrl(serverUrl, path), active: true });
   }
 
   async function saveWindow() {
     await run(async () => {
-      if (!connected) throw new Error("Connect the extension to your Dockmark site first.");
-      if (!paired) throw new Error("Pair this extension before saving private cloud Sessions.");
-      if (!savableTabs.length) throw new Error("This window has no HTTP/HTTPS tabs to save.");
+      if (!connected) throw new Error(tx(locale, "Connect the extension to Dockmark first.", "请先连接 Dockmark 服务器。"));
+      if (!paired) throw new Error(tx(locale, "Pair this extension before saving Sessions.", "请先配对设备后再保存会话。"));
+      if (!savableTabs.length) throw new Error(tx(locale, "This window has no HTTP/HTTPS tabs to save.", "当前窗口没有可保存的 HTTP/HTTPS 标签页。"));
       const name = sessionName.trim();
-      if (!name) throw new Error("Give this session a name.");
-
+      if (!name) throw new Error(tx(locale, "Give this session a name.", "请输入会话名称。"));
       await requestJson<{ session: SessionSummary }>(apiUrl(serverUrl, "/api/sessions"), {
         method: "POST",
         body: JSON.stringify({
           name,
           sourceDevice: deviceLabel.trim() || "Main browser",
-          items: savableTabs.map((tab, position) => ({
-            title: tab.title || tab.url,
-            url: tab.url,
-            pinned: tab.pinned,
-            position,
-          })),
+          items: savableTabs.map((tab, position) => ({ title: tab.title || tab.url, url: tab.url, pinned: tab.pinned, position })),
         }),
       });
-
       await refreshSessions();
-      setSessionName(defaultSessionName());
-      setStatus(`Saved ${savableTabs.length} tabs.`);
+      setSessionName(defaultSessionName(locale));
+      setStatus(tx(locale, `Saved ${savableTabs.length} tabs as Session.`, `已将 ${savableTabs.length} 个标签页保存为会话。`));
     });
   }
 
   async function restoreSession(session: SessionSummary) {
     await run(async () => {
-      const result = await browser.runtime.sendMessage({
+      const result = (await browser.runtime.sendMessage({
         type: "dockmark:restore-session",
-        items: [...session.items]
-          .sort((a, b) => a.position - b.position)
-          .map((item) => ({ url: item.url, pinned: item.pinned })),
-      }) as { opened?: number } | undefined;
-      setStatus(`Restored ${result?.opened ?? session.items.length} tabs.`);
+        items: [...session.items].sort((a, b) => a.position - b.position).map((item) => ({ url: item.url, pinned: item.pinned })),
+      })) as { opened?: number } | undefined;
+      const count = result?.opened ?? session.items.length;
+      setStatus(tx(locale, `Restored ${count} tabs.`, `已恢复 ${count} 个标签页。`));
     });
   }
 
+  const connectionLabel = connected
+    ? paired ? tx(locale, "Paired", "已配对") : tx(locale, "Connected", "已连接")
+    : initializing ? tx(locale, "Checking", "检查中") : tx(locale, "Local", "仅本地");
+  const isDailyReady = connected && paired;
+
   return (
-    <main>
-      <header>
-        <div><strong>Dockmark</strong><small>Browser bridge</small></div>
-        <span>{tabs.length} tabs</span>
+    <main className="popup-shell">
+      <header className="popup-header">
+        <div className="popup-brand">
+          <span className="brand-mark" aria-hidden="true">D·</span>
+          <div className="brand-meta">
+            <strong>Dockmark</strong>
+            <span className={`status-pill ${isDailyReady ? "paired" : connected ? "connected" : "local"}`}>
+              <i className="status-dot" aria-hidden="true" />
+              {connectionLabel}
+            </span>
+          </div>
+        </div>
+        <div className="header-actions">
+          {connected && serverUrl && (
+            <button
+              className="icon-btn"
+              type="button"
+              title={tx(locale, "Open Dockmark Web", "打开 Dockmark 网页端")}
+              aria-label={tx(locale, "Open Dockmark Web", "打开 Dockmark 网页端")}
+              onClick={() => void browser.tabs.create({ url: apiUrl(serverUrl, "/app"), active: true })}
+            >↗</button>
+          )}
+          <button
+            className={`icon-btn${settingsOpen ? " active" : ""}`}
+            type="button"
+            aria-pressed={settingsOpen}
+            title={tx(locale, "Extension settings", "扩展设置")}
+            aria-label={tx(locale, "Extension settings", "扩展设置")}
+            onClick={() => setSettingsOpen((open) => !open)}
+          >⚙</button>
+        </div>
       </header>
 
-      <section className="card connection-card">
-        <div className="section-heading">
-          <strong>Dockmark site</strong>
-          <span className={connected ? "online" : "offline"}>{connected ? paired ? "Paired" : "Connected" : initializing ? "Checking" : "Local only"}</span>
-        </div>
-        <input value={serverUrl} onChange={(event) => { setServerUrl(event.target.value); setConnected(false); setPaired(false); setCaptureResult(null); }} placeholder="https://dockmark.example.com" inputMode="url" />
-        <div className="inline-fields">
-          <input value={deviceLabel} onChange={(event) => setDeviceLabel(event.target.value)} placeholder="Main MacBook" />
-          <button className="secondary" disabled={initializing || busy || !serverUrl.trim()} onClick={() => void connect()}>
-            {initializing ? "Checking…" : connected ? "Reconnect" : "Connect"}
-          </button>
-        </div>
-      </section>
-
-      {connected && (
-        <section className="card permission-card">
-          <div className="section-heading"><strong>Private cloud pairing</strong><span className={paired ? "online" : "offline"}>{paired ? "Authenticated" : "Required"}</span></div>
-          {paired ? (
-            <>
-              <p>This extension holds a revocable per-device token. It can read launcher data, save Sessions and append reviewed captures to Inbox. It cannot edit or delete existing Dockmark bookmarks, settings or public-page selection.</p>
-              <button className="secondary" disabled={busy} onClick={() => void unpairLocal()}>Remove local device token</button>
-            </>
+      {settingsOpen ? (
+        <SettingsDrawer
+          locale={locale}
+          localePreference={localePreference}
+          appearance={appearance}
+          serverUrl={serverUrl}
+          deviceLabel={deviceLabel}
+          pairCode={pairCode}
+          connected={connected}
+          paired={paired}
+          bookmarkAccess={bookmarkAccess}
+          initializing={initializing}
+          busy={busy}
+          onServerUrlChange={(value) => { setServerUrl(value); setConnected(false); setPaired(false); setCaptureResult(null); }}
+          onDeviceLabelChange={setDeviceLabel}
+          onPairCodeChange={setPairCode}
+          onConnect={() => void connect()}
+          onPairDevice={() => void pairDevice()}
+          onUnpairLocal={() => void unpairLocal()}
+          onToggleBookmarkAccess={() => void toggleBookmarkAccess()}
+          onSelectAppearance={handleSelectAppearance}
+          onSelectLocale={handleSelectLocale}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : (
+        <>
+          {!isDailyReady ? (
+            <SetupWizard
+              locale={locale}
+              serverUrl={serverUrl}
+              deviceLabel={deviceLabel}
+              pairCode={pairCode}
+              connected={connected}
+              initializing={initializing}
+              busy={busy}
+              onServerUrlChange={(value) => { setServerUrl(value); setConnected(false); setPaired(false); setCaptureResult(null); }}
+              onDeviceLabelChange={setDeviceLabel}
+              onPairCodeChange={setPairCode}
+              onConnect={() => void connect()}
+              onPairDevice={() => void pairDevice()}
+            />
           ) : (
-            <>
-              <p>Open <strong>Dockmark → Settings → Security</strong>, create a one-time pairing code, then enter it here. Pair codes expire after 10 minutes and work once.</p>
-              <div className="inline-fields">
-                <input value={pairCode} onChange={(event) => setPairCode(event.target.value.toUpperCase())} placeholder="ABCD-EFGH-JK" autoComplete="off" />
-                <button className="primary" disabled={busy || !pairCode.trim()} onClick={() => void pairDevice()}>Pair device</button>
+            <nav className="segmented-tabs" role="tablist" aria-label={tx(locale, "Popup views", "扩展视图")}>
+              <button type="button" role="tab" aria-selected={activeTab === "capture"} className={`tab-trigger${activeTab === "capture" ? " active" : ""}`} onClick={() => setActiveTab("capture")}>
+                {tx(locale, "Capture", "收录与标签页")}
+              </button>
+              <button type="button" role="tab" aria-selected={activeTab === "multitab"} className={`tab-trigger${activeTab === "multitab" ? " active" : ""}`} onClick={() => setActiveTab("multitab")}>
+                {tx(locale, "Multi-Tab", "批量收录")}
+              </button>
+              <button type="button" role="tab" aria-selected={activeTab === "sessions"} className={`tab-trigger${activeTab === "sessions" ? " active" : ""}`} onClick={() => setActiveTab("sessions")}>
+                {tx(locale, "Sessions", "会话")}
+                {sessions.length > 0 && <em className="tab-badge">{sessions.length}</em>}
+              </button>
+            </nav>
+          )}
+
+          {isDailyReady && activeTab === "capture" && (
+            <section className="card capture-card" data-testid="popup-quick-capture">
+              <div className="section-heading">
+                <strong>{tx(locale, "Quick Capture", "快速收录")}</strong>
+                <span>{tx(locale, "Active tab → Inbox", "当前标签页 → 收件箱")}</span>
               </div>
-            </>
+              {activeSavableTab ? (
+                <div className="capture-current-row">
+                  <span className="row-monogram accent" aria-hidden="true">{hostMonogram(activeSavableTab.url, activeSavableTab.title)}</span>
+                  <div className="capture-current">
+                    <strong>{activeSavableTab.title || activeSavableTab.url}</strong>
+                    <small>{hostLabel(activeSavableTab.url)}</small>
+                  </div>
+                  <button className="primary compact-btn" type="button" disabled={busy} onClick={() => void saveCurrentTab()}>
+                    {tx(locale, "Save to Inbox", "存至收件箱")}
+                  </button>
+                </div>
+              ) : (
+                <p className="empty">{tx(locale, "Open an HTTP/HTTPS page to capture it.", "打开一个 HTTP/HTTPS 网页即可快速收录。")}</p>
+              )}
+
+              {captureResult && (
+                <div className={`capture-review ${captureResult.result}`}>
+                  <div className="capture-review-copy">
+                    <span>{captureResult.result === "created" ? tx(locale, "Saved to Inbox", "已存入收件箱") : tx(locale, "Duplicate review", "检测到重复书签")}</span>
+                    <strong>{captureResult.bookmark.title}</strong>
+                    <small>
+                      {captureResult.bookmark.categoryName ?? (captureResult.duplicateState === "inbox" ? tx(locale, "Already waiting in Inbox", "已在收件箱待整理") : tx(locale, "Already in Dockmark library", "已在 Dockmark 书签库"))}
+                    </small>
+                  </div>
+                  <button className="secondary compact-btn" type="button" onClick={() => void browser.tabs.create({ url: apiUrl(serverUrl, captureResult.duplicateState === "library" ? "/app" : "/app/inbox"), active: true })}>
+                    {captureResult.duplicateState === "library" ? tx(locale, "Open Web", "打开网页端") : tx(locale, "Open Inbox", "打开收件箱")}
+                  </button>
+                </div>
+              )}
+            </section>
           )}
-        </section>
-      )}
 
-      <section className="card permission-card">
-        <div className="section-heading"><strong>Native bookmarks</strong><span className={bookmarkAccess ? "online" : "offline"}>{bookmarkAccess ? "Enabled" : "Optional"}</span></div>
-        <p>Used to read your browser bookmark tree for reviewed import/mapping and, only when you explicitly choose <strong>Write Dockmark → Browser</strong> in the Web review UI, update that mapped bookmark's title and URL. Dockmark never writes browser bookmarks in the background.</p>
-        <button className="secondary" disabled={initializing || busy} onClick={() => void (bookmarkAccess ? disableBookmarkAccess() : enableBookmarkAccess())}>
-          {bookmarkAccess ? "Disable bookmark access" : "Enable bookmark access"}
-        </button>
-      </section>
+          {isDailyReady && activeTab === "multitab" && <ReviewedCapture serverUrl={serverUrl} tabs={savableTabs} locale={locale} />}
 
-      {connected && paired && (
-        <section className="card capture-card">
-          <div className="section-heading"><strong>Quick Capture</strong><span>Current tab → Inbox</span></div>
-          {activeSavableTab ? (
-            <div className="capture-current">
-              <strong>{activeSavableTab.title || activeSavableTab.url}</strong>
-              <small>{hostLabel(activeSavableTab.url)}</small>
-            </div>
-          ) : (
-            <p className="empty">Open an HTTP/HTTPS page to capture it.</p>
+          {isDailyReady && activeTab === "sessions" && (
+            <SessionsPanel
+              locale={locale}
+              sessionName={sessionName}
+              savableTabCount={savableTabs.length}
+              sessions={sessions}
+              busy={busy}
+              onSessionNameChange={setSessionName}
+              onSaveWindow={() => void saveWindow()}
+              onRestoreSession={(session) => void restoreSession(session)}
+            />
           )}
-          <button className="primary" disabled={busy || !activeSavableTab} onClick={() => void saveCurrentTab()}>Save current tab</button>
-          {captureResult && (
-            <div className={`capture-review ${captureResult.result}`}>
-              <span>{captureResult.result === "created" ? "Saved to Inbox" : "Duplicate review"}</span>
-              <strong>{captureResult.bookmark.title}</strong>
-              <small>{captureResult.bookmark.categoryName ?? (captureResult.duplicateState === "inbox" ? "Already waiting in Inbox" : "Already in Dockmark library")}</small>
-              <button className="secondary" type="button" onClick={() => void openCaptureReview()}>
-                {captureResult.duplicateState === "library" ? "Open Dockmark" : "Open Inbox"}
-              </button>
-            </div>
-          )}
-        </section>
+
+          {(!isDailyReady || activeTab === "capture") && <OpenTabsPanel tabs={tabs} locale={locale} />}
+        </>
       )}
 
-      {connected && paired && <ReviewedCapture serverUrl={serverUrl} tabs={savableTabs} />}
-
-      {connected && paired && (
-        <section className="card save-card">
-          <div className="section-heading"><strong>Save current window</strong><span>{savableTabs.length} web tabs</span></div>
-          <input value={sessionName} onChange={(event) => setSessionName(event.target.value)} maxLength={120} />
-          <button className="primary" disabled={busy || !sessionName.trim() || !savableTabs.length} onClick={() => void saveWindow()}>Save as Session</button>
-        </section>
+      {(status || error) && (
+        <div className={`notice ${error ? "error" : "success"}`} role="status">{error ?? status}</div>
       )}
-
-      {(status || error) && <div className={`notice ${error ? "error" : "success"}`}>{error ?? status}</div>}
-
-      {connected && paired && (
-        <section className="session-section">
-          <div className="section-heading"><strong>Recent sessions</strong><span>{sessions.length}</span></div>
-          <div className="session-list">
-            {sessions.slice(0, 4).map((session) => (
-              <button className="session-row" key={session.id} disabled={busy || !session.items.length} onClick={() => void restoreSession(session)}>
-                <span><strong>{session.name}</strong><small>{session.items.length} tabs{session.sourceDevice ? ` · ${session.sourceDevice}` : ""}</small></span>
-                <em>Restore</em>
-              </button>
-            ))}
-            {!sessions.length && <p className="empty">No cloud sessions yet.</p>}
-          </div>
-        </section>
-      )}
-
-      <section className="open-tabs-section">
-        <div className="section-heading"><strong>Open tabs</strong><span>{tabs.length}</span></div>
-        <div className="tabs">
-          {tabs.slice(0, 6).map((tab) => (
-            <button
-              className="tab-row"
-              key={tab.id ?? tab.url}
-              disabled={tab.id == null}
-              onClick={() => browser.runtime.sendMessage({ type: "dockmark:activate-tab", tabId: tab.id })}
-            >
-              <span>{tab.title}</span>
-              <small>{tab.active ? "Current" : "Switch"}</small>
-            </button>
-          ))}
-        </div>
-      </section>
     </main>
   );
 }

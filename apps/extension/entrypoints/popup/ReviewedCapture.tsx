@@ -1,79 +1,32 @@
+/**
+ * [INPUT]: depends on React hooks; depends on browser from wxt/browser; depends on api helpers from ./api; depends on tx and ResolvedLocale from ../../lib/ext-locale
+ * [OUTPUT]: exports ReviewedCapture component for batch-reviewing and saving open window tabs to Dockmark Inbox
+ * [POS]: Multi-Tab capture workbench panel inside apps/extension/entrypoints/popup
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import { useMemo, useState } from "react";
 import { browser } from "wxt/browser";
+import { tx, type ResolvedLocale } from "../../lib/ext-locale";
+import {
+  apiUrl,
+  hostLabel,
+  hostMonogram,
+  requestJson,
+  type BatchResponse,
+  type ReviewItem,
+  type ReviewResponse,
+  type SavableTab,
+} from "./api";
 
-const TOKEN_KEY = "dockmarkDeviceToken";
-
-type CaptureTab = {
-  id?: number;
-  title: string;
-  url: string;
-  pinned: boolean;
-  active: boolean;
-};
-
-type CaptureBookmark = {
-  id: string;
-  title: string;
-  url: string;
-  categoryName?: string;
-  inboxAt?: string;
-};
-
-type ReviewItem = {
-  index: number;
-  title: string;
-  url: string;
-  state: "new" | "duplicate" | "selection-duplicate";
-  duplicateOf?: number;
-  duplicateState?: "inbox" | "library";
-  bookmark?: CaptureBookmark;
-};
-
-type ReviewResponse = {
-  items: ReviewItem[];
-};
-
-type BatchResponse = {
-  result: "batch";
-  createdCount: number;
-  duplicateCount: number;
-  skippedCount: number;
-};
-
-class DockmarkRequestError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message);
-  }
-}
-
-function apiUrl(origin: string, path: string) {
-  return new URL(path, `${origin}/`).toString();
-}
-
-function hostLabel(value: string) {
-  try {
-    return new URL(value).host;
-  } catch {
-    return value;
-  }
-}
-
-async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers);
-  headers.set("accept", "application/json");
-  if (init.body) headers.set("content-type", "application/json");
-  const stored = await browser.storage.local.get(TOKEN_KEY);
-  const token = typeof stored[TOKEN_KEY] === "string" ? stored[TOKEN_KEY] : "";
-  if (token) headers.set("authorization", `Bearer ${token}`);
-  const response = await fetch(url, { ...init, headers, cache: "no-store" });
-  const body = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
-  if (!response.ok) {
-    throw new DockmarkRequestError(response.status, body.error?.message ?? `Dockmark request failed (${response.status}).`);
-  }
-  return body;
-}
-
-export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: CaptureTab[] }) {
+export function ReviewedCapture({
+  serverUrl,
+  tabs,
+  locale,
+}: {
+  serverUrl: string;
+  tabs: SavableTab[];
+  locale: ResolvedLocale;
+}) {
   const [review, setReview] = useState<ReviewItem[] | null>(null);
   const [selected, setSelected] = useState<Set<number>>(() => new Set<number>());
   const [busy, setBusy] = useState(false);
@@ -85,7 +38,7 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
     try {
       dockmarkOrigin = new URL(serverUrl).origin;
     } catch {
-      return [] as CaptureTab[];
+      return [] as SavableTab[];
     }
     return tabs
       .filter((tab) => {
@@ -99,8 +52,14 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
   }, [serverUrl, tabs]);
 
   const newItems = useMemo(() => review?.filter((item) => item.state === "new") ?? [], [review]);
-  const duplicateCount = useMemo(() => review?.filter((item) => item.state === "duplicate").length ?? 0, [review]);
-  const repeatedCount = useMemo(() => review?.filter((item) => item.state === "selection-duplicate").length ?? 0, [review]);
+  const duplicateCount = useMemo(
+    () => review?.filter((item) => item.state === "duplicate").length ?? 0,
+    [review],
+  );
+  const repeatedCount = useMemo(
+    () => review?.filter((item) => item.state === "selection-duplicate").length ?? 0,
+    [review],
+  );
   const selectedItems = useMemo(
     () => newItems.filter((item) => selected.has(item.index)),
     [newItems, selected],
@@ -113,7 +72,11 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
     try {
       await action();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Something went wrong.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : tx(locale, "Something went wrong.", "操作失败，请重试。"),
+      );
     } finally {
       setBusy(false);
     }
@@ -121,7 +84,15 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
 
   async function reviewWindowTabs() {
     await run(async () => {
-      if (!reviewableTabs.length) throw new Error("This window has no HTTP/HTTPS tabs outside Dockmark to review.");
+      if (!reviewableTabs.length) {
+        throw new Error(
+          tx(
+            locale,
+            "No HTTP/HTTPS tabs outside Dockmark to review.",
+            "当前窗口没有除 Dockmark 外的可审查网页标签页。",
+          ),
+        );
+      }
       const result = await requestJson<ReviewResponse>(apiUrl(serverUrl, "/api/capture/review"), {
         method: "POST",
         body: JSON.stringify({
@@ -139,7 +110,9 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
 
   async function applyReviewedCapture() {
     await run(async () => {
-      if (!selectedItems.length) throw new Error("Select at least one new tab before saving.");
+      if (!selectedItems.length) {
+        throw new Error(tx(locale, "Select at least one new tab before saving.", "请至少选择一个新标签页再保存。"));
+      }
       const result = await requestJson<BatchResponse>(apiUrl(serverUrl, "/api/capture/batch"), {
         method: "POST",
         body: JSON.stringify({
@@ -151,8 +124,16 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
       setSelected(new Set<number>());
       setNotice(
         changedDuringReview
-          ? `Saved ${result.createdCount} tabs to Inbox; ${changedDuringReview} were skipped after a final duplicate recheck.`
-          : `Saved ${result.createdCount} reviewed tabs to Dockmark Inbox.`,
+          ? tx(
+              locale,
+              `Saved ${result.createdCount} to Inbox (${changedDuringReview} skipped as duplicates).`,
+              `已保存 ${result.createdCount} 条到收件箱，跳过 ${changedDuringReview} 条重复项。`,
+            )
+          : tx(
+              locale,
+              `Saved ${result.createdCount} tabs to Inbox.`,
+              `已保存 ${result.createdCount} 个标签页到收件箱。`,
+            ),
       );
     });
   }
@@ -171,48 +152,102 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
   }
 
   return (
-    <section className="card multi-capture-card">
+    <section className="card multi-capture-card" data-testid="popup-multitab">
       <div className="section-heading">
-        <strong>Reviewed multi-tab capture</strong>
-        <span>{reviewableTabs.length} eligible</span>
+        <strong>{tx(locale, "Multi-tab capture", "批量收录窗口标签页")}</strong>
+        <span className="pill neutral">
+          {tx(locale, `${reviewableTabs.length} eligible`, `${reviewableTabs.length} 个可收录`)}
+        </span>
       </div>
+
       {!review ? (
         <>
-          <p className="capture-help">Review the current window first. Dockmark checks exact normalized URLs without writing anything, then you choose which new tabs are allowed into Inbox.</p>
-          <button className="secondary" disabled={busy || !reviewableTabs.length} onClick={() => void reviewWindowTabs()}>
-            {busy ? "Reviewing…" : `Review ${reviewableTabs.length} window tabs`}
+          <p className="capture-help">
+            {tx(
+              locale,
+              "Checks normalized URLs against your library and Inbox before saving selected tabs.",
+              "先按规范化网址核对书签库与收件箱去重，再由你勾选需要收录的新标签页。",
+            )}
+          </p>
+          <button
+            className="primary"
+            type="button"
+            disabled={busy || !reviewableTabs.length}
+            onClick={() => void reviewWindowTabs()}
+          >
+            {busy
+              ? tx(locale, "Reviewing…", "正在检查…")
+              : tx(
+                  locale,
+                  `Review ${reviewableTabs.length} window tabs`,
+                  `审查当前窗口 ${reviewableTabs.length} 个标签页`,
+                )}
           </button>
         </>
       ) : (
         <>
           <div className="capture-review-summary">
-            <span><strong>{newItems.length}</strong> new</span>
-            <span><strong>{duplicateCount}</strong> existing</span>
-            <span><strong>{repeatedCount}</strong> repeated</span>
+            <span className="summary-pill is-new">
+              <strong>{newItems.length}</strong>
+              <small>{tx(locale, "New", "新增")}</small>
+            </span>
+            <span className="summary-pill is-existing">
+              <strong>{duplicateCount}</strong>
+              <small>{tx(locale, "Existing", "已存在")}</small>
+            </span>
+            <span className="summary-pill is-repeated">
+              <strong>{repeatedCount}</strong>
+              <small>{tx(locale, "Repeated", "窗口重复")}</small>
+            </span>
           </div>
+
           <div className="capture-selection-actions">
-            <button className="text-button" type="button" disabled={busy || !newItems.length} onClick={() => setSelected(new Set(newItems.map((item) => item.index)))}>Select all new</button>
-            <button className="text-button" type="button" disabled={busy || !selected.size} onClick={() => setSelected(new Set<number>())}>Clear</button>
+            <button
+              className="text-button"
+              type="button"
+              disabled={busy || !newItems.length}
+              onClick={() => setSelected(new Set(newItems.map((item) => item.index)))}
+            >
+              {tx(locale, "Select all", "全选新增")}
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              disabled={busy || !selected.size}
+              onClick={() => setSelected(new Set<number>())}
+            >
+              {tx(locale, "Clear", "清空")}
+            </button>
+            <span className="selection-count">
+              {tx(locale, `${selectedItems.length} selected`, `已选 ${selectedItems.length} 项`)}
+            </span>
           </div>
+
           <div className="capture-review-list">
             {review.map((item) => {
               const selectable = item.state === "new";
               const existingLabel = item.duplicateState === "inbox"
-                ? "Already in Inbox"
+                ? tx(locale, "In Inbox", "已在收件箱")
                 : item.duplicateState === "library"
-                  ? item.bookmark?.categoryName ?? "Already in library"
+                  ? item.bookmark?.categoryName ?? tx(locale, "In library", "已在书签库")
                   : item.state === "selection-duplicate"
-                    ? `Repeated tab · same as #${(item.duplicateOf ?? 0) + 1}`
-                    : "New";
+                    ? tx(locale, `Same as #${(item.duplicateOf ?? 0) + 1}`, `与第 ${(item.duplicateOf ?? 0) + 1} 项重复`)
+                    : tx(locale, "New", "新增");
               return (
-                <label className={`capture-review-row state-${item.state}`} key={`${item.index}-${item.url}`}>
+                <label
+                  className={`capture-review-row state-${item.state}`}
+                  key={`${item.index}-${item.url}`}
+                >
                   <input
                     type="checkbox"
                     checked={selectable && selected.has(item.index)}
                     disabled={busy || !selectable}
                     onChange={() => toggle(item.index)}
                   />
-                  <span>
+                  <span className="row-monogram" aria-hidden="true">
+                    {hostMonogram(item.url, item.title)}
+                  </span>
+                  <span className="row-copy">
                     <strong>{item.title}</strong>
                     <small>{hostLabel(item.url)} · {existingLabel}</small>
                   </span>
@@ -220,18 +255,41 @@ export function ReviewedCapture({ serverUrl, tabs }: { serverUrl: string; tabs: 
               );
             })}
           </div>
+
           <div className="capture-review-actions">
-            <button className="secondary" type="button" disabled={busy} onClick={() => { setReview(null); setSelected(new Set<number>()); }}>Cancel review</button>
-            <button className="primary" type="button" disabled={busy || !selectedItems.length} onClick={() => void applyReviewedCapture()}>
-              {busy ? "Saving…" : `Save ${selectedItems.length} selected`}
+            <button
+              className="secondary"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setReview(null);
+                setSelected(new Set<number>());
+              }}
+            >
+              {tx(locale, "Cancel", "取消")}
+            </button>
+            <button
+              className="primary"
+              type="button"
+              disabled={busy || !selectedItems.length}
+              onClick={() => void applyReviewedCapture()}
+            >
+              {busy
+                ? tx(locale, "Saving…", "保存中…")
+                : tx(locale, `Save ${selectedItems.length} to Inbox`, `保存 ${selectedItems.length} 项到收件箱`)}
             </button>
           </div>
         </>
       )}
+
       {(notice || error) && (
         <div className={`capture-batch-notice ${error ? "error" : "success"}`}>
           <span>{error ?? notice}</span>
-          {!error && <button className="text-button" type="button" onClick={() => void openInbox()}>Open Inbox →</button>}
+          {!error && (
+            <button className="text-button" type="button" onClick={() => void openInbox()}>
+              {tx(locale, "Open Inbox →", "打开收件箱 →")}
+            </button>
+          )}
         </div>
       )}
     </section>

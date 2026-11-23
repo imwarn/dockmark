@@ -1,0 +1,14 @@
+{
+  "extDescription": {
+    "message": "Browser bridge for Dockmark tabs, reviewed Capture Inbox, sessions, Smart Collection-aware local-first search, reviewed bookmark sync, local health checks and device pairing.",
+    "description": "Manifest description for the standard Dockmark browser extension."
+  },
+  "cmdOpenLauncher": {
+    "message": "Open or focus the Dockmark launcher",
+    "description": "Keyboard shortcut description for opening or focusing the Dockmark launcher."
+  },
+  "newtabDescription": {
+    "message": "Dockmark browser bridge with a local-first, offline-capable Dockmark launcher on every new tab.",
+    "description": "Manifest description for the Dockmark New Tab extension variant."
+  }
+}

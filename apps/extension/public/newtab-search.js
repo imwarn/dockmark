@@ -1,15 +1,15 @@
+/**
+ * [INPUT]: depends on globals from newtab.js (buildResults, executeResult, refreshCloud, collectionMatchesBookmark, normalizedTags, tx)
+ * [OUTPUT]: enhances buildResults and executeResult with #tag filtering, Smart Collection search, and @Collection browsing
+ * [POS]: local-first Smart Collection and tag search layer loaded after newtab-library-cache.js in apps/extension/public/newtab.html
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 (() => {
   const LOCAL_CACHE_KEY = "dockmarkNewTabCacheV1";
   const originalBuildResults = buildResults;
   const originalRefreshCloud = refreshCloud;
   const originalExecuteResult = executeResult;
   let syncingLibraryMetadata = false;
-
-  function normalizedTags(bookmark) {
-    return asArray(bookmark?.tags)
-      .filter((tag) => typeof tag === "string" && tag.trim())
-      .map((tag) => tag.trim());
-  }
 
   function bookmarkResult(rawQuery, bookmark) {
     if (!isHttpUrl(bookmark?.url)) return null;
@@ -64,42 +64,6 @@
     };
   }
 
-  function inboxIdSet() {
-    return new Set(
-      asArray(snapshot.inboxBookmarkIds)
-        .filter((id) => typeof id === "string" && id.trim()),
-    );
-  }
-
-  function collectionMatchesBookmark(collection, bookmark) {
-    if (!collection || !isHttpUrl(bookmark?.url)) return false;
-    const filters = collection.filters && typeof collection.filters === "object" && !Array.isArray(collection.filters)
-      ? collection.filters
-      : {};
-
-    if (Object.prototype.hasOwnProperty.call(filters, "categoryId")) {
-      if (filters.categoryId === null ? Boolean(bookmark.categoryId) : bookmark.categoryId !== filters.categoryId) return false;
-    }
-
-    if (Array.isArray(filters.tags) && filters.tags.length) {
-      const tags = new Set(normalizedTags(bookmark).map((tag) => tag.toLocaleLowerCase()));
-      if (!filters.tags.every((tag) => typeof tag === "string" && tags.has(tag.toLocaleLowerCase()))) return false;
-    }
-
-    if (typeof filters.domain === "string" && filters.domain) {
-      let host = "";
-      try { host = new URL(bookmark.url).hostname.toLocaleLowerCase(); } catch { return false; }
-      const domain = filters.domain.toLocaleLowerCase();
-      if (host !== domain && !host.endsWith(`.${domain}`)) return false;
-    }
-
-    if (typeof filters.healthStatus === "string" && bookmark.healthStatus !== filters.healthStatus) return false;
-    const inboxIds = inboxIdSet();
-    if (filters.inbox === "inbox" && !inboxIds.has(bookmark.id)) return false;
-    if (filters.inbox === "library" && inboxIds.has(bookmark.id)) return false;
-    return true;
-  }
-
   function collectionMembers(collection) {
     return asArray(snapshot.bookmarks)
       .filter((bookmark) => collectionMatchesBookmark(collection, bookmark))
@@ -112,15 +76,15 @@
       : {};
     const labels = [];
     if (Object.prototype.hasOwnProperty.call(filters, "categoryId")) {
-      labels.push(filters.categoryId === null ? "Uncategorized" : categoryName(filters.categoryId));
+      labels.push(filters.categoryId === null ? tx("Uncategorized", "未分类") : categoryName(filters.categoryId));
     }
     for (const tag of asArray(filters.tags)) {
       if (typeof tag === "string" && tag.trim()) labels.push(`#${tag.trim()}`);
     }
     if (typeof filters.domain === "string" && filters.domain) labels.push(filters.domain);
     if (typeof filters.healthStatus === "string" && filters.healthStatus) labels.push(filters.healthStatus);
-    if (filters.inbox === "inbox") labels.push("Inbox only");
-    if (filters.inbox === "library") labels.push("Filed library");
+    if (filters.inbox === "inbox") labels.push(tx("Inbox only", "仅收件箱"));
+    if (filters.inbox === "library") labels.push(tx("Filed library", "已归档书签库"));
     return labels;
   }
 
@@ -141,11 +105,15 @@
     else if (nameLower.includes(query)) score += 45;
     else score += 20;
     const count = collectionMembers(collection).length;
+    const countLabel = tx(`${count} bookmark${count === 1 ? "" : "s"}`, `${count} 条书签`);
+    const suffix = labels.length
+      ? ` · ${labels.slice(0, 4).join(" · ")}`
+      : tx(" · All bookmarks", " · 全部书签");
 
     return {
       kind: "collection",
       title: name,
-      subtitle: `${count} bookmark${count === 1 ? "" : "s"}${labels.length ? ` · ${labels.slice(0, 4).join(" · ")}` : " · All bookmarks"}`,
+      subtitle: `${countLabel}${suffix}`,
       collection,
       score,
     };
@@ -257,7 +225,6 @@
       renderSearchResults();
       return true;
     } catch {
-      // Legacy cache hydration is additive. Keep the last-known-good snapshot if this optional read fails.
       return false;
     } finally {
       syncingLibraryMetadata = false;
@@ -287,8 +254,6 @@
     }
   }
 
-  // Current refreshes persist tags, Smart Collections and Inbox membership with the base snapshot.
-  // Only an older last-known-good cache should need this one-time additive hydration path.
   setTimeout(() => hydrateLegacySnapshotWhenReady(), 0);
   queueMicrotask(() => renderSearchResults());
 })();

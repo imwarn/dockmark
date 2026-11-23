@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on globals from newtab.js and newtab-search.js (buildResults, executeResult, refreshCloud, tx)
+ * [OUTPUT]: adds bare ! bang suggestions, Session search/restore, Shift/Ctrl+Enter open modifiers, / focus shortcut, and launcher focus messages
+ * [POS]: launcher keyboard and Session UX layer loaded after newtab-search.js in apps/extension/public/newtab.html
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 (() => {
   const LOCAL_CACHE_KEY = "dockmarkNewTabCacheV1";
   const SERVER_URL_KEY = "dockmarkServerUrl";
@@ -23,7 +29,7 @@
     return {
       kind: "search-shortcut",
       title: engine.name || `!${engine.keyword}`,
-      subtitle: `!${engine.keyword} · type a query`,
+      subtitle: tx(`!${engine.keyword} · type a query`, `!${engine.keyword} · 输入搜索关键词`),
       engine,
       score: 1200 - index,
     };
@@ -59,7 +65,8 @@
     const itemMatch = matchedItem
       ? ` · ${matchedItem.title || displayHost(matchedItem.url)} · ${matchedItem.url}`
       : "";
-    const subtitle = `${items.length} tab${items.length === 1 ? "" : "s"}${source}${itemMatch}`;
+    const countLabel = tx(`${items.length} tab${items.length === 1 ? "" : "s"}`, `${items.length} 个标签页`);
+    const subtitle = `${countLabel}${source}${itemMatch}`;
 
     let score = searchScore(query, session?.name, sourceDevice, 430);
     if (score < 0 && matchedItem) score = searchScore(query, matchedItem?.title, matchedItem?.url, 400);
@@ -67,7 +74,7 @@
 
     return {
       kind: "session",
-      title: session.name || "Session",
+      title: session.name || tx("Session", "会话"),
       subtitle,
       session,
       score: score - index * 0.001,
@@ -210,8 +217,6 @@
     const refreshed = await originalRefreshCloud(options);
     if (!refreshed) return refreshed;
 
-    // Current library refreshes persist Sessions with the normal snapshot. This fallback
-    // only covers an early bootstrap that began before the library wrapper was installed.
     if (!Array.isArray(snapshot.sessions)) await hydrateSessions(previousSessions);
     return refreshed;
   };
@@ -225,8 +230,6 @@
       return;
     }
 
-    // bootstrap() can start before this UX layer is installed and write a base snapshot
-    // without Sessions. Observe that write so the race cannot erase Session search.
     const previousSessions = asArray(change.oldValue?.sessions);
     if (previousSessions.length) applySessions(previousSessions);
     void hydrateSessions(previousSessions);
