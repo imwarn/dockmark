@@ -1,5 +1,12 @@
+/**
+ * [INPUT]: depends on Bookmark, Category, CreateBookmarkInput from @dockmark/core; bookmark/category APIs from ./api, ./bookmark-details-api, ./bookmark-search, ./reorder-api; useI18n from ./i18n; BookmarkFavicon, BookmarkFields, HealthBadge, BookmarkCategorySidebar
+ * [OUTPUT]: exports BookmarkManager component (library CRUD, filtering, drag-and-drop reordering, and quick health checks)
+ * [POS]: main Library tab body rendered inside BookmarkManager.tsx
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+
 import { useMemo, useState, type DragEvent, type FormEvent } from "react";
-import type { Bookmark, Category, CreateBookmarkInput, HealthPolicy, HealthStatus } from "@dockmark/core";
+import type { Bookmark, Category, CreateBookmarkInput } from "@dockmark/core";
 import {
   checkBookmarkHealth,
   createCategory,
@@ -7,13 +14,17 @@ import {
   deleteCategory,
   updateCategory,
 } from "./api";
+import { BookmarkCategorySidebar } from "./BookmarkCategorySidebar";
 import {
   BookmarkDetailsApiError,
   createBookmarkWithTags,
   parseBookmarkTags,
   updateBookmarkWithTags,
 } from "./bookmark-details-api";
+import { BookmarkFavicon } from "./BookmarkFavicon";
+import { BookmarkFields, emptyDraft, HealthBadge, type BookmarkDraft } from "./BookmarkFormFields";
 import { bookmarkMatchesQuery } from "./bookmark-search";
+import { useI18n } from "./i18n";
 import { reorderBookmarks, reorderCategories } from "./reorder-api";
 import "./health.css";
 
@@ -25,57 +36,22 @@ interface Props {
   onChanged: () => Promise<void>;
 }
 
-type DraftPolicy = HealthPolicy | "auto";
-
-interface BookmarkDraft {
-  title: string;
-  url: string;
-  description: string;
-  categoryId: string;
-  healthPolicy: DraftPolicy;
-  tagsText: string;
-}
-
 interface BookmarkGroup {
   categoryId: string | null;
   name: string;
   bookmarks: Bookmark[];
 }
 
-const emptyDraft: BookmarkDraft = {
-  title: "",
-  url: "",
-  description: "",
-  categoryId: "",
-  healthPolicy: "auto",
-  tagsText: "",
-};
-
-const healthLabels: Record<HealthStatus, string> = {
-  unknown: "Unchecked",
-  healthy: "Healthy",
-  redirected: "Redirected",
-  "auth-required": "Auth required",
-  forbidden: "Forbidden",
-  "rate-limited": "Rate limited",
-  timeout: "Timeout",
-  "dns-error": "DNS error",
-  "tls-error": "TLS error",
-  unavailable: "Unavailable",
-  "local-only": "Local only",
-  ignored: "Ignored",
-};
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
+function messageFrom(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
-function tagValidationMessage(value: string) {
+function tagValidationMessage(value: string, fallback: string) {
   try {
     parseBookmarkTags(value);
     return null;
   } catch (error) {
-    return messageFrom(error);
+    return messageFrom(error, fallback);
   }
 }
 
@@ -111,98 +87,8 @@ function moveByOffset(ids: string[], id: string, offset: -1 | 1) {
   return next;
 }
 
-function HealthBadge({ bookmark }: { bookmark: Bookmark }) {
-  const status = bookmark.healthPolicy === "local-only"
-    ? "local-only"
-    : bookmark.healthPolicy === "ignore"
-      ? "ignored"
-      : bookmark.healthStatus;
-
-  return (
-    <span className={`health-badge status-${status} policy-${bookmark.healthPolicy}`}>
-      {bookmark.healthPolicy === "manual" && status === "unknown" ? "Manual" : healthLabels[status]}
-    </span>
-  );
-}
-
-function BookmarkFields({
-  draft,
-  categories,
-  onChange,
-  allowAuto,
-  idPrefix,
-  urlError,
-  tagsError,
-}: {
-  draft: BookmarkDraft;
-  categories: Category[];
-  onChange: (draft: BookmarkDraft) => void;
-  allowAuto: boolean;
-  idPrefix: string;
-  urlError?: string | null;
-  tagsError?: string | null;
-}) {
-  const tagsHelpId = `${idPrefix}-tags-help`;
-  const tagsErrorId = `${idPrefix}-tags-error`;
-  const urlErrorId = `${idPrefix}-url-error`;
-
-  return (
-    <div className="field-grid bookmark-field-grid">
-      <label>
-        <span>Title</span>
-        <input required maxLength={200} value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} placeholder="GitHub" />
-      </label>
-      <label className={urlError ? "field-error" : undefined}>
-        <span>URL</span>
-        <input
-          required
-          value={draft.url}
-          onChange={(event) => onChange({ ...draft, url: event.target.value })}
-          placeholder="github.com"
-          inputMode="url"
-          aria-invalid={Boolean(urlError)}
-          aria-describedby={urlError ? urlErrorId : undefined}
-        />
-        {urlError && <small id={urlErrorId} className="field-error-message" role="alert">{urlError}</small>}
-      </label>
-      <label>
-        <span>Category</span>
-        <select value={draft.categoryId} onChange={(event) => onChange({ ...draft, categoryId: event.target.value })}>
-          <option value="">Uncategorized</option>
-          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
-      </label>
-      <label>
-        <span>Health policy</span>
-        <select value={draft.healthPolicy} onChange={(event) => onChange({ ...draft, healthPolicy: event.target.value as DraftPolicy })}>
-          {allowAuto && <option value="auto">Auto detect</option>}
-          <option value="normal">Normal</option>
-          <option value="local-only">Local only</option>
-          <option value="ignore">Ignore</option>
-          <option value="manual">Manual</option>
-        </select>
-      </label>
-      <label className="field-span-2">
-        <span>Description</span>
-        <textarea maxLength={2000} value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} placeholder="Optional notes or a concise description used by search." />
-      </label>
-      <label className={`field-span-2${tagsError ? " field-error" : ""}`}>
-        <span>Tags</span>
-        <input
-          value={draft.tagsText}
-          onChange={(event) => onChange({ ...draft, tagsText: event.target.value })}
-          placeholder="dev, docs, self-hosted"
-          aria-invalid={Boolean(tagsError)}
-          aria-describedby={`${tagsHelpId}${tagsError ? ` ${tagsErrorId}` : ""}`}
-        />
-        <small id={tagsHelpId} className="field-help">Comma, semicolon or newline separated · up to 12 tags · 40 characters each. Invalid input is rejected instead of truncated.</small>
-        {tagsError && <small id={tagsErrorId} className="field-error-message" role="alert">{tagsError}</small>}
-      </label>
-    </div>
-  );
-}
-
 export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, onChanged }: Props) {
+  const { tx } = useI18n();
   const [draft, setDraft] = useState<BookmarkDraft>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<BookmarkDraft>(emptyDraft);
@@ -228,8 +114,11 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
   const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
   const [draggedBookmark, setDraggedBookmark] = useState<{ id: string; categoryId: string | null } | null>(null);
 
-  const createTagError = useMemo(() => tagValidationMessage(draft.tagsText), [draft.tagsText]);
-  const editTagError = useMemo(() => tagValidationMessage(editDraft.tagsText), [editDraft.tagsText]);
+  const genericError = tx("Something went wrong.", "操作失败，请重试。");
+  const uncategorizedLabel = tx("Uncategorized", "未分类");
+
+  const createTagError = useMemo(() => tagValidationMessage(draft.tagsText, genericError), [draft.tagsText, genericError]);
+  const editTagError = useMemo(() => tagValidationMessage(editDraft.tagsText, genericError), [editDraft.tagsText, genericError]);
 
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
@@ -256,9 +145,9 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
   const filteredBookmarks = useMemo(() => bookmarks.filter((bookmark) => {
     const tags = bookmarkTags[bookmark.id] ?? [];
     if (activeTag && !tags.some((tag) => tag.toLocaleLowerCase() === activeTag.toLocaleLowerCase())) return false;
-    const categoryName = bookmark.categoryId ? categoryNameById.get(bookmark.categoryId) ?? "" : "Uncategorized";
+    const categoryName = bookmark.categoryId ? categoryNameById.get(bookmark.categoryId) ?? "" : uncategorizedLabel;
     return bookmarkMatchesQuery(bookmark, categoryName, tags, query);
-  }), [activeTag, bookmarkTags, bookmarks, categoryNameById, query]);
+  }), [activeTag, bookmarkTags, bookmarks, categoryNameById, query, uncategorizedLabel]);
 
   const filtering = Boolean(query.trim() || activeTag);
 
@@ -272,13 +161,13 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
     }));
     groups.push({
       categoryId: null,
-      name: "Uncategorized",
+      name: uncategorizedLabel,
       bookmarks: filteredBookmarks
         .filter((bookmark) => !bookmark.categoryId)
         .sort((a, b) => a.position - b.position || a.title.localeCompare(b.title)),
     });
     return groups.filter((group) => group.bookmarks.length > 0);
-  }, [filteredBookmarks, categories]);
+  }, [filteredBookmarks, categories, uncategorizedLabel]);
 
   async function refreshAfter(action: () => Promise<void>) {
     setBusy(true);
@@ -289,12 +178,12 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
       await action();
     } catch (caught) {
       actionError = caught;
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, genericError));
     }
     try {
       await onChanged();
     } catch (caught) {
-      if (!actionError) setError(messageFrom(caught));
+      if (!actionError) setError(messageFrom(caught, genericError));
     } finally {
       setBusy(false);
     }
@@ -307,9 +196,9 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
     try {
       await reorderCategories(ids);
       await onChanged();
-      setNotice("Category order saved.");
+      setNotice(tx("Category order saved.", "已保存分类顺序。"));
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, genericError));
       await onChanged();
     } finally {
       setReordering(false);
@@ -324,9 +213,9 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
     try {
       await reorderBookmarks(categoryId, ids);
       await onChanged();
-      setNotice("Bookmark order saved.");
+      setNotice(tx("Bookmark order saved.", "已保存书签顺序。"));
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, genericError));
       await onChanged();
     } finally {
       setReordering(false);
@@ -370,7 +259,7 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
       await checkBookmarkHealth(bookmark.id);
       await onChanged();
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, genericError));
     } finally {
       setCheckingIds((current) => {
         const next = new Set(current);
@@ -402,9 +291,12 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
         });
       }
       await onChanged();
-      setNotice(`Checked ${checked} bookmark${checked === 1 ? "" : "s"}${failed ? `; ${failed} failed to check` : ""}.`);
+      setNotice(tx(
+        `Checked ${checked} bookmark${checked === 1 ? "" : "s"}${failed ? `; ${failed} failed to check` : ""}.`,
+        `已完成 ${checked} 个书签健康检查${failed ? `；${failed} 个检查失败` : ""}。`,
+      ));
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, genericError));
     } finally {
       setCheckingIds(new Set());
       setBulkChecking(false);
@@ -433,16 +325,19 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
       const result = await createBookmarkWithTags(input, tags);
       setDraft(emptyDraft);
       setCreateUrlError(null);
-      setCreateStatus(`Saved “${result.bookmark.title}”.`);
+      setCreateStatus(tx(`Saved “${result.bookmark.title}”.`, `已保存「${result.bookmark.title}」。`));
       try {
         await onChanged();
       } catch (refreshError) {
-        setCreateSubmitError(`Saved, but the library could not refresh: ${messageFrom(refreshError)}`);
+        setCreateSubmitError(tx(
+          `Saved, but the library could not refresh: ${messageFrom(refreshError, genericError)}`,
+          `已保存，但书签库刷新失败：${messageFrom(refreshError, genericError)}`,
+        ));
       }
     } catch (caught) {
       const urlMessage = duplicateUrlMessage(caught);
       if (urlMessage) setCreateUrlError(urlMessage);
-      else setCreateSubmitError(messageFrom(caught));
+      else setCreateSubmitError(messageFrom(caught, genericError));
     } finally {
       setCreatingBookmark(false);
     }
@@ -474,12 +369,15 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
       try {
         await onChanged();
       } catch (refreshError) {
-        setError(`Bookmark was saved, but the library could not refresh: ${messageFrom(refreshError)}`);
+        setError(tx(
+          `Bookmark was saved, but the library could not refresh: ${messageFrom(refreshError, genericError)}`,
+          `书签已保存，但书签库刷新失败：${messageFrom(refreshError, genericError)}`,
+        ));
       }
     } catch (caught) {
       const urlMessage = duplicateUrlMessage(caught);
       if (urlMessage) setEditUrlError(urlMessage);
-      else setEditSubmitError(messageFrom(caught));
+      else setEditSubmitError(messageFrom(caught, genericError));
     } finally {
       setSavingEditId(null);
     }
@@ -523,16 +421,27 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
   }
 
   return (
-    <section className="management">
-      <div className="management-heading">
+    <section className="management bookmark-library-view">
+      <div className="management-heading compact-manager-heading">
         <div>
-          <p className="eyebrow">BOOKMARK LIBRARY</p>
-          <h1>Keep the useful parts<br />of your browser portable.</h1>
+          <h1>{tx("Bookmark Library", "书签库")}</h1>
+          <p className="manager-subtitle">
+            {tx("Add, categorize, tag, and reorder bookmarks synced across your browsers.", "添加、分类、标记并排序你的全部书签。")}
+          </p>
         </div>
         <div className="management-summary">
-          <span className="library-count">{bookmarks.length} bookmarks · {tagSummary.length} tags</span>
-          <button className="secondary" type="button" disabled={bulkChecking || !eligibleForAutomaticCheck.length} onClick={() => void checkEligible()}>
-            {bulkChecking ? "Checking…" : `Check ${eligibleForAutomaticCheck.length} eligible`}
+          <span className="library-count">
+            {tx(`${bookmarks.length} bookmarks · ${tagSummary.length} tags`, `${bookmarks.length} 个书签 · ${tagSummary.length} 个标签`)}
+          </span>
+          <button
+            className="secondary"
+            type="button"
+            disabled={bulkChecking || !eligibleForAutomaticCheck.length}
+            onClick={() => void checkEligible()}
+          >
+            {bulkChecking
+              ? tx("Checking…", "检查中…")
+              : tx(`Check ${eligibleForAutomaticCheck.length} eligible`, `检查 ${eligibleForAutomaticCheck.length} 个可检书签`)}
           </button>
         </div>
       </div>
@@ -541,89 +450,89 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
       {notice && <div className="success-banner health-feedback" role="status">{notice}</div>}
 
       <div className="management-grid">
-        <aside className="manager-sidebar bookmark-sidebar">
-          <div className="form-card">
-            <div className="card-heading"><h2>Categories</h2><span>{categories.length}</span></div>
-            <form className="compact-form" onSubmit={submitCategory}>
-              <input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="New category" maxLength={80} aria-label="New category name" />
-              <button className="secondary" disabled={busy || !newCategory.trim()}>Add</button>
-            </form>
-            <div className="category-list">
-              {categories.map((category, index) => (
-                <div
-                  className={`category-row reorder-row${draggedCategoryId === category.id ? " is-dragging" : ""}`}
-                  key={category.id}
-                  draggable={editingCategoryId !== category.id && !reordering}
-                  onDragStart={() => setDraggedCategoryId(category.id)}
-                  onDragEnd={() => setDraggedCategoryId(null)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => categoryDrop(event, category.id)}
-                >
-                  {editingCategoryId === category.id ? (
-                    <form className="category-edit" onSubmit={(event) => submitCategoryEdit(event, category.id)}>
-                      <input autoFocus value={editingCategoryName} onChange={(event) => setEditingCategoryName(event.target.value)} aria-label={`Rename ${category.name}`} />
-                      <button className="text-action" disabled={busy}>Save</button>
-                      <button className="text-action muted-action" type="button" onClick={() => setEditingCategoryId(null)}>Cancel</button>
-                    </form>
-                  ) : (
-                    <>
-                      <span className="drag-handle" aria-hidden="true">⋮⋮</span>
-                      <span>{category.icon ?? "#"}</span><strong>{category.name}</strong>
-                      <div className="row-actions">
-                        <button className="text-action reorder-action" type="button" disabled={reordering || index === 0} aria-label={`Move ${category.name} up`} onClick={() => void persistCategoryOrder(moveByOffset(categories.map((item) => item.id), category.id, -1))}>↑</button>
-                        <button className="text-action reorder-action" type="button" disabled={reordering || index === categories.length - 1} aria-label={`Move ${category.name} down`} onClick={() => void persistCategoryOrder(moveByOffset(categories.map((item) => item.id), category.id, 1))}>↓</button>
-                        <button className="text-action" type="button" onClick={() => { setEditingCategoryId(category.id); setEditingCategoryName(category.name); }}>Rename</button>
-                        <button className="text-action danger-text" type="button" onClick={() => { if (window.confirm(`Delete category “${category.name}”? Its bookmarks will become uncategorized.`)) void refreshAfter(() => deleteCategory(category.id)); }}>Delete</button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-              {!categories.length && <p className="empty-copy">No categories yet.</p>}
-            </div>
-          </div>
-
-          <div className="form-card tag-browser-card">
-            <div className="card-heading"><div><h2>Tags</h2><p>Filter the library or use #tag in search.</p></div><span>{tagSummary.length}</span></div>
-            {activeTag && (
-              <button className="active-tag-filter" type="button" onClick={() => setActiveTag(null)}>
-                <span>#{activeTag}</span><strong>×</strong>
-              </button>
-            )}
-            <div className="tag-browser-list">
-              {tagSummary.map((tag) => (
-                <button
-                  className={`tag-filter-chip${activeTag?.toLocaleLowerCase() === tag.name.toLocaleLowerCase() ? " active" : ""}`}
-                  type="button"
-                  key={tag.name.toLocaleLowerCase()}
-                  onClick={() => setActiveTag((current) => current?.toLocaleLowerCase() === tag.name.toLocaleLowerCase() ? null : tag.name)}
-                >
-                  <span>#{tag.name}</span><strong>{tag.count}</strong>
-                </button>
-              ))}
-              {!tagSummary.length && <p className="empty-copy">No tags yet. Add them while editing a bookmark or accept AI suggestions.</p>}
-            </div>
-          </div>
-        </aside>
+        <BookmarkCategorySidebar
+          categories={categories}
+          tagSummary={tagSummary}
+          activeTag={activeTag}
+          newCategory={newCategory}
+          editingCategoryId={editingCategoryId}
+          editingCategoryName={editingCategoryName}
+          draggedCategoryId={draggedCategoryId}
+          busy={busy}
+          reordering={reordering}
+          onNewCategoryChange={setNewCategory}
+          onSubmitCategory={submitCategory}
+          onStartEditCategory={(category) => { setEditingCategoryId(category.id); setEditingCategoryName(category.name); }}
+          onCancelEditCategory={() => setEditingCategoryId(null)}
+          onEditingCategoryNameChange={setEditingCategoryName}
+          onSubmitCategoryEdit={submitCategoryEdit}
+          onDeleteCategory={(category) => {
+            if (window.confirm(tx(
+              `Delete category “${category.name}”? Its bookmarks will become uncategorized.`,
+              `删除分类「${category.name}」？其中的书签将变为未分类。`,
+            ))) {
+              void refreshAfter(() => deleteCategory(category.id));
+            }
+          }}
+          onDragStartCategory={setDraggedCategoryId}
+          onDragEndCategory={() => setDraggedCategoryId(null)}
+          onDropCategory={categoryDrop}
+          onMoveCategory={(id, offset) => void persistCategoryOrder(moveByOffset(categories.map((item) => item.id), id, offset))}
+          onSelectTag={setActiveTag}
+        />
 
         <div className="manager-main">
           <div className="form-card bookmark-search-card">
             <div className="bookmark-search-heading">
-              <div><strong>Find bookmarks</strong><span>{filteredBookmarks.length} of {bookmarks.length}</span></div>
-              {filtering && <button className="text-action" type="button" onClick={() => { setQuery(""); setActiveTag(null); }}>Clear filters</button>}
+              <div>
+                <strong>{tx("Find bookmarks", "查找书签")}</strong>
+                <span>{tx(`${filteredBookmarks.length} of ${bookmarks.length}`, `${filteredBookmarks.length} / ${bookmarks.length}`)}</span>
+              </div>
+              {filtering && (
+                <button className="text-action" type="button" onClick={() => { setQuery(""); setActiveTag(null); }}>
+                  {tx("Clear filters", "清除筛选")}
+                </button>
+              )}
             </div>
             <div className="bookmark-search-input">
-              <span>⌕</span>
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, URL, description, category or #tag…" aria-label="Search bookmark library" />
+              <span aria-hidden="true">⌕</span>
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={tx("Search title, URL, description, category, or #tag…", "搜索标题、网址、描述、分类或 #标签…")}
+                aria-label={tx("Search bookmark library", "搜索书签库")}
+              />
             </div>
-            <p className="bookmark-search-help">Space-separated terms use AND matching across Library, Launcher and New Tab. Example: <code>github #dev</code>. Reordering is paused while a filter is active.</p>
+            <p className="bookmark-search-help">
+              {tx(
+                "Space-separated terms use AND matching across Library, Launcher, and New Tab (e.g. ",
+                "空格分隔的关键词按 AND 匹配，并同步用于书签库、启动台与新标签页（例如 ",
+              )}
+              <code>github #dev</code>
+              {tx("). Reordering pauses while filtered.", "）。筛选期间暂停拖拽排序。")}
+            </p>
           </div>
 
           <form className="form-card bookmark-form" onSubmit={submitBookmark}>
             <div className="card-heading">
-              <div><h2>Add bookmark</h2><p>Bare local URLs are automatically protected as local-only. Description and tags become searchable immediately.</p></div>
-              <button className="primary" disabled={busy || creatingBookmark || loading || Boolean(createTagError) || Boolean(createUrlError)}>
-                {creatingBookmark ? "Saving…" : createTagError || createUrlError ? "Fix errors" : "Add bookmark"}
+              <div>
+                <h2>{tx("Add bookmark", "添加书签")}</h2>
+                <p>
+                  {tx(
+                    "Local URLs are automatically protected as local-only. Description and tags become searchable immediately.",
+                    "本地地址会自动设为「仅本地」。描述与标签保存后即可检索。",
+                  )}
+                </p>
+              </div>
+              <button
+                className="primary"
+                disabled={busy || creatingBookmark || loading || Boolean(createTagError) || Boolean(createUrlError)}
+              >
+                {creatingBookmark
+                  ? tx("Saving…", "保存中…")
+                  : createTagError || createUrlError
+                    ? tx("Fix errors", "请修正错误")
+                    : tx("Add bookmark", "添加书签")}
               </button>
             </div>
             <BookmarkFields
@@ -675,8 +584,15 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
                               />
                               {editSubmitError && <div className="inline-form-feedback error" role="alert">{editSubmitError}</div>}
                               <div className="edit-actions">
-                                <button className="primary" disabled={busy || savingThisBookmark || Boolean(editTagError) || Boolean(editUrlError)}>
-                                  {savingThisBookmark ? "Saving…" : editTagError || editUrlError ? "Fix errors" : "Save changes"}
+                                <button
+                                  className="primary"
+                                  disabled={busy || savingThisBookmark || Boolean(editTagError) || Boolean(editUrlError)}
+                                >
+                                  {savingThisBookmark
+                                    ? tx("Saving…", "保存中…")
+                                    : editTagError || editUrlError
+                                      ? tx("Fix errors", "请修正错误")
+                                      : tx("Save changes", "保存更改")}
                                 </button>
                                 <button
                                   className="secondary"
@@ -688,21 +604,28 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
                                     setEditSubmitError(null);
                                   }}
                                 >
-                                  Cancel
+                                  {tx("Cancel", "取消")}
                                 </button>
                               </div>
                             </form>
                           ) : (
                             <>
                               <span className="drag-handle bookmark-drag-handle" aria-hidden="true">⋮⋮</span>
-                              <div className="bookmark-icon">{bookmark.title.slice(0, 1).toUpperCase()}</div>
+                              <BookmarkFavicon
+                                iconUrl={bookmark.iconUrl}
+                                title={bookmark.title}
+                                url={bookmark.url}
+                                className="bookmark-icon"
+                              />
                               <div className="bookmark-details">
                                 <div className="bookmark-title-line">
                                   <a href={bookmark.url} target="_blank" rel="noreferrer"><strong>{bookmark.title}</strong></a>
                                   <HealthBadge bookmark={bookmark} />
-                                  {savedBookmarkId === bookmark.id && <span className="bookmark-save-confirmation" role="status">Saved</span>}
+                                  {savedBookmarkId === bookmark.id && (
+                                    <span className="bookmark-save-confirmation" role="status">{tx("Saved", "已保存")}</span>
+                                  )}
                                 </div>
-                                <small>{bookmark.url}</small>
+                                <small title={bookmark.url}>{bookmark.url}</small>
                                 {bookmark.description && <p className="bookmark-description">{bookmark.description}</p>}
                                 <div className="bookmark-meta-line">
                                   <span className="bookmark-category">{group.name}</span>
@@ -716,15 +639,48 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
                                 </div>
                               </div>
                               <div className="bookmark-actions">
-                                <button className="secondary reorder-button" type="button" disabled={filtering || reordering || index === 0} aria-label={`Move ${bookmark.title} up`} onClick={() => void persistBookmarkOrder(group.categoryId, moveByOffset(ids, bookmark.id, -1))}>↑</button>
-                                <button className="secondary reorder-button" type="button" disabled={filtering || reordering || index === group.bookmarks.length - 1} aria-label={`Move ${bookmark.title} down`} onClick={() => void persistBookmarkOrder(group.categoryId, moveByOffset(ids, bookmark.id, 1))}>↓</button>
+                                <button
+                                  className="secondary reorder-button"
+                                  type="button"
+                                  disabled={filtering || reordering || index === 0}
+                                  aria-label={tx(`Move ${bookmark.title} up`, `将 ${bookmark.title} 上移`)}
+                                  onClick={() => void persistBookmarkOrder(group.categoryId, moveByOffset(ids, bookmark.id, -1))}
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  className="secondary reorder-button"
+                                  type="button"
+                                  disabled={filtering || reordering || index === group.bookmarks.length - 1}
+                                  aria-label={tx(`Move ${bookmark.title} down`, `将 ${bookmark.title} 下移`)}
+                                  onClick={() => void persistBookmarkOrder(group.categoryId, moveByOffset(ids, bookmark.id, 1))}
+                                >
+                                  ↓
+                                </button>
                                 {(bookmark.healthPolicy === "normal" || bookmark.healthPolicy === "manual") && (
-                                  <button className="secondary health-check-button" type="button" disabled={checkingIds.has(bookmark.id)} onClick={() => void checkOne(bookmark)}>
-                                    {checkingIds.has(bookmark.id) ? "Checking…" : "Check"}
+                                  <button
+                                    className="secondary health-check-button"
+                                    type="button"
+                                    disabled={checkingIds.has(bookmark.id)}
+                                    onClick={() => void checkOne(bookmark)}
+                                  >
+                                    {checkingIds.has(bookmark.id) ? tx("Checking…", "检查中…") : tx("Check", "检查")}
                                   </button>
                                 )}
-                                <button className="secondary" type="button" onClick={() => beginEdit(bookmark)}>Edit</button>
-                                <button className="danger-button" type="button" onClick={() => { if (window.confirm(`Delete “${bookmark.title}”?`)) void refreshAfter(() => deleteBookmark(bookmark.id)); }}>Delete</button>
+                                <button className="secondary" type="button" onClick={() => beginEdit(bookmark)}>
+                                  {tx("Edit", "编辑")}
+                                </button>
+                                <button
+                                  className="danger-button"
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm(tx(`Delete “${bookmark.title}”?`, `确认删除「${bookmark.title}」？`))) {
+                                      void refreshAfter(() => deleteBookmark(bookmark.id));
+                                    }
+                                  }}
+                                >
+                                  {tx("Delete", "删除")}
+                                </button>
                               </div>
                             </>
                           )}
@@ -737,10 +693,16 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
             })}
 
             {!loading && !bookmarks.length && (
-              <div className="empty-state"><strong>No bookmarks yet.</strong><span>Add the first URL above or import a browser bookmark file.</span></div>
+              <div className="empty-state">
+                <strong>{tx("No bookmarks yet.", "暂无书签。")}</strong>
+                <span>{tx("Add your first URL above or import a browser bookmark file.", "在上方添加首个书签，或前往导入导出页导入浏览器书签。")}</span>
+              </div>
             )}
             {!loading && bookmarks.length > 0 && !filteredBookmarks.length && (
-              <div className="empty-state"><strong>No bookmarks match this filter.</strong><span>Try another term, remove the active tag, or clear filters.</span></div>
+              <div className="empty-state">
+                <strong>{tx("No bookmarks match this filter.", "没有符合筛选条件的书签。")}</strong>
+                <span>{tx("Try another keyword, remove the active tag, or clear filters.", "尝试其他关键词、取消当前标签或清除筛选。")}</span>
+              </div>
             )}
           </div>
         </div>

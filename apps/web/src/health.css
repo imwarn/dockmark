@@ -1,5 +1,6 @@
 .management-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .health-feedback { margin-bottom: 16px; }
+.health-badge { white-space: nowrap; flex-shrink: 0; }
 .health-badge.status-healthy { color: #99c9a8; border-color: #355442; }
 .health-badge.status-redirected { color: #a9b8d7; border-color: #3b465d; }
 .health-badge.status-auth-required, .health-badge.status-forbidden { color: #c7ad83; border-color: #55482f; }
@@ -7,7 +8,19 @@
 .health-badge.status-timeout, .health-badge.status-dns-error, .health-badge.status-tls-error, .health-badge.status-unavailable { color: #d09a96; border-color: #5a3835; }
 .health-badge.status-local-only { color: #b6b97d; border-color: #484a30; }
 .health-badge.status-ignored { color: #988e88; border-color: #3e3733; }
-.health-check-button { min-width: 68px; }
+.health-check-button { min-width: 68px; white-space: nowrap; }
+
+html[data-theme="light"] .health-badge.status-healthy { color: #2b6844; border-color: #a9cdb6; background: #eef7f1; }
+html[data-theme="light"] .health-badge.status-redirected { color: #365080; border-color: #b5c4de; background: #f0f4fa; }
+html[data-theme="light"] .health-badge.status-auth-required,
+html[data-theme="light"] .health-badge.status-forbidden { color: #7d5b24; border-color: #dcc59b; background: #fdf7ec; }
+html[data-theme="light"] .health-badge.status-rate-limited { color: #6c4380; border-color: #cfb6dc; background: #f8f1fb; }
+html[data-theme="light"] .health-badge.status-timeout,
+html[data-theme="light"] .health-badge.status-dns-error,
+html[data-theme="light"] .health-badge.status-tls-error,
+html[data-theme="light"] .health-badge.status-unavailable { color: #9a3e38; border-color: #dfb4b0; background: #fdf1f0; }
+html[data-theme="light"] .health-badge.status-local-only { color: #676a29; border-color: #cfd29c; background: #f7f8ec; }
+html[data-theme="light"] .health-badge.status-ignored { color: #665e59; border-color: #cfc9c5; background: #f4f3f2; }
 
 @media (max-width: 720px) {
   .management-summary { justify-content: flex-start; }
