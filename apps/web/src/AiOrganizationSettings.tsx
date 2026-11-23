@@ -1,24 +1,27 @@
 /**
- * [INPUT]: depends on Bookmark, Category, HEALTH_POLICY_LABELS from @dockmark/core; AI APIs from ./ai-organization; listBookmarkTags from ./tag-api; useI18n from ./i18n
- * [OUTPUT]: exports AiOrganizationSettings component
- * [POS]: provider configuration, bookmark selection queue, and diff review workbench for AI-assisted organization inside the Organize tab
+ * [INPUT]: depends on useEffect, useMemo, useRef, useState from react; Bookmark, Category, HEALTH_POLICY_LABELS from @dockmark/core; AI APIs and cloud settings sync from ./ai-organization; textMatchesQuery from ./bookmark-search; listBookmarkTags from ./tag-api; useI18n from ./i18n
+ * [OUTPUT]: exports AiOrganizationSettings component with cloud-synced AI status strip, collapsible inline provider editor, selection queue, and diff review workbench
+ * [POS]: Organize tab AI workbench in apps/web/src; links directly to /app/settings/ai and syncs non-secret provider config via D1 + localStorage
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HEALTH_POLICY_LABELS, type Bookmark, type Category } from "@dockmark/core";
 import {
   applyAiOrganizationPatches,
+  fetchAiSettings,
   generateAiOrganizationSuggestions,
   getAiProviderStatus,
   loadAiProviderSettings,
   MAX_AI_TIMEOUT_SECONDS,
   MIN_AI_TIMEOUT_SECONDS,
   saveAiProviderSettings,
+  saveCloudAiSettings,
   type AiOrganizationPatch,
   type AiOrganizationSuggestion,
   type AiProviderSettings,
 } from "./ai-organization";
+import { textMatchesQuery } from "./bookmark-search";
 import { useI18n } from "./i18n";
 import { listBookmarkTags } from "./tag-api";
 import "./ai-organization.css";
@@ -41,12 +44,28 @@ function sameTags(left: string[], right: string[]) {
   return a.length === b.length && a.every((tag, index) => tag === b[index]);
 }
 
+function safeEndpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host || endpoint;
+  } catch {
+    return endpoint || "—";
+  }
+}
+
+function openAiSettingsPage() {
+  window.history.pushState({}, "", "/app/settings/ai");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Props) {
   const { locale, tx } = useI18n();
   const policyLabels = HEALTH_POLICY_LABELS[locale];
   const genericError = tx("Something went wrong.", "操作失败，请重试。");
 
   const [provider, setProvider] = useState<AiProviderSettings>(() => loadAiProviderSettings());
+  const [providerExpanded, setProviderExpanded] = useState<boolean>(() => !loadAiProviderSettings().model.trim());
+  const userToggledProvider = useRef(false);
+  const [savingProvider, setSavingProvider] = useState(false);
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
   const [bookmarkTags, setBookmarkTags] = useState<Record<string, string[]>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -66,17 +85,50 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     void (async () => {
       setLoadingTags(true);
       try {
-        const [nextTags, status] = await Promise.all([listBookmarkTags(), getAiProviderStatus()]);
+        const [nextTags, status, cloudSettings] = await Promise.all([
+          listBookmarkTags(),
+          getAiProviderStatus(),
+          fetchAiSettings().catch(() => null),
+        ]);
         if (cancelled) return;
         setBookmarkTags(nextTags);
         setApiKeyConfigured(status.apiKeyConfigured);
+        if (cloudSettings) {
+          setProvider({
+            endpoint: cloudSettings.endpoint,
+            model: cloudSettings.model,
+            timeoutSeconds: cloudSettings.timeoutSeconds,
+          });
+          if (!userToggledProvider.current) {
+            setProviderExpanded(!cloudSettings.model.trim());
+          }
+        }
       } catch (caught) {
         if (!cancelled) setError(messageFrom(caught, genericError));
       } finally {
         if (!cancelled) setLoadingTags(false);
       }
     })();
-    return () => { cancelled = true; };
+
+    const onAiSettingsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<AiProviderSettings> | undefined>).detail;
+      const next =
+        detail &&
+        typeof detail.endpoint === "string" &&
+        typeof detail.model === "string" &&
+        typeof detail.timeoutSeconds === "number"
+          ? { endpoint: detail.endpoint, model: detail.model, timeoutSeconds: detail.timeoutSeconds }
+          : loadAiProviderSettings();
+      setProvider(next);
+      if (!userToggledProvider.current) {
+        setProviderExpanded(!next.model.trim());
+      }
+    };
+    window.addEventListener("dockmark:ai-settings", onAiSettingsChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("dockmark:ai-settings", onAiSettingsChanged);
+    };
   }, []);
 
   const categoryById = useMemo(
@@ -93,11 +145,8 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
   );
 
   const queryFilteredBookmarks = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase();
-    if (!needle) return bookmarks;
-    return bookmarks.filter((bookmark) =>
-      bookmark.title.toLocaleLowerCase().includes(needle) || bookmark.url.toLocaleLowerCase().includes(needle),
-    );
+    if (!query.trim()) return bookmarks;
+    return bookmarks.filter((bookmark) => textMatchesQuery(query, [bookmark.title, bookmark.url]));
   }, [bookmarks, query]);
 
   const filteredBookmarks = useMemo(() => queryFilteredBookmarks.filter((bookmark) => {
@@ -131,7 +180,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
       provider.timeoutSeconds <= MAX_AI_TIMEOUT_SECONDS;
   }
 
-  function saveProvider() {
+  async function saveProvider() {
     setError(null);
     setMessage(null);
     if (!providerTimeoutValid()) {
@@ -141,11 +190,27 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
       ));
       return;
     }
-    saveAiProviderSettings(provider);
-    setMessage(tx(
-      "Provider endpoint, model, and timeout saved locally. The API key stays in the Worker secret store.",
-      "接口地址、模型与超时配置已保存到本地浏览器；API 密钥仅保存在 Worker 密钥库中。",
-    ));
+    setSavingProvider(true);
+    try {
+      const saved = await saveCloudAiSettings({
+        endpoint: provider.endpoint.trim(),
+        model: provider.model.trim(),
+        timeoutSeconds: provider.timeoutSeconds,
+      });
+      setProvider({
+        endpoint: saved.endpoint,
+        model: saved.model,
+        timeoutSeconds: saved.timeoutSeconds,
+      });
+      setMessage(tx(
+        "AI endpoint, model, and timeout synced to your account and this browser. The API key stays in the Worker secret store.",
+        "接口地址、模型与超时配置已同步至云端账户及当前浏览器；API 密钥仅保存在 Worker 密钥库中。",
+      ));
+    } catch (caught) {
+      setError(messageFrom(caught, genericError));
+    } finally {
+      setSavingProvider(false);
+    }
   }
 
   async function refreshKeyStatus() {
@@ -171,10 +236,9 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
   }
 
   function nextPendingIds(progress: Set<string>) {
-    const needle = query.trim().toLocaleLowerCase();
     return bookmarks
       .filter((bookmark) => bookmark.healthPolicy === "normal" && !progress.has(bookmark.id))
-      .filter((bookmark) => !needle || bookmark.title.toLocaleLowerCase().includes(needle) || bookmark.url.toLocaleLowerCase().includes(needle))
+      .filter((bookmark) => !query.trim() || textMatchesQuery(query, [bookmark.title, bookmark.url]))
       .slice(0, 20)
       .map((bookmark) => bookmark.id);
   }
@@ -365,73 +429,115 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
         </div>
       </div>
 
-      <div className="settings-grid">
-        <article className="form-card settings-card ai-provider-card">
-          <div className="card-heading">
-            <div>
-              <h3>{tx("OpenAI-compatible provider", "OpenAI 兼容接口配置")}</h3>
-              <p>
-                {tx(
-                  "Endpoint, model, and timeout are saved locally in this browser. The API key is read by the Worker from ",
-                  "接口地址、模型与超时仅保存在当前浏览器；API 密钥由 Worker 从 ",
-                )}
-                <code>DOCKMARK_AI_API_KEY</code>
-                {tx(".", " 读取，绝不暴露给前端。")}
-              </p>
+      <div className="ai-config-strip">
+        <div className="ai-config-strip-meta">
+          <span className={`ai-config-badge${provider.model.trim() ? " is-ready" : " is-warn"}`}>
+            {provider.model.trim() || tx("No model configured", "未配置模型")}
+          </span>
+          <span className="ai-config-detail" title={provider.endpoint}>
+            {safeEndpointHost(provider.endpoint)} · {provider.timeoutSeconds}s
+          </span>
+          <span className={`ai-config-badge${apiKeyConfigured ? " is-ready" : ""}`}>
+            {apiKeyConfigured === null
+              ? tx("Checking secret…", "检查密钥中…")
+              : apiKeyConfigured
+                ? tx("Secret ready", "密钥就绪")
+                : tx("Secret missing", "需配置密钥")}
+          </span>
+        </div>
+        <div className="ai-config-strip-actions">
+          <button
+            className="text-action"
+            type="button"
+            onClick={() => {
+              userToggledProvider.current = true;
+              setProviderExpanded((current) => !current);
+            }}
+          >
+            {providerExpanded
+              ? tx("Collapse inline settings", "收起接口/模型配置")
+              : tx("Edit endpoint / model", "展开修改接口/模型")}
+          </button>
+          <button className="secondary ai-settings-nav-btn" type="button" onClick={openAiSettingsPage}>
+            {tx("Configure in Settings → AI Service →", "前往「设置 → AI 服务」配置 →")}
+          </button>
+        </div>
+      </div>
+
+      <div className={`settings-grid ai-workbench-grid${providerExpanded ? " is-expanded" : " is-compact"}`}>
+        {providerExpanded && (
+          <article className="form-card settings-card ai-provider-card">
+            <div className="card-heading">
+              <div>
+                <h3>{tx("OpenAI-compatible provider", "OpenAI 兼容接口配置")}</h3>
+                <p>
+                  {tx(
+                    "Endpoint, model, and timeout sync across your account and this browser. The API key is read by the Worker from ",
+                    "接口地址、模型与超时会同步至云端账户及当前浏览器；API 密钥由 Worker 从 ",
+                  )}
+                  <code>DOCKMARK_AI_API_KEY</code>
+                  {tx(".", " 读取，绝不暴露给前端。")}
+                </p>
+              </div>
             </div>
-          </div>
-          <label className="settings-field">
-            <span>{tx("Chat completions endpoint", "Chat Completions 接口地址")}</span>
-            <input
-              value={provider.endpoint}
-              onChange={(event) => setProvider({ ...provider, endpoint: event.target.value })}
-              placeholder="https://api.example.com/v1/chat/completions"
-              inputMode="url"
-            />
-          </label>
-          <label className="settings-field">
-            <span>{tx("Model", "模型")}</span>
-            <input
-              value={provider.model}
-              onChange={(event) => setProvider({ ...provider, model: event.target.value })}
-              placeholder={tx("Provider model id", "模型 ID（如 gpt-4o-mini）")}
-              autoComplete="off"
-            />
-          </label>
-          <label className="settings-field">
-            <span>{tx("Provider timeout · seconds", "请求超时（秒）")}</span>
-            <input
-              type="number"
-              min={MIN_AI_TIMEOUT_SECONDS}
-              max={MAX_AI_TIMEOUT_SECONDS}
-              step={5}
-              value={provider.timeoutSeconds}
-              onChange={(event) => setProvider({ ...provider, timeoutSeconds: Number(event.target.value) })}
-            />
-            <small className="field-help">
+            <label className="settings-field">
+              <span>{tx("Chat completions endpoint", "Chat Completions 接口地址")}</span>
+              <input
+                value={provider.endpoint}
+                onChange={(event) => setProvider({ ...provider, endpoint: event.target.value })}
+                placeholder="https://api.example.com/v1/chat/completions"
+                inputMode="url"
+              />
+            </label>
+            <label className="settings-field">
+              <span>{tx("Model", "模型")}</span>
+              <input
+                value={provider.model}
+                onChange={(event) => setProvider({ ...provider, model: event.target.value })}
+                placeholder={tx("Provider model id", "模型 ID（如 gpt-4o-mini）")}
+                autoComplete="off"
+              />
+            </label>
+            <label className="settings-field">
+              <span>{tx("Provider timeout · seconds", "请求超时（秒）")}</span>
+              <input
+                type="number"
+                min={MIN_AI_TIMEOUT_SECONDS}
+                max={MAX_AI_TIMEOUT_SECONDS}
+                step={5}
+                value={provider.timeoutSeconds}
+                onChange={(event) => setProvider({ ...provider, timeoutSeconds: Number(event.target.value) })}
+              />
+              <small className="field-help">
+                {tx(
+                  `Default 90s · allowed ${MIN_AI_TIMEOUT_SECONDS}–${MAX_AI_TIMEOUT_SECONDS}s. Slower self-hosted models can use a longer window.`,
+                  `默认 90 秒 · 允许范围 ${MIN_AI_TIMEOUT_SECONDS}–${MAX_AI_TIMEOUT_SECONDS} 秒。响应较慢的自托管模型可适当调大。`,
+                )}
+              </small>
+            </label>
+            <div className="ai-provider-actions">
+              <button
+                className="secondary"
+                type="button"
+                disabled={savingProvider}
+                onClick={() => void saveProvider()}
+              >
+                {savingProvider ? tx("Saving…", "保存中…") : tx("Save & sync provider", "保存并同步配置")}
+              </button>
+              <button className="text-action" type="button" onClick={() => void refreshKeyStatus()}>
+                {tx("Refresh secret status", "刷新密钥状态")}
+              </button>
+            </div>
+            <p className="settings-footnote">
+              {tx("Set the secret with ", "使用 ")}
+              <code>npx wrangler secret put DOCKMARK_AI_API_KEY</code>
               {tx(
-                `Default 90s · allowed ${MIN_AI_TIMEOUT_SECONDS}–${MAX_AI_TIMEOUT_SECONDS}s. Slower self-hosted models can use a longer window.`,
-                `默认 90 秒 · 允许范围 ${MIN_AI_TIMEOUT_SECONDS}–${MAX_AI_TIMEOUT_SECONDS} 秒。响应较慢的自托管模型可适当调大。`,
+                " or in the Cloudflare dashboard. The endpoint must be public HTTPS.",
+                " 或在 Cloudflare 控制台配置密钥；接口地址须为公网 HTTPS。",
               )}
-            </small>
-          </label>
-          <div className="ai-provider-actions">
-            <button className="secondary" type="button" onClick={saveProvider}>
-              {tx("Save provider locally", "保存本地配置")}
-            </button>
-            <button className="text-action" type="button" onClick={() => void refreshKeyStatus()}>
-              {tx("Refresh secret status", "刷新密钥状态")}
-            </button>
-          </div>
-          <p className="settings-footnote">
-            {tx("Set the secret with ", "使用 ")}
-            <code>npx wrangler secret put DOCKMARK_AI_API_KEY</code>
-            {tx(
-              " or in the Cloudflare dashboard. The endpoint must be public HTTPS.",
-              " 或在 Cloudflare 控制台配置密钥；接口地址须为公网 HTTPS。",
-            )}
-          </p>
-        </article>
+            </p>
+          </article>
+        )}
 
         <article className="form-card settings-card ai-selection-card">
           <div className="card-heading">
@@ -540,7 +646,9 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
                 ? tx("Review or discard current suggestions first", "请先处理当前预览建议")
                 : apiKeyConfigured === false
                   ? tx("Configure Worker AI secret first", "请先配置 Worker AI 密钥")
-                  : tx(`Generate suggestions (${selectedIds.size})`, `生成建议 (${selectedIds.size})`)}
+                  : !provider.model.trim()
+                    ? tx("Configure AI model first", "请先配置 AI 模型")
+                    : tx(`Generate suggestions (${selectedIds.size})`, `生成建议 (${selectedIds.size})`)}
           </button>
         </article>
       </div>

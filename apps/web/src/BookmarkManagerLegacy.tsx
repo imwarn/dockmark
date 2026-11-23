@@ -1,11 +1,11 @@
 /**
- * [INPUT]: depends on Bookmark, Category, CreateBookmarkInput from @dockmark/core; bookmark/category APIs from ./api, ./bookmark-details-api, ./bookmark-search, ./reorder-api; useI18n from ./i18n; BookmarkFavicon, BookmarkFields, HealthBadge, BookmarkCategorySidebar
- * [OUTPUT]: exports BookmarkManager component (library CRUD, filtering, drag-and-drop reordering, and quick health checks)
+ * [INPUT]: depends on useEffect, useMemo, useState from react; Bookmark, Category, CreateBookmarkInput from @dockmark/core; bookmark/category APIs from ./api, ./bookmark-details-api, ./bookmark-search, ./reorder-api; useI18n from ./i18n; BookmarkFavicon, BookmarkFields, HealthBadge, BookmarkCategorySidebar
+ * [OUTPUT]: exports BookmarkManager component (library CRUD, ?q= deep-linked search filtering, drag-and-drop reordering, and quick health checks)
  * [POS]: main Library tab body rendered inside BookmarkManager.tsx
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 
-import { useMemo, useState, type DragEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type DragEvent, type FormEvent } from "react";
 import type { Bookmark, Category, CreateBookmarkInput } from "@dockmark/core";
 import {
   checkBookmarkHealth,
@@ -87,6 +87,25 @@ function moveByOffset(ids: string[], id: string, offset: -1 | 1) {
   return next;
 }
 
+function readInitialQueryParam(): string {
+  try {
+    return new URLSearchParams(window.location.search).get("q") ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function clearQueryParamFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("q")) return;
+    url.searchParams.delete("q");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    // Ignore invalid location environments.
+  }
+}
+
 export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, onChanged }: Props) {
   const { tx } = useI18n();
   const [draft, setDraft] = useState<BookmarkDraft>(emptyDraft);
@@ -95,7 +114,19 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
   const [newCategory, setNewCategory] = useState("");
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState<string>(() => readInitialQueryParam());
+
+  useEffect(() => {
+    clearQueryParamFromUrl();
+    const onPopState = () => {
+      const next = readInitialQueryParam();
+      if (!next) return;
+      setQuery(next);
+      clearQueryParamFromUrl();
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creatingBookmark, setCreatingBookmark] = useState(false);
@@ -502,6 +533,16 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
                 placeholder={tx("Search title, URL, description, category, or #tag…", "搜索标题、网址、描述、分类或 #标签…")}
                 aria-label={tx("Search bookmark library", "搜索书签库")}
               />
+              {query && (
+                <button
+                  className="command-clear"
+                  type="button"
+                  aria-label={tx("Clear search", "清空搜索")}
+                  onClick={() => setQuery("")}
+                >
+                  ×
+                </button>
+              )}
             </div>
             <p className="bookmark-search-help">
               {tx(

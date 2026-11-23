@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: calls GET /api/library/duplicates via fetch
+ * [OUTPUT]: exports getDuplicateReview and duplicate review response/member types
+ * [POS]: Web API client for DuplicateReviewPage in apps/web/src
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+
 export type DuplicateCandidateKind = "canonical" | "resolved" | "normalized";
 
 export interface DuplicateReviewMember {
@@ -5,10 +12,13 @@ export interface DuplicateReviewMember {
   title: string;
   url: string;
   description?: string;
+  iconUrl?: string;
   categoryId: string | null;
   categoryName?: string;
   healthPolicy: string;
   healthStatus: string;
+  createdAt?: string;
+  updatedAt?: string;
   canonicalUrl?: string;
   finalUrl?: string;
   metadataFetchedAt?: string;

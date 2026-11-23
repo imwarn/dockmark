@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: depends on D1 bookmarks, categories, and bookmark_metadata tables via DuplicateReviewDatabase
+ * [OUTPUT]: exports handleDuplicateReviewApi, reviewFingerprint, DuplicateReviewHttpError, and DuplicateReview types
+ * [POS]: Worker handler for GET /api/library/duplicates; detects canonical, resolved, and normalized URL duplicates while preserving SPA hash routes
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+
 type BindValue = string | number | null;
 
 interface D1PreparedStatementLike {
@@ -14,10 +21,13 @@ interface DuplicateRow {
   title: string;
   url: string;
   description: string | null;
+  icon_url: string | null;
   category_id: string | null;
   category_name: string | null;
   health_status: string;
   health_policy: string;
+  created_at: string;
+  updated_at: string;
   canonical_url: string | null;
   final_url: string | null;
   fetched_at: string | null;
@@ -30,10 +40,13 @@ export interface DuplicateReviewMember {
   title: string;
   url: string;
   description?: string;
+  iconUrl?: string;
   categoryId: string | null;
   categoryName?: string;
   healthPolicy: string;
   healthStatus: string;
+  createdAt?: string;
+  updatedAt?: string;
   canonicalUrl?: string;
   finalUrl?: string;
   metadataFetchedAt?: string;
@@ -49,12 +62,13 @@ export interface DuplicateReviewCandidate {
 }
 
 export class DuplicateReviewHttpError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(status: number, code: string, message: string) {
     super(message);
+    this.status = status;
+    this.code = code;
   }
 }
 
@@ -69,7 +83,30 @@ function json(data: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
-function reviewFingerprint(raw: string | null) {
+function normalizeQueryParams(params: URLSearchParams): string {
+  const entries = Array.from(params.entries())
+    .filter(([key]) => {
+      const normalized = key.toLocaleLowerCase();
+      return !normalized.startsWith("utm_") && !TRACKING_KEYS.has(normalized);
+    })
+    .sort(([leftKey, leftValue], [rightKey, rightValue]) => leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue));
+  return new URLSearchParams(entries).toString();
+}
+
+function normalizeSpaHashRoute(hash: string): string {
+  if (!hash.startsWith("#/") && !hash.startsWith("#!/")) return "";
+  const stripped = hash.startsWith("#!/") ? hash.slice(2) : hash.slice(1);
+  const queryStart = stripped.indexOf("?");
+  const rawPath = queryStart >= 0 ? stripped.slice(0, queryStart) : stripped;
+  const rawQuery = queryStart >= 0 ? stripped.slice(queryStart + 1) : "";
+  let hashPath = rawPath.replace(/\/{2,}/g, "/");
+  if (!hashPath.startsWith("/")) hashPath = `/${hashPath}`;
+  if (hashPath.length > 1) hashPath = hashPath.replace(/\/+$/, "");
+  const hashQuery = rawQuery ? normalizeQueryParams(new URLSearchParams(rawQuery)) : "";
+  return `#${hashPath}${hashQuery ? `?${hashQuery}` : ""}`;
+}
+
+export function reviewFingerprint(raw: string | null) {
   if (!raw) return null;
   try {
     const url = new URL(raw);
@@ -80,17 +117,12 @@ function reviewFingerprint(raw: string | null) {
     pathname = pathname.replace(/\/{2,}/g, "/");
     if (pathname.length > 1) pathname = pathname.replace(/\/+$/, "");
 
-    const params = Array.from(url.searchParams.entries())
-      .filter(([key]) => {
-        const normalized = key.toLocaleLowerCase();
-        return !normalized.startsWith("utm_") && !TRACKING_KEYS.has(normalized);
-      })
-      .sort(([leftKey, leftValue], [rightKey, rightValue]) => leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue));
-    const query = new URLSearchParams(params).toString();
+    const query = normalizeQueryParams(url.searchParams);
     const port = url.port && !((url.protocol === "http:" && url.port === "80") || (url.protocol === "https:" && url.port === "443"))
       ? `:${url.port}`
       : "";
-    return `${hostname}${port}${pathname}${query ? `?${query}` : ""}`;
+    const hashRoute = normalizeSpaHashRoute(url.hash);
+    return `${hostname}${port}${pathname}${query ? `?${query}` : ""}${hashRoute}`;
   } catch {
     return null;
   }
@@ -100,7 +132,9 @@ function displayEvidenceUrl(raw: string | null | undefined) {
   if (!raw) return undefined;
   try {
     const url = new URL(raw);
-    url.hash = "";
+    if (!url.hash.startsWith("#/") && !url.hash.startsWith("#!/")) {
+      url.hash = "";
+    }
     return url.toString();
   } catch {
     return raw;
@@ -113,10 +147,13 @@ function member(row: DuplicateRow): DuplicateReviewMember {
     title: row.title,
     url: row.url,
     ...(row.description ? { description: row.description } : {}),
+    ...(row.icon_url ? { iconUrl: row.icon_url } : {}),
     categoryId: row.category_id,
     ...(row.category_name ? { categoryName: row.category_name } : {}),
     healthPolicy: row.health_policy,
     healthStatus: row.health_status,
+    ...(row.created_at ? { createdAt: row.created_at } : {}),
+    ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
     ...(row.canonical_url ? { canonicalUrl: row.canonical_url } : {}),
     ...(row.final_url ? { finalUrl: row.final_url } : {}),
     ...(row.fetched_at ? { metadataFetchedAt: row.fetched_at } : {}),
@@ -232,10 +269,13 @@ async function duplicateReview(db: DuplicateReviewDatabase) {
             b.title,
             b.url,
             b.description,
+            b.icon_url,
             b.category_id,
             c.name AS category_name,
             b.health_status,
             b.health_policy,
+            b.created_at,
+            b.updated_at,
             m.canonical_url,
             m.final_url,
             m.fetched_at
