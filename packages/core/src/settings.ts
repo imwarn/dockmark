@@ -1,4 +1,11 @@
+/**
+ * [INPUT]: depends on Id from ./models; depends on LocalePreference and normalizeLocalePreference from ./i18n
+ * [OUTPUT]: provides browser and appearance settings contracts, defaults, normalizers, and merge helpers
+ * [POS]: schema and normalization boundary for persisted app_settings payloads in packages/core/src
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import type { Id } from "./models";
+import { normalizeLocalePreference, type LocalePreference } from "./i18n";
 
 export const BROWSER_SETTINGS_VERSION = 1;
 export const APPEARANCE_SETTINGS_VERSION = 1;
@@ -29,11 +36,13 @@ export interface UpdateBrowserSettingsInput {
 export interface AppearanceSettings {
   version: typeof APPEARANCE_SETTINGS_VERSION;
   preference: AppearancePreference;
+  locale: LocalePreference;
   updatedAt: string | null;
 }
 
 export interface UpdateAppearanceSettingsInput {
   preference?: AppearancePreference;
+  locale?: LocalePreference;
 }
 
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
@@ -52,6 +61,7 @@ export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
 export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   version: APPEARANCE_SETTINGS_VERSION,
   preference: "system",
+  locale: "system",
   updatedAt: null,
 };
 
@@ -118,6 +128,7 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
   return {
     version: APPEARANCE_SETTINGS_VERSION,
     preference: normalizeAppearancePreference(record.preference),
+    locale: normalizeLocalePreference(record.locale),
     updatedAt: typeof record.updatedAt === "string" && record.updatedAt ? record.updatedAt : null,
   };
 }
@@ -146,6 +157,7 @@ export function mergeAppearanceSettings(
   return normalizeAppearanceSettings({
     ...current,
     ...(input.preference === undefined ? {} : { preference: input.preference }),
+    ...(input.locale === undefined ? {} : { locale: input.locale }),
     updatedAt,
   });
 }

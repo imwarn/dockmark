@@ -1,4 +1,10 @@
-import { inferHealthPolicy, normalizeBookmarkUrl, type HealthPolicy } from "@dockmark/core";
+/**
+ * [INPUT]: depends on inferHealthPolicy, normalizeBookmarkUrl, HealthPolicy, and ResolvedLocale from @dockmark/core; queries D1 bookmarks, categories, tags, and bookmark_tags
+ * [OUTPUT]: exports AiOrganizationEnv, AiOrganizationHttpError, and handleAiOrganizationApi
+ * [POS]: Worker HTTP handler for /api/ai/status and /api/ai/organize in apps/web/worker; proxies OpenAI-compatible suggestion calls with locale-aware prompts
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+import { inferHealthPolicy, normalizeBookmarkUrl, type HealthPolicy, type ResolvedLocale } from "@dockmark/core";
 
 type BindValue = string | number | null;
 
@@ -282,8 +288,12 @@ async function loadOrganizationInput(db: D1DatabaseLike, ids: string[]) {
   };
 }
 
-function providerRequestBody(model: string, input: Awaited<ReturnType<typeof loadOrganizationInput>>) {
-  const system = [
+function providerRequestBody(
+  model: string,
+  input: Awaited<ReturnType<typeof loadOrganizationInput>>,
+  locale: ResolvedLocale,
+) {
+  const instructions = [
     "You organize a personal bookmark library.",
     "Return JSON only as an object with a suggestions array.",
     "Each suggestion must contain bookmarkId, title, description, categoryName, tags.",
@@ -293,7 +303,14 @@ function providerRequestBody(model: string, input: Awaited<ReturnType<typeof loa
     "Descriptions should be concise factual summaries, not marketing copy.",
     "Never propose a URL, health policy, health status, deletion, browser write, or any other field.",
     "Do not omit a selected bookmark.",
-  ].join(" ");
+  ];
+  if (locale === "zh-CN") {
+    instructions.push(
+      "Write description in concise, factual Simplified Chinese (简体中文).",
+      "Prefer concise Simplified Chinese or standard tech tags while keeping original product, brand, and repository names recognizable in title.",
+    );
+  }
+  const system = instructions.join(" ");
 
   return JSON.stringify({
     model,
@@ -388,10 +405,11 @@ async function callProvider(
   apiKey: string,
   input: Awaited<ReturnType<typeof loadOrganizationInput>>,
   timeoutSeconds: number,
+  locale: ResolvedLocale,
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
-  const body = providerRequestBody(model, input);
+  const body = providerRequestBody(model, input, locale);
 
   try {
     const response = await fetchProviderResponse(endpoint, apiKey, body, controller.signal);
@@ -446,9 +464,10 @@ async function organize(request: Request, env: AiOrganizationEnv) {
   const endpoint = providerEndpoint(requiredString(body, "endpoint", 4096));
   const model = requiredString(body, "model", 200);
   const timeoutSeconds = providerTimeoutSeconds(body.timeoutSeconds);
+  const locale: ResolvedLocale = body.locale === "zh-CN" ? "zh-CN" : "en";
   const ids = bookmarkIds(body.bookmarkIds);
   const input = await loadOrganizationInput(env.DB, ids);
-  const payload = await callProvider(endpoint, model, apiKey, input, timeoutSeconds);
+  const payload = await callProvider(endpoint, model, apiKey, input, timeoutSeconds, locale);
   const text = extractText(payload);
   if (!text) {
     throw new AiOrganizationHttpError(502, "provider_missing_output", "AI provider response did not contain a supported text result.");

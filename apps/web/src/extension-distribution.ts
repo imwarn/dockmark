@@ -1,4 +1,10 @@
-export const EXTENSION_RELEASE_VERSION = "1.5.5";
+/**
+ * [INPUT]: standalone release metadata with no runtime module dependencies
+ * [OUTPUT]: exports EXTENSION_RELEASE_VERSION, store/download URLs, and compareExtensionVersions
+ * [POS]: single source of truth for expected browser extension release version and download URLs in apps/web/src
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+export const EXTENSION_RELEASE_VERSION = "1.6.0";
 
 // Fill these when browser-store listings are public. The UI will promote the
 // store action while keeping manual downloads visible.

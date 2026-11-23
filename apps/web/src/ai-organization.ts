@@ -1,3 +1,12 @@
+/**
+ * [INPUT]: depends on ResolvedLocale from @dockmark/core and currentResolvedLocale from ./i18n; calls /api/ai/status, /api/ai/organize, and /api/ai/apply
+ * [OUTPUT]: exports AI provider settings storage helpers, timeout constants, status fetch, locale-aware suggestion generator, and patch applier
+ * [POS]: web client wrapper for AI-assisted bookmark organization in apps/web/src; consumed by AiOrganizationSettings.tsx and InboxPage.tsx
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+import type { ResolvedLocale } from "@dockmark/core";
+import { currentResolvedLocale } from "./i18n";
+
 export interface AiProviderSettings {
   endpoint: string;
   model: string;
@@ -90,6 +99,7 @@ export function getAiProviderStatus() {
 export async function generateAiOrganizationSuggestions(
   settings: AiProviderSettings,
   bookmarkIds: string[],
+  locale: ResolvedLocale = currentResolvedLocale(),
 ): Promise<AiOrganizationSuggestion[]> {
   if (!settings.endpoint.trim()) throw new Error("Choose an AI provider endpoint before generating suggestions.");
   if (!settings.model.trim()) throw new Error("Choose an AI model before generating suggestions.");
@@ -106,6 +116,7 @@ export async function generateAiOrganizationSuggestions(
       model: settings.model.trim(),
       timeoutSeconds: settings.timeoutSeconds,
       bookmarkIds,
+      locale,
     }),
   });
   return Array.isArray(response.suggestions) ? response.suggestions : [];
