@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on globals from newtab.js and newtab-ux.js (buildResults, renderSearchResults, tx) and window.dockmarkI18n
+ * [OUTPUT]: enforces canonical Web Launcher result ranking, eight-result cap with default search slot, localized kind badges, and Escape-to-blur
+ * [POS]: final parity wrapper loaded last in apps/extension/public/newtab.html
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 (() => {
   const LAUNCHER_RESULT_LIMIT = 8;
   const SOURCE_WEIGHT = {
@@ -9,15 +15,27 @@
     navigation: 200,
     search: 100,
   };
-  const KIND_LABEL = {
-    tab: "Open tab",
-    workspace: "Workspace",
-    session: "Session",
-    collection: "Collection",
-    bookmark: "Bookmark",
-    navigation: "Navigation",
-    search: "Search",
-    "search-shortcut": "Bang",
+  const KIND_LABELS = {
+    en: {
+      tab: "Open tab",
+      workspace: "Workspace",
+      session: "Session",
+      collection: "Collection",
+      bookmark: "Bookmark",
+      navigation: "Navigation",
+      search: "Search",
+      "search-shortcut": "Bang",
+    },
+    "zh-CN": {
+      tab: "打开的标签页",
+      workspace: "工作区",
+      session: "会话",
+      collection: "智能合集",
+      bookmark: "书签",
+      navigation: "导航",
+      search: "搜索",
+      "search-shortcut": "快捷搜索",
+    },
   };
   const originalBuildResults = buildResults;
   const originalRenderSearchResults = renderSearchResults;
@@ -52,13 +70,13 @@
 
   function workspaceResult(query, workspace) {
     const items = asArray(workspace?.items).filter((item) => isHttpUrl(item?.url));
-    const subtitle = `${items.length} tab${items.length === 1 ? "" : "s"}`;
+    const subtitle = tx(`${items.length} tab${items.length === 1 ? "" : "s"}`, `${items.length} 个标签页`);
     const secondary = [workspace?.description, subtitle, ...items.flatMap((item) => [item?.title, item?.url])];
     const match = parityTextScore(query, workspace?.name, secondary, 30);
     if (match < 0) return null;
     return {
       kind: "workspace",
-      title: workspace?.name || "Workspace",
+      title: workspace?.name || tx("Workspace", "工作区"),
       subtitle,
       workspace,
       score: SOURCE_WEIGHT.workspace + match,
@@ -70,8 +88,13 @@
     const keyword = typeof engine?.keyword === "string" ? engine.keyword.trim() : "";
     return {
       kind: "search",
-      title: `Search ${engine?.name || "the web"} for “${query}”`,
-      subtitle: keyword ? `Default · !${keyword}` : "Default search engine",
+      title: tx(
+        `Search ${engine?.name || "the web"} for “${query}”`,
+        `使用 ${engine?.name || "网页搜索"} 搜索“${query}”`,
+      ),
+      subtitle: keyword
+        ? tx(`Default · !${keyword}`, `默认引擎 · !${keyword}`)
+        : tx("Default search engine", "默认搜索引擎"),
       url: searchUrl(engine, query),
       score: SOURCE_WEIGHT.search,
     };
@@ -91,10 +114,11 @@
     }) || null;
     const source = sourceDevice ? ` · ${sourceDevice}` : "";
     const itemMatch = matchedItem ? ` · ${matchedItem.title || displayHost(matchedItem.url)} · ${matchedItem.url}` : "";
+    const countLabel = tx(`${items.length} tab${items.length === 1 ? "" : "s"}`, `${items.length} 个标签页`);
     return {
       kind: "session",
-      title: session?.name || "Session",
-      subtitle: `${items.length} tab${items.length === 1 ? "" : "s"}${source}${itemMatch}`,
+      title: session?.name || tx("Session", "会话"),
+      subtitle: `${countLabel}${source}${itemMatch}`,
       session,
       score: SOURCE_WEIGHT.session + match - index * 0.001,
     };
@@ -139,10 +163,12 @@
 
   renderSearchResults = function parityRenderSearchResults() {
     originalRenderSearchResults();
+    const locale = window.dockmarkI18n?.currentLocale?.() === "zh-CN" ? "zh-CN" : "en";
+    const labelsMap = KIND_LABELS[locale] || KIND_LABELS.en;
     const labels = elements.results.querySelectorAll(".result-kind");
     labels.forEach((label, index) => {
       const kind = visibleResults[index]?.kind;
-      label.textContent = KIND_LABEL[kind] || kind || "";
+      label.textContent = labelsMap[kind] || kind || "";
     });
   };
 

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on built apps/extension/.output/chrome-mv3 and playwright Chromium
+ * [OUTPUT]: verifies Standard MV3 extension handshake, permissions, local-health prompt, bilingual EN/zh-CN popup workbench, searchable Open Tabs, and pinned Session restore
+ * [POS]: primary Chromium E2E smoke test for the Standard Dockmark extension profile in scripts/
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -74,7 +80,7 @@ try {
   const commands = await popup.evaluate(async () => chrome.commands.getAll());
   const launcherCommand = commands.find((command) => command.name === "open-dockmark-launcher");
   assert.ok(launcherCommand, "Dockmark launcher command should be registered.");
-  assert.match(launcherCommand.description ?? "", /Dockmark launcher/i);
+  assert.match(launcherCommand.description ?? "", /Dockmark launcher|Dockmark 启动台/i);
 
   const capabilities = await popup.evaluate(async () =>
     chrome.runtime.sendMessage({ type: "dockmark:get-capabilities" }),
@@ -100,7 +106,9 @@ try {
   assert.equal(hasLocalHostAccess, false, "Local host access must not be granted at install time.");
 
   await popup.evaluate(async ({ localPattern, origin }) => {
+    localStorage.setItem("dockmarkLocaleV1", "en");
     await chrome.storage.local.set({
+      dockmarkLocaleV1: "en",
       dockmarkPendingLocalHealthPermissionV1: {
         url: `${origin}/health`,
         origin,
@@ -116,6 +124,13 @@ try {
   await permissionPage.getByText("Allow this local host?", { exact: true }).waitFor();
   assert.match(await permissionPage.locator("body").innerText(), /http:\/\/127\.0\.0\.1\/\*/);
   assert.match(await permissionPage.locator("body").innerText(), /does not request access to every website/i);
+  await permissionPage.evaluate(async () => chrome.storage.local.set({ dockmarkLocaleV1: "zh-CN" }));
+  await permissionPage.getByText("允许访问此本地主机？", { exact: true }).waitFor();
+  assert.equal(await permissionPage.evaluate(() => document.documentElement.lang), "zh-CN");
+  await permissionPage.evaluate(async () => {
+    localStorage.setItem("dockmarkLocaleV1", "en");
+    await chrome.storage.local.set({ dockmarkLocaleV1: "en" });
+  });
   await popup.evaluate(async () => chrome.storage.local.remove("dockmarkPendingLocalHealthPermissionV1"));
   await permissionPage.close();
 
@@ -131,6 +146,129 @@ try {
   const secondTab = tabs.find((tab) => tab.url === `${origin}/two`);
   assert.ok(firstTab?.id != null, "The extension should enumerate the first browser tab.");
   assert.ok(secondTab?.id != null, "The extension should enumerate the second browser tab.");
+
+  // Verify popup renders cleanly in EN and zh-CN with Settings drawer and searchable Open Tabs.
+  await popup.reload();
+  await popup.waitForLoadState("domcontentloaded");
+  await popup.locator('[data-testid="popup-open-tabs"]').waitFor();
+  assert.equal(await popup.evaluate(() => document.documentElement.lang), "en");
+  const tabSearch = popup.locator(".tab-search-input");
+  await tabSearch.fill("Target Two");
+  await popup.locator(".tab-row").filter({ hasText: "Dockmark Target Two" }).first().waitFor();
+  assert.equal(await popup.locator(".tab-row").count(), 1, "Open Tabs search should narrow live tabs to matching rows.");
+  await tabSearch.fill("");
+
+  await popup.getByRole("button", { name: "Extension settings" }).click();
+  await popup.locator('[data-testid="popup-settings"]').waitFor();
+  await popup.getByRole("radio", { name: "简体中文" }).click();
+  await popup.getByText("扩展设置", { exact: true }).waitFor();
+  assert.equal(await popup.evaluate(() => document.documentElement.lang), "zh-CN");
+  const storedLocale = await popup.evaluate(async () => (await chrome.storage.local.get("dockmarkLocaleV1")).dockmarkLocaleV1);
+  assert.equal(storedLocale, "zh-CN", "Popup language selection should persist dockmarkLocaleV1 to chrome.storage.local.");
+  await popup.getByRole("button", { name: "完成" }).click();
+  await popup.getByText("打开的标签页", { exact: true }).waitFor();
+
+  // Verify connected + paired 3-tab segmented workbench in both EN and zh-CN.
+  const pairedPopup = await context.newPage();
+  await pairedPopup.addInitScript(({ origin }) => {
+    const nativeContains = chrome.permissions.contains.bind(chrome.permissions);
+    chrome.permissions.contains = (query, callback) => {
+      if (Array.isArray(query?.origins) && query.origins.includes(`${origin}/*`)) {
+        if (typeof callback === "function") {
+          callback(true);
+          return undefined;
+        }
+        return Promise.resolve(true);
+      }
+      return nativeContains(query, callback);
+    };
+    const nativeSendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
+    chrome.runtime.sendMessage = (message, ...rest) => {
+      if (message?.type === "dockmark:configure-bridge") {
+        const cb = typeof rest[rest.length - 1] === "function" ? rest[rest.length - 1] : null;
+        if (cb) {
+          cb({ ok: true });
+          return undefined;
+        }
+        return Promise.resolve({ ok: true });
+      }
+      return nativeSendMessage(message, ...rest);
+    };
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (input, init = {}) => {
+      const requestUrl = new URL(
+        typeof input === "string" || input instanceof URL ? input.toString() : input.url,
+        window.location.href,
+      );
+      if (requestUrl.origin !== origin || !requestUrl.pathname.startsWith("/api/")) {
+        return nativeFetch(input, init);
+      }
+      const json = (data) => new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+      if (requestUrl.pathname === "/api/sessions") {
+        return json({
+          sessions: [{
+            id: "session-smoke",
+            name: "Smoke Window",
+            sourceDevice: "Chromium",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            items: [{ id: "item-1", title: "Dockmark Target One", url: `${origin}/one`, pinned: false, position: 0 }],
+          }],
+        });
+      }
+      if (requestUrl.pathname === "/api/settings/appearance") {
+        return json({ settings: { version: 1, preference: "system", locale: "en", updatedAt: new Date().toISOString() } });
+      }
+      if (requestUrl.pathname === "/api/capture/review") {
+        return json({ items: [] });
+      }
+      return json({});
+    };
+  }, { origin });
+
+  await popup.evaluate(async ({ origin }) => {
+    localStorage.setItem("dockmarkLocaleV1", "en");
+    await chrome.storage.local.set({
+      dockmarkServerUrl: origin,
+      dockmarkDeviceToken: "smoke-device-token",
+      dockmarkLocaleV1: "en",
+    });
+  }, { origin });
+
+  await pairedPopup.goto(`chrome-extension://${extensionId}/popup.html`);
+  await pairedPopup.waitForLoadState("domcontentloaded");
+  await pairedPopup.getByRole("tab", { name: "Capture" }).waitFor();
+  await pairedPopup.getByRole("tab", { name: "Multi-Tab" }).waitFor();
+  await pairedPopup.getByRole("tab", { name: /Sessions/ }).waitFor();
+  await pairedPopup.locator('[data-testid="popup-quick-capture"]').waitFor();
+  await pairedPopup.locator(".tab-search-input").fill("Target One");
+  await pairedPopup.locator(".tab-row").filter({ hasText: "Dockmark Target One" }).first().waitFor();
+  await pairedPopup.locator(".tab-search-input").fill("");
+
+  await pairedPopup.getByRole("tab", { name: /Sessions/ }).click();
+  await pairedPopup.getByText("Smoke Window", { exact: true }).waitFor();
+  await pairedPopup.getByRole("tab", { name: "Multi-Tab" }).click();
+  await pairedPopup.getByRole("tab", { name: "Capture" }).click();
+
+  await pairedPopup.evaluate(async () => {
+    localStorage.setItem("dockmarkLocaleV1", "zh-CN");
+    await chrome.storage.local.set({ dockmarkLocaleV1: "zh-CN" });
+  });
+  await pairedPopup.getByRole("tab", { name: "收录与标签页" }).waitFor();
+  await pairedPopup.getByRole("tab", { name: "批量收录" }).waitFor();
+  await pairedPopup.getByRole("tab", { name: /会话/ }).waitFor();
+  await pairedPopup.getByText("快速收录", { exact: true }).waitFor();
+  assert.equal(await pairedPopup.evaluate(() => document.documentElement.lang), "zh-CN");
+  await pairedPopup.close();
+
+  await popup.evaluate(async () => {
+    localStorage.setItem("dockmarkLocaleV1", "en");
+    await chrome.storage.local.remove(["dockmarkServerUrl", "dockmarkDeviceToken"]);
+    await chrome.storage.local.set({ dockmarkLocaleV1: "en" });
+  });
 
   await popup.evaluate(async (tabId) =>
     chrome.runtime.sendMessage({ type: "dockmark:activate-tab", tabId }),
@@ -166,8 +304,9 @@ try {
   console.log("✓ Native bookmark import, mapping sync and explicit writeback capabilities advertised");
   console.log("✓ Native bookmark capability is optional and ungranted by default");
   console.log("✓ Local health capability is advertised without install-time host grants");
-  console.log("✓ Local health permission page scopes the request to one hostname");
+  console.log("✓ Local health permission page scopes the request to one hostname and renders EN/zh-CN");
   console.log("✓ Standard build does not override the browser new tab page");
+  console.log("✓ Popup renders cleanly in EN and zh-CN with Settings drawer, 3-tab segmented workbench, and searchable Open Tabs");
   console.log("✓ Open-tab enumeration and activation");
   console.log("✓ Pinned Session restore");
 } finally {

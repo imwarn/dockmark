@@ -1,6 +1,5 @@
-/* Final light-mode cleanup for the older Transfer / Extension / Public Page
-   surfaces that intentionally used dark inverse cards before the shared theme
-   token pass. Dark mode remains unchanged. */
+/* Final light-mode cleanup for Transfer / Extension / Auth / Public Page
+   surfaces so light mode has cohesive contrast everywhere. */
 
 html[data-theme="light"] .extension-state {
   border-color: var(--dm-border);
@@ -28,7 +27,7 @@ html[data-theme="light"] .extension-hero-card {
   background:
     radial-gradient(circle at 90% 20%, rgba(79,128,99,.10), transparent 17rem),
     rgba(255,255,255,.88);
-  box-shadow: 0 18px 44px rgba(40,67,54,.05);
+  box-shadow: 0 14px 36px rgba(40,67,54,.05);
 }
 html[data-theme="light"] .extension-version,
 html[data-theme="light"] .extension-profile-kicker { color: var(--dm-accent); }
@@ -42,20 +41,20 @@ html[data-theme="light"] .extension-mark {
   border-color: #bdd2c5;
   background: #e8f1eb;
   color: var(--dm-accent-strong);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.7), 0 16px 36px rgba(40,67,54,.08);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.7), 0 12px 28px rgba(40,67,54,.08);
 }
 html[data-theme="light"] .extension-profile,
 html[data-theme="light"] .extension-profile-firefox {
   border-color: var(--dm-border);
-  background: rgba(255,255,255,.86);
-  box-shadow: 0 12px 30px rgba(40,67,54,.035);
+  background: rgba(255,255,255,.88);
+  box-shadow: 0 10px 26px rgba(40,67,54,.035);
 }
 html[data-theme="light"] .extension-profile-recommended {
   border-color: #a8cbb5;
   background:
     radial-gradient(circle at 95% 5%, rgba(79,128,99,.11), transparent 17rem),
     #f8fbf9;
-  box-shadow: inset 0 0 0 1px rgba(79,128,99,.05), 0 12px 30px rgba(40,67,54,.04);
+  box-shadow: inset 0 0 0 1px rgba(79,128,99,.05), 0 10px 26px rgba(40,67,54,.04);
 }
 html[data-theme="light"] .extension-profile-badge {
   border-color: #b9d0c1;
@@ -78,7 +77,7 @@ html[data-theme="light"] .capability-list > div,
 html[data-theme="light"] .extension-diagnostic-note { border-color: var(--dm-border); }
 html[data-theme="light"] .extension-nudge {
   border-color: var(--dm-border);
-  background: rgba(255,255,255,.82);
+  background: rgba(255,255,255,.86);
 }
 html[data-theme="light"] .extension-nudge:hover {
   border-color: #a8cbb5;
@@ -86,6 +85,27 @@ html[data-theme="light"] .extension-nudge:hover {
 }
 html[data-theme="light"] .extension-nudge-copy span { color: var(--dm-text-muted); }
 html[data-theme="light"] .extension-nudge-action { color: var(--dm-accent-strong); }
+
+html[data-theme="light"] .auth-card {
+  border-color: var(--dm-border);
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 22px 64px rgba(40, 67, 54, .08);
+}
+html[data-theme="light"] .auth-card > p,
+html[data-theme="light"] .auth-card label,
+html[data-theme="light"] .auth-setup-steps span,
+html[data-theme="light"] .auth-loading { color: var(--dm-text-muted); }
+html[data-theme="light"] .auth-brand span {
+  border-color: var(--dm-border-strong);
+  background: var(--dm-bg-raised);
+  color: var(--dm-accent-strong);
+}
+html[data-theme="light"] .auth-setup-card code,
+html[data-theme="light"] .auth-setup-steps code {
+  border-color: var(--dm-border);
+  background: var(--dm-bg-soft);
+  color: var(--dm-accent-strong);
+}
 
 html[data-theme="light"] .file-drop {
   border-color: var(--dm-border-strong);

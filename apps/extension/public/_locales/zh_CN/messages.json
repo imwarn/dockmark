@@ -1,0 +1,14 @@
+{
+  "extDescription": {
+    "message": "Dockmark 浏览器桥接：支持打开的标签页、收件箱快速收录与批量审查、会话保存与恢复、智能合集本地搜索、书签同步、本地健康检查与设备配对。",
+    "description": "Manifest description for the standard Dockmark browser extension in Simplified Chinese."
+  },
+  "cmdOpenLauncher": {
+    "message": "打开或聚焦 Dockmark 启动台",
+    "description": "Keyboard shortcut description for opening or focusing the Dockmark launcher in Simplified Chinese."
+  },
+  "newtabDescription": {
+    "message": "Dockmark 浏览器桥接，在每个新标签页提供本地优先、支持离线使用的 Dockmark 启动台。",
+    "description": "Manifest description for the Dockmark New Tab extension variant in Simplified Chinese."
+  }
+}

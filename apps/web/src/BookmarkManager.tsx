@@ -1,9 +1,17 @@
+/**
+ * [INPUT]: depends on Bookmark, Category from @dockmark/core; useI18n from ./i18n; subviews from ./BookmarkManagerLegacy, ./LibraryBulkOrganizer, ./AiOrganizationSettings, ./LibraryBulkMaintenance, ./BookmarkMaintenance, ./ChangeJournal
+ * [OUTPUT]: exports BookmarkManager tabbed hub component
+ * [POS]: top-level Bookmarks route workspace switcher hosting Library, Organize, Health, and History views
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+
 import { useMemo, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
 import { AiOrganizationSettings } from "./AiOrganizationSettings";
 import { BookmarkMaintenance } from "./BookmarkMaintenance";
 import { BookmarkManager as ExistingBookmarkManager } from "./BookmarkManagerLegacy";
 import { ChangeJournal } from "./ChangeJournal";
+import { useI18n } from "./i18n";
 import { LibraryBulkMaintenance } from "./LibraryBulkMaintenance";
 import { LibraryBulkOrganizer } from "./LibraryBulkOrganizer";
 
@@ -17,20 +25,37 @@ interface Props {
 
 type LibraryView = "library" | "organize" | "health" | "history";
 
-const views: Array<{ id: LibraryView; label: string; detail: string }> = [
-  { id: "library", label: "Library", detail: "Create, edit, categorize and reorder bookmarks." },
-  { id: "organize", label: "Organize", detail: "Bulk moves, tags and AI-assisted organization." },
-  { id: "health", label: "Health", detail: "Metadata, health checks, cleanup and archive review." },
-  { id: "history", label: "History", detail: "Review recent library changes." },
-];
-
 export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, onChanged }: Props) {
+  const { tx } = useI18n();
   const [view, setView] = useState<LibraryView>("library");
   const [journalRevision, setJournalRevision] = useState(0);
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
   );
+
+  const views = useMemo<Array<{ id: LibraryView; label: string; detail: string }>>(() => [
+    {
+      id: "library",
+      label: tx("Library", "书签库"),
+      detail: tx("Create, edit, categorize, and reorder bookmarks.", "创建、编辑、分类与排序书签。"),
+    },
+    {
+      id: "organize",
+      label: tx("Organize", "批量与 AI 整理"),
+      detail: tx("Bulk moves, tags, and AI-assisted organization.", "批量分类、标签整理与 AI 辅助整理。"),
+    },
+    {
+      id: "health",
+      label: tx("Health", "元数据与健康"),
+      detail: tx("Metadata, health checks, cleanup, and archive review.", "元数据抓取、健康检查、清理与归档复核。"),
+    },
+    {
+      id: "history",
+      label: tx("History", "变更记录"),
+      detail: tx("Review recent library changes and recovery snapshots.", "查看近期书签库批量变更与恢复快照。"),
+    },
+  ], [tx]);
 
   async function onBulkChanged() {
     await onChanged();
@@ -39,7 +64,7 @@ export function BookmarkManager({ bookmarks, categories, bookmarkTags, loading, 
 
   return (
     <section className="bookmark-management-hub">
-      <nav className="section-tabs" aria-label="Bookmark management sections">
+      <nav className="section-tabs" aria-label={tx("Bookmark management sections", "书签管理分区")}>
         {views.map((item) => (
           <button
             key={item.id}

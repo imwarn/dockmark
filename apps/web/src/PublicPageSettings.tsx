@@ -1,6 +1,13 @@
+/**
+ * [INPUT]: depends on Bookmark, Category from @dockmark/core; textMatchesQuery from ./bookmark-search; reorderBookmarks/reorderCategories from ./reorder-api; useI18n from ./i18n
+ * [OUTPUT]: exports PublicPageSettings panel for publishing/unpublishing bookmarks (single & batch) and ordering public groups
+ * [POS]: Mounted in SettingsPage under /app/settings/public. Manages /api/public/bookmarks/* selection and shares canonical Library ordering.
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Bookmark, Category } from "@dockmark/core";
 import { textMatchesQuery } from "./bookmark-search";
+import { useI18n } from "./i18n";
 import { reorderBookmarks, reorderCategories } from "./reorder-api";
 
 interface Props {
@@ -37,6 +44,7 @@ function swapIds(ids: string[], leftId: string, rightId: string) {
 }
 
 export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) {
+  const { tx } = useI18n();
   const [published, setPublishedIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -56,7 +64,7 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
         if (!cancelled) setPublishedIds(ids);
       })
       .catch((caught) => {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : "Could not load public page settings.");
+        if (!cancelled) setError(caught instanceof Error ? caught.message : tx("Could not load public page settings.", "无法加载公开主页配置。"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -64,7 +72,7 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tx]);
 
   useEffect(() => {
     const activeIds = new Set(bookmarks.map((bookmark) => bookmark.id));
@@ -96,16 +104,16 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
     const uncategorized = (bookmarksByCategory.get("") ?? []).filter((bookmark) => published.has(bookmark.id));
     return [
       ...categoryGroups.filter((group) => group.bookmarks.length),
-      ...(uncategorized.length ? [{ id: "", name: "Elsewhere", bookmarks: uncategorized }] : []),
+      ...(uncategorized.length ? [{ id: "", name: tx("Uncategorized", "未分类"), bookmarks: uncategorized }] : []),
     ];
-  }, [bookmarksByCategory, categories, published]);
+  }, [bookmarksByCategory, categories, published, tx]);
 
   const filteredBookmarks = useMemo(
     () => bookmarks.filter((bookmark) => {
       const isPublished = published.has(bookmark.id);
       if (filter === "published" && !isPublished) return false;
       if (filter === "unpublished" && isPublished) return false;
-      const categoryName = bookmark.categoryId ? categoryNameById.get(bookmark.categoryId) ?? "" : "Uncategorized";
+      const categoryName = bookmark.categoryId ? categoryNameById.get(bookmark.categoryId) ?? "" : tx("Uncategorized", "未分类");
       return textMatchesQuery(query, [
         bookmark.title,
         bookmark.url,
@@ -113,7 +121,7 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
         categoryName,
       ]);
     }),
-    [bookmarks, categoryNameById, filter, published, query],
+    [bookmarks, categoryNameById, filter, published, query, tx],
   );
 
   const publishedCount = published.size;
@@ -145,9 +153,13 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
         next.delete(bookmark.id);
         return next;
       });
-      setNotice(`${nextPublished ? "Published" : "Unpublished"} “${bookmark.title}”.`);
+      setNotice(
+        nextPublished
+          ? tx(`Published “${bookmark.title}”.`, `已公开“${bookmark.title}”。`)
+          : tx(`Unpublished “${bookmark.title}”.`, `已取消公开“${bookmark.title}”。`),
+      );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not update this bookmark.");
+      setError(caught instanceof Error ? caught.message : tx("Could not update this bookmark.", "更新该书签状态失败。"));
     } finally {
       setBusyId(null);
     }
@@ -179,7 +191,11 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
     const idsToUpdate = selected.filter((id) => published.has(id) !== nextPublished);
     if (!idsToUpdate.length) {
       setSelectedIds(new Set());
-      setNotice(nextPublished ? "Every selected bookmark is already published." : "Every selected bookmark is already unpublished.");
+      setNotice(
+        nextPublished
+          ? tx("Every selected bookmark is already published.", "所选书签均已处于公开状态。")
+          : tx("Every selected bookmark is already unpublished.", "所选书签均已处于未公开状态。"),
+      );
       return;
     }
 
@@ -214,9 +230,18 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
       setSelectedIds(failedIds);
 
       if (failedIds.size) {
-        setError(`${updated} bookmark${updated === 1 ? "" : "s"} updated; ${failedIds.size} failed and remain selected for retry.`);
+        setError(
+          tx(
+            `${updated} bookmark${updated === 1 ? "" : "s"} updated; ${failedIds.size} failed and remain selected for retry.`,
+            `已更新 ${updated} 条书签；${failedIds.size} 条失败，已保留选中状态以便重试。`,
+          ),
+        );
       } else {
-        setNotice(`${nextPublished ? "Published" : "Unpublished"} ${updated} bookmark${updated === 1 ? "" : "s"}.`);
+        setNotice(
+          nextPublished
+            ? tx(`Published ${updated} bookmark${updated === 1 ? "" : "s"}.`, `已公开 ${updated} 条书签。`)
+            : tx(`Unpublished ${updated} bookmark${updated === 1 ? "" : "s"}.`, `已取消公开 ${updated} 条书签。`),
+        );
       }
     } finally {
       setBatchBusy(null);
@@ -237,7 +262,7 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
       await reorderCategories(swapIds(allIds, groupId, targetId));
       await onChanged();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not reorder public categories.");
+      setError(caught instanceof Error ? caught.message : tx("Could not reorder public categories.", "调整分类顺序失败。"));
     } finally {
       setSorting(false);
     }
@@ -259,7 +284,7 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
       await reorderBookmarks(bookmark.categoryId ?? null, swapIds(allIds, bookmark.id, targetId));
       await onChanged();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not reorder public bookmarks.");
+      setError(caught instanceof Error ? caught.message : tx("Could not reorder public bookmarks.", "调整书签顺序失败。"));
     } finally {
       setSorting(false);
     }
@@ -271,13 +296,19 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
     <section className="public-settings-section" aria-labelledby="public-settings-title">
       <div className="settings-heading">
         <div>
-          <p className="eyebrow">PUBLIC PAGE</p>
-          <h2 id="public-settings-title">Publish and arrange the curated view.</h2>
-          <p>Public groups reuse the canonical Library category and bookmark order. Reordering here updates that shared order, so Web, New Tab and the public page stay consistent instead of drifting into separate layouts.</p>
+          <h2 id="public-settings-title">{tx("Public Page Curation", "公开主页管理")}</h2>
+          <p>
+            {tx(
+              "Public groups reuse your canonical Library order so Web, New Tab and the public page always stay aligned.",
+              "公开分组直接复用书签库的统一排序，确保网页工作台、新标签页与公开主页展示顺序一致。",
+            )}
+          </p>
         </div>
         <div className="settings-sync-state">
-          <strong>{publishedCount} published</strong>
-          <a className="text-action" href="/" target="_blank" rel="noreferrer">Open public page ↗</a>
+          <strong>{tx(`${publishedCount} published`, `已公开 ${publishedCount} 条`)}</strong>
+          <a className="text-action" href="/" target="_blank" rel="noreferrer">
+            {tx("Open public page ↗", "打开公开主页 ↗")}
+          </a>
         </div>
       </div>
 
@@ -288,10 +319,10 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
         <article className="form-card public-layout-card">
           <div className="card-heading">
             <div>
-              <h2>Public layout</h2>
-              <p>Move published categories and links without leaving Settings.</p>
+              <h2>{tx("Public layout", "公开列表预览与排序")}</h2>
+              <p>{tx("Reorder published categories and links directly here.", "直接上下调整已公开分类与链接顺序。")}</p>
             </div>
-            <span>{groups.length} groups</span>
+            <span>{tx(`${groups.length} groups`, `${groups.length} 个分组`)}</span>
           </div>
 
           <div className="public-layout-groups">
@@ -300,12 +331,26 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
                 <header>
                   <div>
                     <strong>{group.name}</strong>
-                    <span>{group.bookmarks.length} links</span>
+                    <span>{tx(`${group.bookmarks.length} links`, `${group.bookmarks.length} 条链接`)}</span>
                   </div>
                   {group.id && (
                     <div className="public-order-actions">
-                      <button className="text-action" type="button" disabled={sorting || groupIndex === 0} onClick={() => void moveCategory(group.id, -1)}>↑ Group</button>
-                      <button className="text-action" type="button" disabled={sorting || groupIndex === groups.length - 1 || !groups[groupIndex + 1]?.id} onClick={() => void moveCategory(group.id, 1)}>↓ Group</button>
+                      <button
+                        className="text-action"
+                        type="button"
+                        disabled={sorting || groupIndex === 0}
+                        onClick={() => void moveCategory(group.id, -1)}
+                      >
+                        {tx("↑ Group", "↑ 上移分组")}
+                      </button>
+                      <button
+                        className="text-action"
+                        type="button"
+                        disabled={sorting || groupIndex === groups.length - 1 || !groups[groupIndex + 1]?.id}
+                        onClick={() => void moveCategory(group.id, 1)}
+                      >
+                        {tx("↓ Group", "↓ 下移分组")}
+                      </button>
                     </div>
                   )}
                 </header>
@@ -319,27 +364,54 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
                         <small>{bookmark.url}</small>
                       </span>
                       <div className="public-order-actions">
-                        <button className="text-action" type="button" disabled={sorting || index === 0} onClick={() => void moveBookmark(bookmark, -1)}>↑</button>
-                        <button className="text-action" type="button" disabled={sorting || index === group.bookmarks.length - 1} onClick={() => void moveBookmark(bookmark, 1)}>↓</button>
-                        <button className="danger-text text-action" type="button" disabled={mutationBusy} onClick={() => void toggle(bookmark)}>Unpublish</button>
+                        <button
+                          className="text-action"
+                          type="button"
+                          aria-label={tx("Move up", "上移")}
+                          disabled={sorting || index === 0}
+                          onClick={() => void moveBookmark(bookmark, -1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          className="text-action"
+                          type="button"
+                          aria-label={tx("Move down", "下移")}
+                          disabled={sorting || index === group.bookmarks.length - 1}
+                          onClick={() => void moveBookmark(bookmark, 1)}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          className="danger-text text-action"
+                          type="button"
+                          disabled={mutationBusy}
+                          onClick={() => void toggle(bookmark)}
+                        >
+                          {tx("Unpublish", "取消公开")}
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
               </section>
             ))}
-            {!loading && !groups.length && <p className="empty-copy">Nothing is public yet. Publish bookmarks from the manager beside this preview.</p>}
-            {loading && <p className="empty-copy">Loading public selection…</p>}
+            {!loading && !groups.length && (
+              <p className="empty-copy">
+                {tx("Nothing is public yet. Publish bookmarks from the list beside this preview.", "暂未公开任何书签，可在右侧列表中挑选并发布。")}
+              </p>
+            )}
+            {loading && <p className="empty-copy">{tx("Loading public selection…", "正在加载公开书签…")}</p>}
           </div>
         </article>
 
         <article className="form-card public-publish-card">
           <div className="card-heading">
             <div>
-              <h2>Add to public page</h2>
-              <p>Search the full library, filter by publication state, then update one bookmark or a selected batch.</p>
+              <h2>{tx("Select bookmarks", "挑选公开书签")}</h2>
+              <p>{tx("Filter your library and publish individually or in bulk.", "检索全部书签，按状态筛选并单条或批量发布。")}</p>
             </div>
-            <span>{filteredBookmarks.length} shown</span>
+            <span>{tx(`${filteredBookmarks.length} shown`, `显示 ${filteredBookmarks.length} 条`)}</span>
           </div>
 
           <div className="public-publish-tools">
@@ -349,14 +421,20 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Filter title, URL, description or category…"
-                aria-label="Filter public page bookmarks"
+                placeholder={tx("Filter title, URL, description or category…", "按标题、网址、描述或分类筛选…")}
+                aria-label={tx("Filter public page bookmarks", "筛选书签")}
               />
             </label>
-            <div className="settings-segmented public-publish-filter" aria-label="Publication status filter">
-              <button className={filter === "all" ? "active" : ""} type="button" onClick={() => setFilter("all")}>All · {bookmarks.length}</button>
-              <button className={filter === "published" ? "active" : ""} type="button" onClick={() => setFilter("published")}>Published · {publishedCount}</button>
-              <button className={filter === "unpublished" ? "active" : ""} type="button" onClick={() => setFilter("unpublished")}>Unpublished · {unpublishedCount}</button>
+            <div className="settings-segmented public-publish-filter" aria-label={tx("Publication status filter", "公开状态筛选")}>
+              <button className={filter === "all" ? "active" : ""} type="button" onClick={() => setFilter("all")}>
+                {tx(`All · ${bookmarks.length}`, `全部 · ${bookmarks.length}`)}
+              </button>
+              <button className={filter === "published" ? "active" : ""} type="button" onClick={() => setFilter("published")}>
+                {tx(`Published · ${publishedCount}`, `已公开 · ${publishedCount}`)}
+              </button>
+              <button className={filter === "unpublished" ? "active" : ""} type="button" onClick={() => setFilter("unpublished")}>
+                {tx(`Unpublished · ${unpublishedCount}`, `未公开 · ${unpublishedCount}`)}
+              </button>
             </div>
           </div>
 
@@ -369,24 +447,28 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
                 disabled={!filteredBookmarks.length || mutationBusy}
                 onChange={toggleVisibleSelection}
               />
-              <span>{allVisibleSelected ? "Clear visible" : "Select visible"}</span>
+              <span>{allVisibleSelected ? tx("Clear visible", "取消全选") : tx("Select visible", "全选当前")}</span>
             </label>
-            <span className="public-selected-count">{selectedIds.size} selected</span>
+            <span className="public-selected-count">{tx(`${selectedIds.size} selected`, `已选 ${selectedIds.size} 条`)}</span>
             <div className="public-bulk-actions">
               <button className="secondary" type="button" disabled={!selectedIds.size || mutationBusy} onClick={() => void updateSelection(true)}>
-                {batchBusy === "publish" ? "Publishing…" : "Publish"}
+                {batchBusy === "publish" ? tx("Publishing…", "发布中…") : tx("Publish", "公开")}
               </button>
               <button className="secondary" type="button" disabled={!selectedIds.size || mutationBusy} onClick={() => void updateSelection(false)}>
-                {batchBusy === "unpublish" ? "Unpublishing…" : "Unpublish"}
+                {batchBusy === "unpublish" ? tx("Unpublishing…", "取消中…") : tx("Unpublish", "取消公开")}
               </button>
-              <button className="text-action" type="button" disabled={!selectedIds.size || mutationBusy} onClick={() => setSelectedIds(new Set())}>Clear</button>
+              <button className="text-action" type="button" disabled={!selectedIds.size || mutationBusy} onClick={() => setSelectedIds(new Set())}>
+                {tx("Clear", "清空")}
+              </button>
             </div>
           </div>
 
           <div className="public-bookmark-picker public-bookmark-manager">
             {filteredBookmarks.map((bookmark) => {
               const isPublished = published.has(bookmark.id);
-              const categoryName = bookmark.categoryId ? categoryNameById.get(bookmark.categoryId) ?? "Uncategorized" : "Uncategorized";
+              const categoryName = bookmark.categoryId
+                ? categoryNameById.get(bookmark.categoryId) ?? tx("Uncategorized", "未分类")
+                : tx("Uncategorized", "未分类");
               return (
                 <div className={`public-bookmark-row public-bookmark-manage${isPublished ? " is-published" : ""}`} key={bookmark.id}>
                   <label className="public-bookmark-select">
@@ -401,22 +483,30 @@ export function PublicPageSettings({ bookmarks, categories, onChanged }: Props) 
                       <small>{categoryName} · {bookmark.url}</small>
                     </span>
                   </label>
-                  <em>{isPublished ? "PUBLISHED" : "PRIVATE"}</em>
+                  <em>{isPublished ? tx("PUBLISHED", "已公开") : tx("PRIVATE", "私有")}</em>
                   <button
                     className={isPublished ? "danger-text text-action" : "text-action"}
                     type="button"
                     disabled={mutationBusy}
                     onClick={() => void toggle(bookmark)}
                   >
-                    {busyId === bookmark.id ? "Saving…" : isPublished ? "Unpublish" : "Publish"}
+                    {busyId === bookmark.id
+                      ? tx("Saving…", "保存中…")
+                      : isPublished
+                        ? tx("Unpublish", "取消公开")
+                        : tx("Publish", "公开")}
                   </button>
                 </div>
               );
             })}
             {!loading && !filteredBookmarks.length && (
-              <p className="empty-copy">{query.trim() ? "No bookmarks match this filter." : "No bookmarks match this publication state."}</p>
+              <p className="empty-copy">
+                {query.trim()
+                  ? tx("No bookmarks match this filter.", "没有匹配的书签。")
+                  : tx("No bookmarks match this publication state.", "当前状态下暂无书签。")}
+              </p>
             )}
-            {loading && <p className="empty-copy">Loading public selection…</p>}
+            {loading && <p className="empty-copy">{tx("Loading public selection…", "正在加载公开书签…")}</p>}
           </div>
         </article>
       </div>

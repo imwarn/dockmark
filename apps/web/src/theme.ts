@@ -1,7 +1,19 @@
+/**
+ * [INPUT]: depends on LOCALE_STORAGE_KEY, normalizeAppearanceSettings, normalizeLocalePreference, resolveLocale, and appearance/locale types from @dockmark/core
+ * [OUTPUT]: exports APPEARANCE_STORAGE_KEY, applyAppearance, applyLocalePreference, localAppearance, fetchAppearanceSettings, saveAppearanceSettings, saveAppearanceAndLocale, syncAppearanceFromCloud, and bindSystemAppearanceListener
+ * [POS]: React-free DOM theme/locale application and /api/settings/appearance client in apps/web/src; consumed by main.tsx, AppearanceSettings.tsx, and i18n.ts
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import {
+  LOCALE_STORAGE_KEY,
   normalizeAppearanceSettings,
+  normalizeLocalePreference,
+  resolveLocale,
   type AppearancePreference,
   type AppearanceSettings,
+  type LocalePreference,
+  type ResolvedLocale,
+  type UpdateAppearanceSettingsInput,
 } from "@dockmark/core";
 
 export const APPEARANCE_STORAGE_KEY = "dockmarkAppearanceV1";
@@ -46,6 +58,27 @@ export function applyAppearance(preference: AppearancePreference, persist = true
   window.dispatchEvent(new CustomEvent("dockmark:appearance", { detail: { preference, theme } }));
 }
 
+export function applyLocalePreference(preference: LocalePreference, persist = true): ResolvedLocale {
+  const normalized = normalizeLocalePreference(preference);
+  const resolved = resolveLocale(normalized);
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.localePreference = normalized;
+    document.documentElement.dataset.locale = resolved;
+    document.documentElement.lang = resolved;
+  }
+  if (persist && typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, normalized);
+    } catch {
+      // Ignore storage write failures in restricted browser contexts.
+    }
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("dockmark:locale", { detail: { preference: normalized, locale: resolved } }));
+  }
+  return resolved;
+}
+
 export function localAppearance(): AppearancePreference {
   const stored = localStorage.getItem(APPEARANCE_STORAGE_KEY);
   return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
@@ -61,24 +94,33 @@ export async function fetchAppearanceSettings(): Promise<AppearanceSettings> {
   return normalizeAppearanceSettings(payload.settings);
 }
 
-export async function saveAppearanceSettings(preference: AppearancePreference): Promise<AppearanceSettings> {
+export async function saveAppearanceAndLocale(input: UpdateAppearanceSettingsInput): Promise<AppearanceSettings> {
   const response = await fetch("/api/settings/appearance", {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ preference }),
+    body: JSON.stringify(input),
   });
   const payload = await response.json().catch(() => ({})) as {
     settings?: unknown;
     error?: { message?: string };
   };
-  if (!response.ok) throw new Error(payload.error?.message ?? `Appearance update failed (${response.status}).`);
+  if (!response.ok) {
+    const error = new Error(payload.error?.message ?? `Appearance update failed (${response.status}).`) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
   return normalizeAppearanceSettings(payload.settings);
 }
 
-export async function syncAppearanceFromCloud() {
+export async function saveAppearanceSettings(preference: AppearancePreference): Promise<AppearanceSettings> {
+  return saveAppearanceAndLocale({ preference });
+}
+
+export async function syncAppearanceFromCloud(): Promise<AppearanceSettings | null> {
   try {
     const settings = await fetchAppearanceSettings();
     applyAppearance(settings.preference);
+    applyLocalePreference(settings.locale);
     return settings;
   } catch {
     return null;

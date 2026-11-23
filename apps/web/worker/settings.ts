@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on browser/appearance settings helpers and LocalePreference from @dockmark/core; queries D1 app_settings, bookmark_tags, smart_collections, and bookmarks tables
+ * [OUTPUT]: exports SettingsDbLike, SettingsHttpError, loadAppearanceSettings, and handleSettingsApi
+ * [POS]: Worker HTTP handler for /api/settings/browser and /api/settings/appearance in apps/web/worker
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_BROWSER_SETTINGS,
@@ -11,6 +17,7 @@ import {
   type BookmarkConflictPreference,
   type BrowserNewTabSettings,
   type BrowserSettings,
+  type LocalePreference,
   type UpdateAppearanceSettingsInput,
   type UpdateBrowserSettingsInput,
 } from "@dockmark/core";
@@ -94,6 +101,11 @@ function parseAppearancePreference(value: unknown): AppearancePreference {
   const preference = normalizeAppearancePreference(value);
   if (preference === value) return preference;
   throw new SettingsHttpError(400, "invalid_field", "preference must be system, light or dark.");
+}
+
+function parseLocalePreference(value: unknown): LocalePreference {
+  if (value === "system" || value === "en" || value === "zh-CN") return value;
+  throw new SettingsHttpError(400, "invalid_field", "locale must be system, en or zh-CN.");
 }
 
 function parseInteger(value: unknown, key: string, min: number, max: number) {
@@ -219,6 +231,7 @@ function parseBrowserUpdate(body: Record<string, unknown>): UpdateBrowserSetting
 function parseAppearanceUpdate(body: Record<string, unknown>): UpdateAppearanceSettingsInput {
   const update: UpdateAppearanceSettingsInput = {};
   if (hasOwn(body, "preference")) update.preference = parseAppearancePreference(body.preference);
+  if (hasOwn(body, "locale")) update.locale = parseLocalePreference(body.locale);
   return update;
 }
 

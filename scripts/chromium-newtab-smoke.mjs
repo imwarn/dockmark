@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on packaged apps/extension/.output/chrome-mv3-newtab and playwright Chromium
+ * [OUTPUT]: verifies New Tab local-first snapshot refresh, offline search, category/collection filter pills, bilingual EN/zh-CN runtime, and cache clearing
+ * [POS]: primary Chromium E2E smoke test for the Dockmark New Tab extension variant in scripts/
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -101,7 +107,7 @@ try {
         };
       }
       if (path === "/api/settings/appearance") {
-        return { settings: { version: 1, preference: "light", updatedAt: now } };
+        return { settings: { version: 1, preference: "light", locale: "en", updatedAt: now } };
       }
       if (path === "/api/settings/browser") {
         return {
@@ -332,6 +338,51 @@ try {
   await page.locator("#command-results .result-row").filter({ hasText: "Second Cached Bookmark" }).first().waitFor();
   assert.equal(await page.locator("#command-results .result-row").filter({ hasText: "Cached Example" }).count(), 0);
 
+  // Verify compact redesigned launcher controls (no giant marketing hero), filter pills, and EN <-> zh-CN locale switching.
+  assert.equal(await page.locator(".hero h1").count(), 0, "Compact New Tab launcher should not render a giant hero headline.");
+  await page.locator("#theme-toggle").waitFor();
+  await page.locator("#locale-toggle").waitFor();
+  await page.locator(".syntax-hints").waitFor();
+
+  await page.locator("#bookmark-filters").waitFor();
+  const filterLabelsEn = await page.locator("#bookmark-filters .filter-pill").allInnerTexts();
+  assert.deepEqual(filterLabelsEn, ["All", "Developer docs", "Inbox reading", "Developer", "Uncategorized"]);
+
+  await page.locator("#bookmark-filters .filter-pill", { hasText: "Inbox reading" }).click();
+  await page.locator("#bookmarks .bookmark-card").filter({ hasText: "Second Cached Bookmark" }).first().waitFor();
+  assert.equal(await page.locator("#bookmarks .bookmark-card").filter({ hasText: "Cached Example" }).count(), 0);
+
+  await page.locator("#bookmark-filters .filter-pill", { hasText: "Developer" }).last().click();
+  await page.locator("#bookmarks .bookmark-card").filter({ hasText: "Cached Example" }).first().waitFor();
+  assert.equal(await page.locator("#bookmarks .bookmark-card").filter({ hasText: "Second Cached Bookmark" }).count(), 0);
+
+  await page.locator("#bookmark-filters .filter-pill", { hasText: "All" }).click();
+  await page.locator("#bookmarks .bookmark-card").filter({ hasText: "Cached Example" }).first().waitFor();
+
+  await page.evaluate(async () => {
+    localStorage.setItem("dockmarkLocaleV1", "zh-CN");
+    await chrome.storage.local.set({ dockmarkLocaleV1: "zh-CN" });
+  });
+  await page.waitForFunction(() => document.documentElement.lang === "zh-CN");
+  await page.getByRole("heading", { name: "书签", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "工作区", exact: true }).waitFor();
+  await page.getByText("管理 Dockmark", { exact: true }).waitFor();
+  assert.equal(await page.locator("#clear-cache").innerText(), "清除本地快照");
+  assert.match(await page.locator("#connection-state").innerText(), /已缓存 · 手动刷新/);
+  const filterLabelsZh = await page.locator("#bookmark-filters .filter-pill").allInnerTexts();
+  assert.deepEqual(filterLabelsZh, ["全部", "Developer docs", "Inbox reading", "Developer", "未分类"]);
+
+  await page.locator("#search").fill("Developer docs");
+  const zhCollectionResult = page.locator("#command-results .result-row").filter({ hasText: "Developer docs" }).first();
+  await zhCollectionResult.waitFor();
+  assert.match(await zhCollectionResult.innerText(), /智能合集/);
+  await page.locator("#search").fill("");
+
+  await page.locator("#locale-toggle").click();
+  await page.waitForFunction(() => document.documentElement.lang === "en");
+  await page.getByRole("heading", { name: "Bookmarks", exact: true }).waitFor();
+  assert.equal(await page.locator("#clear-cache").innerText(), "Clear local snapshot");
+
   await page.locator("#search").fill("offline query");
   await page.getByText("Search Secondary Search for “offline query”", { exact: true }).waitFor();
 
@@ -371,6 +422,7 @@ try {
   console.log("✓ Transparent adaptive D dot favicon and manifest brand icons are packaged");
   console.log("✓ Current refresh reads browser settings once and persists tags, Smart Collections and Inbox membership atomically");
   console.log("✓ Cached bookmarks and Workspaces render without Dockmark host permission/network");
+  console.log("✓ Compact New Tab launcher renders category/collection filter pills and switches cleanly between EN and zh-CN");
   console.log("✓ Offline search matches bookmark description, category, tags and combined #tag terms");
   console.log("✓ Cached Smart Collections are searchable and browse their matching bookmarks offline");
   console.log("✓ Inbox-state Smart Collections use cached Inbox membership offline");

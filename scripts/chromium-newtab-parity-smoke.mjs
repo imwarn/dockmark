@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on packaged apps/extension/.output/chrome-mv3-newtab and playwright Chromium
+ * [OUTPUT]: verifies canonical Web/New Tab result ordering, eight-result cap with default Search slot, localized EN/zh-CN kind labels, and Escape-to-blur
+ * [POS]: launcher parity Chromium smoke test in scripts/
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,8 +32,15 @@ try {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/newtab.html`);
   await page.waitForLoadState("domcontentloaded");
+  await page.waitForFunction(() => {
+    const text = document.querySelector("#connection-state")?.textContent?.trim();
+    return Boolean(text && text !== "Starting…" && text !== "启动中…");
+  });
 
   await page.evaluate(() => {
+    // Keep synthetic openTabs stable if document.title changes during EN/zh-CN assertions.
+    chrome.tabs.query = async () => openTabs;
+    window.dockmarkI18n.apply("en", true);
     const now = new Date().toISOString();
     settings = normalizeSettings({
       version: 1,
@@ -126,6 +139,17 @@ try {
     .map((value) => value.toLocaleLowerCase());
   assert.deepEqual(labels, ["open tab", "workspace", "session", "collection", "bookmark", "search"]);
 
+  await page.evaluate(() => {
+    window.dockmarkI18n.apply("zh-CN", true);
+    renderSearchResults();
+  });
+  const zhLabels = await page.locator("#command-results .result-kind").allInnerTexts();
+  assert.deepEqual(zhLabels, ["打开的标签页", "工作区", "会话", "智能合集", "书签", "搜索"]);
+  await page.evaluate(() => {
+    window.dockmarkI18n.apply("en", true);
+    renderSearchResults();
+  });
+
   const titles = await page.locator("#command-results .result-row strong").allInnerTexts();
   assert.deepEqual(titles.slice(0, 5), [
     "Shared Match Tab",
@@ -136,6 +160,7 @@ try {
   ]);
 
   await page.evaluate(() => {
+    window.dockmarkI18n.apply("en", true);
     const now = new Date().toISOString();
     snapshot = {
       ...snapshot,

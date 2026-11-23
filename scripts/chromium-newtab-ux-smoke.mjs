@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on packaged apps/extension/.output/chrome-mv3-newtab and playwright Chromium
+ * [OUTPUT]: verifies bare ! bang shortcuts, Session auto-refresh hydration/search/restore, keyboard open modifiers, and / focus shortcut
+ * [POS]: launcher UX Chromium smoke test in scripts/
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -39,7 +45,9 @@ try {
   const page = await context.newPage();
   await page.goto(launcherUrl);
   await page.evaluate(async ({ origin, now }) => {
+    localStorage.setItem("dockmarkLocaleV1", "en");
     await chrome.storage.local.set({
+      dockmarkLocaleV1: "en",
       dockmarkServerUrl: origin,
       dockmarkBrowserSettingsV1: {
         version: 1,

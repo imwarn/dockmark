@@ -1,5 +1,12 @@
+/**
+ * [INPUT]: depends on Bookmark, Category, HEALTH_POLICY_LABELS from @dockmark/core; AI APIs from ./ai-organization; listBookmarkTags from ./tag-api; useI18n from ./i18n
+ * [OUTPUT]: exports AiOrganizationSettings component
+ * [POS]: provider configuration, bookmark selection queue, and diff review workbench for AI-assisted organization inside the Organize tab
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+
 import { useEffect, useMemo, useState } from "react";
-import type { Bookmark, Category } from "@dockmark/core";
+import { HEALTH_POLICY_LABELS, type Bookmark, type Category } from "@dockmark/core";
 import {
   applyAiOrganizationPatches,
   generateAiOrganizationSuggestions,
@@ -12,6 +19,7 @@ import {
   type AiOrganizationSuggestion,
   type AiProviderSettings,
 } from "./ai-organization";
+import { useI18n } from "./i18n";
 import { listBookmarkTags } from "./tag-api";
 import "./ai-organization.css";
 
@@ -23,8 +31,8 @@ interface Props {
 
 type QueueFilter = "pending" | "generated" | "all";
 
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
+function messageFrom(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function sameTags(left: string[], right: string[]) {
@@ -34,6 +42,10 @@ function sameTags(left: string[], right: string[]) {
 }
 
 export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Props) {
+  const { locale, tx } = useI18n();
+  const policyLabels = HEALTH_POLICY_LABELS[locale];
+  const genericError = tx("Something went wrong.", "操作失败，请重试。");
+
   const [provider, setProvider] = useState<AiProviderSettings>(() => loadAiProviderSettings());
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
   const [bookmarkTags, setBookmarkTags] = useState<Record<string, string[]>>({});
@@ -59,7 +71,7 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
         setBookmarkTags(nextTags);
         setApiKeyConfigured(status.apiKeyConfigured);
       } catch (caught) {
-        if (!cancelled) setError(messageFrom(caught));
+        if (!cancelled) setError(messageFrom(caught, genericError));
       } finally {
         if (!cancelled) setLoadingTags(false);
       }
@@ -123,11 +135,17 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     setError(null);
     setMessage(null);
     if (!providerTimeoutValid()) {
-      setError(`Provider timeout must be between ${MIN_AI_TIMEOUT_SECONDS} and ${MAX_AI_TIMEOUT_SECONDS} seconds.`);
+      setError(tx(
+        `Provider timeout must be between ${MIN_AI_TIMEOUT_SECONDS} and ${MAX_AI_TIMEOUT_SECONDS} seconds.`,
+        `超时时间需在 ${MIN_AI_TIMEOUT_SECONDS} 到 ${MAX_AI_TIMEOUT_SECONDS} 秒之间。`,
+      ));
       return;
     }
     saveAiProviderSettings(provider);
-    setMessage("Provider endpoint, model and timeout saved in this browser. The API key stays in the Worker secret store.");
+    setMessage(tx(
+      "Provider endpoint, model, and timeout saved locally. The API key stays in the Worker secret store.",
+      "接口地址、模型与超时配置已保存到本地浏览器；API 密钥仅保存在 Worker 密钥库中。",
+    ));
   }
 
   async function refreshKeyStatus() {
@@ -135,9 +153,11 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     try {
       const status = await getAiProviderStatus();
       setApiKeyConfigured(status.apiKeyConfigured);
-      setMessage(status.apiKeyConfigured ? "Worker AI secret is configured." : "Worker AI secret is still missing.");
+      setMessage(status.apiKeyConfigured
+        ? tx("Worker AI secret is configured.", "Worker AI 密钥已就绪。")
+        : tx("Worker AI secret is not configured yet.", "尚未配置 Worker AI 密钥。"));
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, genericError));
     }
   }
 
@@ -177,20 +197,29 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     setGeneratedIds(new Set());
     setQueueFilter("pending");
     setSelectedIds(new Set());
-    setMessage("AI generation progress reset for this page session. No bookmark data was changed.");
+    setMessage(tx(
+      "AI generation progress reset for this session. No bookmark data was changed.",
+      "已重置本次页面会话的生成进度，未修改任何书签数据。",
+    ));
     setError(null);
   }
 
   function discardPreview() {
     setSuggestions([]);
     setAcceptedIds(new Set());
-    setMessage("Current AI preview discarded. Generated markers and the next queue selection were kept.");
+    setMessage(tx(
+      "Current AI preview discarded. Session markers and next queue selection were kept.",
+      "已放弃当前 AI 预览，保留已生成标记与下一批待选队列。",
+    ));
     setError(null);
   }
 
   async function generate() {
     if (suggestions.length) {
-      setError("Review, apply, or discard the current AI preview before generating another batch.");
+      setError(tx(
+        "Review, apply, or discard the current AI preview before generating another batch.",
+        "请先复核、应用或放弃当前 AI 建议，再生成下一批。",
+      ));
       return;
     }
     const selected = bookmarks.filter((bookmark) => selectedIds.has(bookmark.id) && bookmark.healthPolicy === "normal");
@@ -202,7 +231,11 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
     setAcceptedIds(new Set());
     try {
       saveAiProviderSettings(provider);
-      const next = await generateAiOrganizationSuggestions(provider, selected.map((bookmark) => bookmark.id));
+      const next = await generateAiOrganizationSuggestions(
+        provider,
+        selected.map((bookmark) => bookmark.id),
+        locale,
+      );
       const generatedAfter = new Set(generatedIds);
       next.forEach((suggestion) => generatedAfter.add(suggestion.bookmarkId));
       setGeneratedIds(generatedAfter);
@@ -214,11 +247,17 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
       const remainingAfter = allEligible.filter((bookmark) => !generatedAfter.has(bookmark.id)).length;
       setMessage(
         next.length === selected.length
-          ? `Generated ${next.length} suggestions. ${remainingAfter} eligible bookmark${remainingAfter === 1 ? "" : "s"} remain; ${nextBatch.length} next queued for selection. Review the current preview before generating again.`
-          : `Generated ${next.length} of ${selected.length} requested suggestions. Missing rows remain pending and can be retried; ${nextBatch.length} bookmarks are queued next.`,
+          ? tx(
+              `Generated ${next.length} suggestions. ${remainingAfter} eligible bookmark${remainingAfter === 1 ? "" : "s"} remain; ${nextBatch.length} queued next.`,
+              `已生成 ${next.length} 条建议，剩余 ${remainingAfter} 个可整理书签，已自动预选下一批 ${nextBatch.length} 项。`,
+            )
+          : tx(
+              `Generated ${next.length} of ${selected.length} requested suggestions. Missing rows stay pending; ${nextBatch.length} queued next.`,
+              `已生成 ${next.length}/${selected.length} 条建议，未返回项仍保留在待生成队列，已预选下一批 ${nextBatch.length} 项。`,
+            ),
       );
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, genericError));
     } finally {
       setGenerating(false);
     }
@@ -254,7 +293,10 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
         if (suggestion.categoryName) {
           const mapped = categoryByName.get(suggestion.categoryName.toLocaleLowerCase());
           if (!mapped) {
-            throw new Error(`Suggested category “${suggestion.categoryName}” no longer exists. Refresh and regenerate before applying.`);
+            throw new Error(tx(
+              `Suggested category “${suggestion.categoryName}” no longer exists. Refresh and regenerate before applying.`,
+              `建议的分类「${suggestion.categoryName}」已不存在，请刷新并重新生成后再应用。`,
+            ));
           }
           categoryId = mapped;
         }
@@ -269,7 +311,10 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
       }
 
       if (!patches.length) {
-        setMessage(`No reviewed AI patches were applied${skipped ? `; ${skipped} bookmarks are no longer AI-eligible` : ""}.`);
+        setMessage(tx(
+          `No reviewed AI patches were applied${skipped ? `; ${skipped} bookmarks are no longer AI-eligible` : ""}.`,
+          `未应用任何 AI 建议${skipped ? `；${skipped} 个书签已不符合 AI 整理条件` : ""}。`,
+        ));
         return;
       }
 
@@ -285,12 +330,12 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
       await onChanged();
       setSuggestions((current) => current.filter((suggestion) => !appliedIds.has(suggestion.bookmarkId)));
       setAcceptedIds((current) => new Set(Array.from(current).filter((id) => !appliedIds.has(id))));
-      setMessage(
-        `Applied ${result.applied} reviewed AI suggestion${result.applied === 1 ? "" : "s"} in one atomic batch` +
-        `${skipped ? `; ${skipped} skipped because the bookmark is no longer AI-eligible` : ""}. URLs and HealthPolicy were untouched.`,
-      );
+      setMessage(tx(
+        `Applied ${result.applied} reviewed AI suggestion${result.applied === 1 ? "" : "s"} atomically${skipped ? `; ${skipped} skipped` : ""}. URLs and health policies were untouched.`,
+        `已一次性应用 ${result.applied} 条 AI 建议${skipped ? `（跳过 ${skipped} 项）` : ""}，网址与健康策略未作修改。`,
+      ));
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, genericError));
     } finally {
       setApplying(false);
     }
@@ -298,33 +343,63 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
 
   return (
     <section className="browser-settings-section ai-organization-section">
-      <div className="settings-heading">
+      <div className="settings-heading ai-compact-heading">
         <div>
-          <p className="eyebrow">AI-ASSISTED ORGANIZATION</p>
-          <h2>Suggest first.<br />Apply only after review.</h2>
-          <p>Classify bookmarks into existing categories, clean titles, draft descriptions and suggest tags. Dockmark never sends a bookmark until you explicitly select it and click Generate, and it never applies a suggestion until you review the diff.</p>
+          <h2>{tx("AI-assisted organization", "AI 辅助整理")}</h2>
+          <p>
+            {tx(
+              "Classify bookmarks into existing categories, clean titles, draft descriptions, and suggest tags. Nothing is sent or applied until you review.",
+              "按现有分类整理书签、优化标题、起草描述并推荐标签。仅在你手动生成并确认差异后才会写入。",
+            )}
+          </p>
         </div>
         <div className="settings-sync-state">
-          <strong>{apiKeyConfigured === null ? "Checking AI secret" : apiKeyConfigured ? "Worker secret ready" : "Worker secret required"}</strong>
-          <span>Max 20 bookmarks / request</span>
+          <strong>
+            {apiKeyConfigured === null
+              ? tx("Checking AI secret", "检查 AI 密钥中")
+              : apiKeyConfigured
+                ? tx("Worker secret ready", "Worker 密钥就绪")
+                : tx("Worker secret required", "需配置 Worker 密钥")}
+          </strong>
+          <span>{tx("Max 20 bookmarks / request", "单次最多 20 个书签")}</span>
         </div>
       </div>
 
       <div className="settings-grid">
         <article className="form-card settings-card ai-provider-card">
           <div className="card-heading">
-            <div><h3>OpenAI-compatible provider</h3><p>Endpoint, model and timeout are browser-local preferences. The API key is never stored in Web localStorage or D1; the Worker reads it from <code>DOCKMARK_AI_API_KEY</code>.</p></div>
+            <div>
+              <h3>{tx("OpenAI-compatible provider", "OpenAI 兼容接口配置")}</h3>
+              <p>
+                {tx(
+                  "Endpoint, model, and timeout are saved locally in this browser. The API key is read by the Worker from ",
+                  "接口地址、模型与超时仅保存在当前浏览器；API 密钥由 Worker 从 ",
+                )}
+                <code>DOCKMARK_AI_API_KEY</code>
+                {tx(".", " 读取，绝不暴露给前端。")}
+              </p>
+            </div>
           </div>
           <label className="settings-field">
-            <span>Chat completions endpoint</span>
-            <input value={provider.endpoint} onChange={(event) => setProvider({ ...provider, endpoint: event.target.value })} placeholder="https://api.example.com/v1/chat/completions" inputMode="url" />
+            <span>{tx("Chat completions endpoint", "Chat Completions 接口地址")}</span>
+            <input
+              value={provider.endpoint}
+              onChange={(event) => setProvider({ ...provider, endpoint: event.target.value })}
+              placeholder="https://api.example.com/v1/chat/completions"
+              inputMode="url"
+            />
           </label>
           <label className="settings-field">
-            <span>Model</span>
-            <input value={provider.model} onChange={(event) => setProvider({ ...provider, model: event.target.value })} placeholder="Provider model id" autoComplete="off" />
+            <span>{tx("Model", "模型")}</span>
+            <input
+              value={provider.model}
+              onChange={(event) => setProvider({ ...provider, model: event.target.value })}
+              placeholder={tx("Provider model id", "模型 ID（如 gpt-4o-mini）")}
+              autoComplete="off"
+            />
           </label>
           <label className="settings-field">
-            <span>Provider timeout · seconds</span>
+            <span>{tx("Provider timeout · seconds", "请求超时（秒）")}</span>
             <input
               type="number"
               min={MIN_AI_TIMEOUT_SECONDS}
@@ -333,45 +408,97 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
               value={provider.timeoutSeconds}
               onChange={(event) => setProvider({ ...provider, timeoutSeconds: Number(event.target.value) })}
             />
-            <small className="field-help">Default 90 seconds · allowed {MIN_AI_TIMEOUT_SECONDS}–{MAX_AI_TIMEOUT_SECONDS}. Slower self-hosted models can use a longer request window.</small>
+            <small className="field-help">
+              {tx(
+                `Default 90s · allowed ${MIN_AI_TIMEOUT_SECONDS}–${MAX_AI_TIMEOUT_SECONDS}s. Slower self-hosted models can use a longer window.`,
+                `默认 90 秒 · 允许范围 ${MIN_AI_TIMEOUT_SECONDS}–${MAX_AI_TIMEOUT_SECONDS} 秒。响应较慢的自托管模型可适当调大。`,
+              )}
+            </small>
           </label>
           <div className="ai-provider-actions">
-            <button className="secondary" type="button" onClick={saveProvider}>Save provider locally</button>
-            <button className="text-action" type="button" onClick={() => void refreshKeyStatus()}>Refresh secret status</button>
+            <button className="secondary" type="button" onClick={saveProvider}>
+              {tx("Save provider locally", "保存本地配置")}
+            </button>
+            <button className="text-action" type="button" onClick={() => void refreshKeyStatus()}>
+              {tx("Refresh secret status", "刷新密钥状态")}
+            </button>
           </div>
           <p className="settings-footnote">
-            Configure the secret in your self-hosted Worker with <code>npx wrangler secret put DOCKMARK_AI_API_KEY</code> or the Cloudflare dashboard. The provider endpoint must be public HTTPS. Selected bookmark content is loaded by the Worker and sent only after Generate; the key never enters the page.
+            {tx("Set the secret with ", "使用 ")}
+            <code>npx wrangler secret put DOCKMARK_AI_API_KEY</code>
+            {tx(
+              " or in the Cloudflare dashboard. The endpoint must be public HTTPS.",
+              " 或在 Cloudflare 控制台配置密钥；接口地址须为公网 HTTPS。",
+            )}
           </p>
         </article>
 
         <article className="form-card settings-card ai-selection-card">
           <div className="card-heading">
-            <div><h3>Select bookmarks</h3><p>Generation progress is tracked only for this page session. Generated rows can be filtered out while the next ungenerated batch is queued automatically.</p></div>
+            <div>
+              <h3>{tx("Select bookmarks", "选择待整理书签")}</h3>
+              <p>
+                {tx(
+                  "Progress is tracked for this session so generated items can be filtered out while the next batch queues automatically.",
+                  "进度仅在本次页面会话内跟踪，生成后会自动预选下一批待整理书签。",
+                )}
+              </p>
+            </div>
             <span>{selectedIds.size}/20</span>
           </div>
-          <input className="ai-bookmark-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter title or URL…" aria-label="Filter bookmarks for AI organization" />
+          <input
+            className="ai-bookmark-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={tx("Filter title or URL…", "按标题或网址筛选…")}
+            aria-label={tx("Filter bookmarks for AI organization", "筛选 AI 整理书签")}
+          />
           <div className="ai-queue-summary">
-            <div className="ai-queue-filters" role="group" aria-label="AI generation queue filter">
-              <button className={queueFilter === "pending" ? "active" : ""} type="button" onClick={() => setQueueFilter("pending")}>Pending {remainingCount}</button>
-              <button className={queueFilter === "generated" ? "active" : ""} type="button" onClick={() => setQueueFilter("generated")}>Generated {generatedCount}</button>
-              <button className={queueFilter === "all" ? "active" : ""} type="button" onClick={() => setQueueFilter("all")}>All {bookmarks.length}</button>
+            <div className="ai-queue-filters" role="group" aria-label={tx("AI generation queue filter", "AI 生成队列筛选")}>
+              <button className={queueFilter === "pending" ? "active" : ""} type="button" onClick={() => setQueueFilter("pending")}>
+                {tx(`Pending ${remainingCount}`, `待生成 ${remainingCount}`)}
+              </button>
+              <button className={queueFilter === "generated" ? "active" : ""} type="button" onClick={() => setQueueFilter("generated")}>
+                {tx(`Generated ${generatedCount}`, `已生成 ${generatedCount}`)}
+              </button>
+              <button className={queueFilter === "all" ? "active" : ""} type="button" onClick={() => setQueueFilter("all")}>
+                {tx(`All ${bookmarks.length}`, `全部 ${bookmarks.length}`)}
+              </button>
             </div>
-            <span>{generatedCount} generated this session · {remainingCount} eligible remaining</span>
+            <span>
+              {tx(
+                `${generatedCount} generated this session · ${remainingCount} remaining`,
+                `本次已生成 ${generatedCount} 项 · 剩余 ${remainingCount} 项`,
+              )}
+            </span>
           </div>
           <div className="ai-selection-actions">
-            <button className="text-action" type="button" onClick={selectVisible} disabled={!eligible.length}>Select first {Math.min(20, eligible.length)} visible</button>
-            <button className="text-action" type="button" onClick={selectNextPending} disabled={!remainingCount}>Select next pending</button>
-            <button className="text-action muted-action" type="button" onClick={clearSelection} disabled={!selectedIds.size}>Clear</button>
-            <button className="text-action muted-action" type="button" onClick={resetSessionProgress} disabled={!generatedIds.size || suggestions.length > 0}>Reset progress</button>
+            <button className="text-action" type="button" onClick={selectVisible} disabled={!eligible.length}>
+              {tx(`Select first ${Math.min(20, eligible.length)} visible`, `选择当前前 ${Math.min(20, eligible.length)} 项`)}
+            </button>
+            <button className="text-action" type="button" onClick={selectNextPending} disabled={!remainingCount}>
+              {tx("Select next pending", "选择下一批待生成")}
+            </button>
+            <button className="text-action muted-action" type="button" onClick={clearSelection} disabled={!selectedIds.size}>
+              {tx("Clear", "清空")}
+            </button>
+            <button className="text-action muted-action" type="button" onClick={resetSessionProgress} disabled={!generatedIds.size || suggestions.length > 0}>
+              {tx("Reset progress", "重置进度")}
+            </button>
           </div>
           {selectedGeneratedCount > 0 && (
-            <p className="ai-selection-warning">{selectedGeneratedCount} selected bookmark{selectedGeneratedCount === 1 ? " was" : "s were"} already generated in this session. Generate will intentionally refresh those suggestions.</p>
+            <p className="ai-selection-warning">
+              {tx(
+                `${selectedGeneratedCount} selected bookmark${selectedGeneratedCount === 1 ? " was" : "s were"} already generated in this session and will be refreshed.`,
+                `已选中有 ${selectedGeneratedCount} 个书签在本次会话已生成过，继续生成将刷新其建议。`,
+              )}
+            </p>
           )}
           <div className="ai-bookmark-list">
             {filteredBookmarks.slice(0, 120).map((bookmark) => {
               const protectedPolicy = bookmark.healthPolicy !== "normal";
               const generated = generatedIds.has(bookmark.id);
-              const category = categoryById.get(bookmark.categoryId ?? "") ?? "UNCATEGORIZED";
+              const category = categoryById.get(bookmark.categoryId ?? "") ?? tx("Uncategorized", "未分类");
               return (
                 <label className={`ai-bookmark-row${protectedPolicy ? " is-protected" : ""}${generated ? " is-generated" : ""}`} key={bookmark.id}>
                   <input
@@ -384,20 +511,36 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
                     <strong>{bookmark.title}</strong>
                     <small>{bookmark.url}</small>
                   </span>
-                  <em>{protectedPolicy ? bookmark.healthPolicy.toUpperCase() : generated ? `GENERATED · ${category}` : category}</em>
+                  <em>
+                    {protectedPolicy
+                      ? policyLabels[bookmark.healthPolicy]
+                      : generated
+                        ? tx(`Generated · ${category}`, `已生成 · ${category}`)
+                        : category}
+                  </em>
                 </label>
               );
             })}
-            {!filteredBookmarks.length && <p className="ai-queue-empty">No bookmarks match this queue view.</p>}
+            {!filteredBookmarks.length && (
+              <p className="ai-queue-empty">{tx("No bookmarks match this queue view.", "当前队列视图下暂无匹配书签。")}</p>
+            )}
           </div>
-          <button className="primary ai-generate-button" type="button" disabled={generating || applying || suggestions.length > 0 || apiKeyConfigured !== true || !selectedIds.size || !provider.model.trim() || !provider.endpoint.trim() || !providerTimeoutValid()} onClick={() => void generate()}>
+          <button
+            className="primary ai-generate-button"
+            type="button"
+            disabled={
+              generating || applying || suggestions.length > 0 || apiKeyConfigured !== true ||
+              !selectedIds.size || !provider.model.trim() || !provider.endpoint.trim() || !providerTimeoutValid()
+            }
+            onClick={() => void generate()}
+          >
             {generating
-              ? "Generating suggestions…"
+              ? tx("Generating suggestions…", "正在生成建议…")
               : suggestions.length
-                ? "Review or discard current suggestions first"
+                ? tx("Review or discard current suggestions first", "请先处理当前预览建议")
                 : apiKeyConfigured === false
-                  ? "Configure Worker AI secret first"
-                  : `Generate suggestions ${selectedIds.size}`}
+                  ? tx("Configure Worker AI secret first", "请先配置 Worker AI 密钥")
+                  : tx(`Generate suggestions (${selectedIds.size})`, `生成建议 (${selectedIds.size})`)}
           </button>
         </article>
       </div>
@@ -408,13 +551,30 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
       {suggestions.length > 0 && (
         <section className="ai-preview">
           <div className="preview-heading">
-            <div><p className="eyebrow">AI PREVIEW · NOTHING APPLIED YET</p><h2>Review proposed organization</h2></div>
+            <div>
+              <h2>{tx("Review proposed organization", "复核 AI 整理建议")}</h2>
+              <p className="ai-preview-subtitle">
+                {tx("Preview only — nothing has been written yet.", "仅预览，尚未写入任何更改。")}
+              </p>
+            </div>
             <div className="preview-actions">
-              <button className="text-action" type="button" onClick={() => setAcceptedIds(new Set(suggestions.map((suggestion) => suggestion.bookmarkId)))}>Select all</button>
-              <button className="text-action muted-action" type="button" onClick={() => setAcceptedIds(new Set())}>Clear</button>
-              <button className="text-action muted-action" type="button" disabled={applying} onClick={discardPreview}>Discard preview</button>
+              <button
+                className="text-action"
+                type="button"
+                onClick={() => setAcceptedIds(new Set(suggestions.map((suggestion) => suggestion.bookmarkId)))}
+              >
+                {tx("Select all", "全选")}
+              </button>
+              <button className="text-action muted-action" type="button" onClick={() => setAcceptedIds(new Set())}>
+                {tx("Clear", "清空")}
+              </button>
+              <button className="text-action muted-action" type="button" disabled={applying} onClick={discardPreview}>
+                {tx("Discard preview", "放弃预览")}
+              </button>
               <button className="primary" type="button" disabled={applying || !acceptedIds.size} onClick={() => void applySuggestions()}>
-                {applying ? "Applying batch…" : `Apply reviewed ${acceptedIds.size}`}
+                {applying
+                  ? tx("Applying batch…", "正在应用…")
+                  : tx(`Apply reviewed (${acceptedIds.size})`, `应用已选 (${acceptedIds.size})`)}
               </button>
             </div>
           </div>
@@ -422,35 +582,71 @@ export function AiOrganizationSettings({ bookmarks, categories, onChanged }: Pro
             {suggestions.map((suggestion) => {
               const bookmark = bookmarkById.get(suggestion.bookmarkId);
               if (!bookmark) return null;
-              const currentCategory = bookmark.categoryId ? categoryById.get(bookmark.categoryId) ?? "Unknown category" : "Uncategorized";
-              const nextCategory = suggestion.categoryName ?? "Uncategorized";
+              const currentCategory = bookmark.categoryId
+                ? categoryById.get(bookmark.categoryId) ?? tx("Unknown category", "未知分类")
+                : tx("Uncategorized", "未分类");
+              const nextCategory = suggestion.categoryName ?? tx("Uncategorized", "未分类");
               const currentTags = bookmarkTags[bookmark.id] ?? [];
               const titleChanged = suggestion.title !== bookmark.title;
               const descriptionChanged = suggestion.description !== (bookmark.description ?? "");
               const categoryChanged = nextCategory !== currentCategory;
               const tagsChanged = !sameTags(suggestion.tags, currentTags);
+              const changedLabels = [
+                titleChanged && tx("Title", "标题"),
+                descriptionChanged && tx("Description", "描述"),
+                categoryChanged && tx("Category", "分类"),
+                tagsChanged && tx("Tags", "标签"),
+              ].filter(Boolean).join(" · ") || tx("No field change", "无字段变动");
+
               return (
                 <article className="ai-suggestion-row" key={suggestion.bookmarkId}>
                   <label className="ai-suggestion-heading">
-                    <input type="checkbox" checked={acceptedIds.has(suggestion.bookmarkId)} onChange={() => toggleSuggestion(suggestion.bookmarkId)} />
+                    <input
+                      type="checkbox"
+                      checked={acceptedIds.has(suggestion.bookmarkId)}
+                      onChange={() => toggleSuggestion(suggestion.bookmarkId)}
+                    />
                     <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
-                    <em>{[titleChanged && "TITLE", descriptionChanged && "DESCRIPTION", categoryChanged && "CATEGORY", tagsChanged && "TAGS"].filter(Boolean).join(" · ") || "NO FIELD CHANGE"}</em>
+                    <em>{changedLabels}</em>
                   </label>
                   <div className="ai-field-diffs">
-                    <div className={titleChanged ? "is-changed" : ""}><span>Title</span><small>Current</small><strong>{bookmark.title}</strong><small>Suggested</small><strong>{suggestion.title || bookmark.title}</strong></div>
-                    <div className={categoryChanged ? "is-changed" : ""}><span>Category</span><small>Current</small><strong>{currentCategory}</strong><small>Suggested</small><strong>{nextCategory}</strong></div>
-                    <div className={descriptionChanged ? "is-changed" : ""}><span>Description</span><small>Current</small><strong>{bookmark.description || "—"}</strong><small>Suggested</small><strong>{suggestion.description || "—"}</strong></div>
-                    <div className={tagsChanged ? "is-changed" : ""}><span>Tags</span><small>Current</small><strong>{currentTags.join(", ") || "—"}</strong><small>Suggested</small><strong>{suggestion.tags.join(", ") || "—"}</strong></div>
+                    <div className={titleChanged ? "is-changed" : ""}>
+                      <span>{tx("Title", "标题")}</span>
+                      <small>{tx("Current", "当前")}</small><strong>{bookmark.title}</strong>
+                      <small>{tx("Suggested", "建议")}</small><strong>{suggestion.title || bookmark.title}</strong>
+                    </div>
+                    <div className={categoryChanged ? "is-changed" : ""}>
+                      <span>{tx("Category", "分类")}</span>
+                      <small>{tx("Current", "当前")}</small><strong>{currentCategory}</strong>
+                      <small>{tx("Suggested", "建议")}</small><strong>{nextCategory}</strong>
+                    </div>
+                    <div className={descriptionChanged ? "is-changed" : ""}>
+                      <span>{tx("Description", "描述")}</span>
+                      <small>{tx("Current", "当前")}</small><strong>{bookmark.description || "—"}</strong>
+                      <small>{tx("Suggested", "建议")}</small><strong>{suggestion.description || "—"}</strong>
+                    </div>
+                    <div className={tagsChanged ? "is-changed" : ""}>
+                      <span>{tx("Tags", "标签")}</span>
+                      <small>{tx("Current", "当前")}</small><strong>{currentTags.join(", ") || "—"}</strong>
+                      <small>{tx("Suggested", "建议")}</small><strong>{suggestion.tags.join(", ") || "—"}</strong>
+                    </div>
                   </div>
                 </article>
               );
             })}
           </div>
-          <p className="mapping-note">Apply sends the reviewed title, description, category and tags once and commits them as one D1 batch. URL, HealthPolicy, HealthStatus, browser mappings and health history remain outside the AI write surface.</p>
+          <p className="mapping-note">
+            {tx(
+              "Applying commits reviewed titles, descriptions, categories, and tags in one atomic batch. URLs, health policies, health history, and browser mappings remain untouched.",
+              "应用后会以单次原子事务写入确认过的标题、描述、分类与标签；网址、健康策略、健康历史与浏览器映射不受影响。",
+            )}
+          </p>
         </section>
       )}
 
-      {loadingTags && <p className="settings-footnote">Loading existing tags and AI secret status…</p>}
+      {loadingTags && (
+        <p className="settings-footnote">{tx("Loading existing tags and AI secret status…", "正在加载已有标签与 AI 密钥状态…")}</p>
+      )}
     </section>
   );
 }

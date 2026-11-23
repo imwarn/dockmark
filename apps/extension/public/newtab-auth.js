@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on chrome.storage.local (dockmarkServerUrl, dockmarkDeviceToken) and chrome.tabs
+ * [OUTPUT]: patches window.fetch with Bearer device token for Dockmark /api/* requests and routes #manage clicks to /app
+ * [POS]: auth transport layer loaded before newtab.js in apps/extension/public/newtab.html
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 (() => {
   const nativeFetch = window.fetch.bind(window);
   const SERVER_KEY = "dockmarkServerUrl";

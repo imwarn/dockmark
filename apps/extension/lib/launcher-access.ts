@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on browser from wxt/browser; reads dockmarkNewTabCacheV1 from browser.storage.local
+ * [OUTPUT]: exports openDockmarkLauncher and registerLauncherAccess for Alt+Shift+D shortcut and d+Space omnibox
+ * [POS]: quick-access launcher integration in apps/extension/lib registered by entrypoints/background.ts
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import { browser } from "wxt/browser";
 
 const CACHE_KEY = "dockmarkNewTabCacheV1";

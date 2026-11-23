@@ -16,7 +16,14 @@ Dockmark is web-first: bookmarks, reusable Workspaces, temporary Sessions and co
 
 The Web app resolves the favicon dynamically so it follows the active System / Light / Dark appearance. The static SVG above documents the canonical mark: dark mode uses the `#0a0f0c` Dockmark surface with the soft green mark, while light mode uses the paired `#f4f7f5` surface with dark green ink.
 
-> Status: **v0.9.0** — reviewed page metadata, server-side public URL health checks, redirect review, conservative cleanup, persisted health history and extension-only local/private URL checks with explicit per-host permission are implemented. Browser sync remains review-gated: no silent background bookmark mutation.
+> Status: **v1.6.0** — bilingual **English (`en`) & Simplified Chinese (`zh-CN`)** localization synced across Web, Extension Popup, New Tab, and AI organization, paired with a compact tool-grade UI overhaul (Spotlight launcher dashboard, category/collection filter pills, state-aware 3-tab extension workbench with searchable Open Tabs, reviewed capture Inbox, Smart Collections, Duplicate Review, Change Journal, and Firefox MV3 support). Browser sync remains review-gated: no silent background bookmark mutation.
+
+## Bilingual UI & Redesigned Workspace (v1.6.0)
+
+- **English (`en`) & Simplified Chinese (`zh-CN`)**: Choose `System / English / 简体中文` in **Settings → Appearance & Language** (`外观与语言`), or switch in one click from the Web utility bar, Public Page header, Extension Popup settings drawer, or New Tab topbar. Private workspace preferences sync via `/api/settings/appearance` (`dockmarkLocaleV1`), while the Public Page (`/`) keeps visitor language local (`dockmarkPublicLocaleV1`) without mutating owner data.
+- **Locale-aware AI Organization**: `/api/ai/organize` follows the active UI language (`en` or `zh-CN`) so suggested descriptions and tags match your workspace locale while preserving recognizable product and repository names.
+- **Compact High-Efficiency UI**: Both Web Launcher (`/app`) and local-first New Tab focus immediately on the Spotlight command bar (`!g` Search · `@` Smart Collection · `#` Tag), paired with one-click Category/Collection filter pills, favicon/monogram bookmark cards, and launchable Workspace cards.
+- **State-Aware Extension Workbench**: The 384px Popup transitions from a focused two-step connect/pair wizard to a 3-tab daily workbench (**Capture** with searchable Open Tabs, **Multi-Tab** reviewed capture, and **Sessions**) with Theme/Language controls tucked inside the collapsible settings drawer.
 
 ## Deploy to Cloudflare
 

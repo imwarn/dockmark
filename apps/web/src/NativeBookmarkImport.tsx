@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: depends on DEFAULT_BROWSER_SETTINGS, normalizeBookmarkUrl, normalizeBrowserSettings, Bookmark, BookmarkConflictPreference, Category from @dockmark/core; bookmark/bridge/transfer/sync modules; NativeMappingPreviewPanel, NativeImportTreePanel from ./NativeBookmarkSyncPanels; useI18n from ./i18n
+ * [OUTPUT]: exports NativeBookmarkImport component
+ * [POS]: browser-native bookmark reader, mapping conflict resolver, and safe incremental sync controller embedded in TransferManager
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_BROWSER_SETTINGS,
@@ -19,28 +26,27 @@ import {
   type NativeBookmarkSnapshot,
   type NativeBrowserBookmark,
 } from "./browser-bridge";
-import { buildImportPreview, type ImportCandidate, type ParsedBookmark } from "./bookmark-transfer";
+import { buildImportPreview, type ParsedBookmark } from "./bookmark-transfer";
+import { useI18n } from "./i18n";
 import {
   acceptNativeMappingBaseline,
   buildNativeMappingRows,
-  nativeMappingReviewDescription,
-  nativeMappingStateLabel,
   removeNativeMappingBaseline,
   type NativeMappingRow,
 } from "./native-bookmark-sync";
+import {
+  conflictPreferenceLabel,
+  folderCategory,
+  NativeImportTreePanel,
+  NativeMappingPreviewPanel,
+  type NativeImportCandidate,
+} from "./NativeBookmarkSyncPanels";
 
 interface Props {
   bookmarks: Bookmark[];
   categories: Category[];
   onChanged: () => Promise<void>;
   onOpenExtension: () => void;
-}
-
-interface NativeImportCandidate extends ImportCandidate {
-  browserBookmarkId: string;
-  folderPath: string[];
-  existingBookmarkId?: string;
-  mappedDockmarkBookmarkId?: string | undefined;
 }
 
 const LOCAL_SETTINGS_KEY = "dockmarkBrowserSettingsV1";
@@ -54,21 +60,8 @@ function readConflictPreference(): BookmarkConflictPreference {
   }
 }
 
-function conflictPreferenceLabel(preference: BookmarkConflictPreference) {
-  if (preference === "browser") return "Prefer Browser";
-  if (preference === "dockmark") return "Prefer Dockmark";
-  return "Ask every time";
-}
-
 function categoryKey(value: string) {
   return value.trim().toLocaleLowerCase();
-}
-
-function folderCategory(path: string[]) {
-  const cleaned = path.map((part) => part.trim()).filter(Boolean);
-  if (!cleaned.length) return undefined;
-  const joined = cleaned.join(" / ");
-  return joined.length <= 80 ? joined : `…${joined.slice(-79)}`;
 }
 
 function existingByUrl(bookmarks: Bookmark[]) {
@@ -77,7 +70,7 @@ function existingByUrl(bookmarks: Bookmark[]) {
     try {
       map.set(normalizeBookmarkUrl(bookmark.url), bookmark);
     } catch {
-      // Existing Dockmark data should already be normalized; ignore malformed legacy rows.
+      // Ignore malformed legacy rows.
     }
   }
   return map;
@@ -87,6 +80,7 @@ function buildNativePreview(
   nativeBookmarks: NativeBrowserBookmark[],
   mappings: NativeBookmarkMapping[],
   cloudBookmarks: Bookmark[],
+  changedErrorMessage: string,
 ) {
   const parsed: ParsedBookmark[] = nativeBookmarks.map((bookmark) => {
     const categoryName = folderCategory(bookmark.folderPath);
@@ -102,7 +96,7 @@ function buildNativePreview(
 
   return base.map((candidate, index): NativeImportCandidate => {
     const native = nativeBookmarks[index];
-    if (!native) throw new Error("Browser bookmark snapshot changed while building the preview.");
+    if (!native) throw new Error(changedErrorMessage);
     const existing = candidate.normalizedUrl ? cloudByUrl.get(candidate.normalizedUrl) : undefined;
     const mapping = mappingByNativeId.get(native.id);
 
@@ -118,6 +112,7 @@ function buildNativePreview(
 }
 
 export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenExtension }: Props) {
+  const { locale, tx } = useI18n();
   const [items, setItems] = useState<NativeImportCandidate[]>([]);
   const [snapshot, setSnapshot] = useState<NativeBookmarkSnapshot | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -130,11 +125,19 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
   const [message, setMessage] = useState<string | null>(null);
   const [relinkTargets, setRelinkTargets] = useState<Record<string, string>>({});
 
+  const snapshotChangedError = tx(
+    "Browser bookmark snapshot changed while building the preview.",
+    "生成预览时浏览器书签快照发生变化，请重新读取。",
+  );
+
   useEffect(() => onBridgeEvent((event) => {
     if (event === "bookmarks-changed" && loaded && !busy) {
-      setMessage("Browser bookmark state changed. Refresh the snapshot to preview the latest mapping differences.");
+      setMessage(tx(
+        "Browser bookmark state changed. Refresh the snapshot to preview the latest mapping differences.",
+        "检测到浏览器书签变动，请刷新快照以预览最新映射差异。",
+      ));
     }
-  }), [busy, loaded]);
+  }), [busy, loaded, tx]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -190,6 +193,13 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     missing: mappingRows.filter((row) => row.state === "native-missing" || row.state === "cloud-missing").length,
   }), [mappingRows]);
 
+  async function refreshMappingSnapshot() {
+    const nextSnapshot = await getNativeBookmarksWithBridge();
+    setSnapshot(nextSnapshot);
+    setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks, snapshotChangedError));
+    return nextSnapshot;
+  }
+
   async function loadNativeBookmarks() {
     setBusy(true);
     setError(null);
@@ -198,24 +208,33 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     try {
       const bridge = await getBridgeStatus();
       if (!bridge.capabilities.nativeBookmarks) {
-        throw new Error("This Dockmark extension is too old for native bookmark import. Update it and reconnect.");
+        throw new Error(tx(
+          "This Dockmark extension is too old for native bookmark import. Update it and reconnect.",
+          "当前浏览器扩展版本过旧，不支持读取原生书签。请更新扩展并重新连接。",
+        ));
       }
       if (!bridge.permissions?.nativeBookmarks) {
-        throw new Error("Open the Dockmark extension popup and enable Native bookmarks, then try again.");
+        throw new Error(tx(
+          "Open the Dockmark extension popup and enable Native bookmarks, then try again.",
+          "请先在 Dockmark 浏览器扩展弹窗中启用「原生书签」权限后再重试。",
+        ));
       }
 
       const nextSnapshot = await getNativeBookmarksWithBridge();
       setSyncCapable(Boolean(bridge.capabilities.nativeBookmarkSync));
       setWritebackCapable(Boolean(bridge.capabilities.nativeBookmarkWriteback));
       setSnapshot(nextSnapshot);
-      setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks));
+      setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks, snapshotChangedError));
       setLoaded(true);
-      setMessage(`Read ${nextSnapshot.bookmarks.length} browser bookmarks and ${nextSnapshot.mappings.length} local mapping${nextSnapshot.mappings.length === 1 ? "" : "s"}. Nothing has been changed yet.`);
+      setMessage(tx(
+        `Read ${nextSnapshot.bookmarks.length} browser bookmarks and ${nextSnapshot.mappings.length} local mapping${nextSnapshot.mappings.length === 1 ? "" : "s"}. Nothing has been changed yet.`,
+        `已读取 ${nextSnapshot.bookmarks.length} 个浏览器书签及 ${nextSnapshot.mappings.length} 条本地映射，尚未改动任何数据。`,
+      ));
     } catch (caught) {
       setLoaded(false);
       setSnapshot(null);
       setItems([]);
-      setError(caught instanceof Error ? caught.message : "Could not read browser bookmarks.");
+      setError(caught instanceof Error ? caught.message : tx("Could not read browser bookmarks.", "无法读取浏览器书签。"));
     } finally {
       setBusy(false);
     }
@@ -314,16 +333,13 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
 
       if (successfulMappings.length) await saveNativeBookmarkMappingsWithBridge(successfulMappings);
       await onChanged();
-      const nextSnapshot = await getNativeBookmarksWithBridge();
-      setSnapshot(nextSnapshot);
-      setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks));
-      setMessage(
-        `Mapped ${successfulMappings.length} browser bookmark${successfulMappings.length === 1 ? "" : "s"}: ` +
-        `${created} new Dockmark bookmark${created === 1 ? "" : "s"}, ${linkedExisting} existing URL${linkedExisting === 1 ? "" : "s"}` +
-        `${failedGroups ? `; ${failedGroups} URL group${failedGroups === 1 ? "" : "s"} failed` : ""}.`,
-      );
+      await refreshMappingSnapshot();
+      setMessage(tx(
+        `Mapped ${successfulMappings.length} browser bookmark${successfulMappings.length === 1 ? "" : "s"}: ${created} new, ${linkedExisting} linked to existing URLs${failedGroups ? `; ${failedGroups} failed` : ""}.`,
+        `已映射 ${successfulMappings.length} 个浏览器书签：新增 ${created} 项、关联已有 ${linkedExisting} 项${failedGroups ? `，${failedGroups} 组失败` : ""}。`,
+      ));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Native bookmark import failed.");
+      setError(caught instanceof Error ? caught.message : tx("Native bookmark import failed.", "原生书签导入失败。"));
     } finally {
       setBusy(false);
     }
@@ -344,19 +360,15 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
           ? { ...item, mappedDockmarkBookmarkId: undefined, selected: item.status !== "invalid" }
           : item,
       ));
-      setMessage("Mapping unlinked. Neither the browser bookmark nor the Dockmark bookmark was deleted.");
+      setMessage(tx(
+        "Mapping unlinked. Neither the browser bookmark nor the Dockmark bookmark was deleted.",
+        "已解除映射，浏览器书签与 Dockmark 书签均未被删除。",
+      ));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not unlink mapping.");
+      setError(caught instanceof Error ? caught.message : tx("Could not unlink mapping.", "无法解除映射。"));
     } finally {
       setBusy(false);
     }
-  }
-
-  async function refreshMappingSnapshot() {
-    const nextSnapshot = await getNativeBookmarksWithBridge();
-    setSnapshot(nextSnapshot);
-    setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks));
-    return nextSnapshot;
   }
 
   async function keepDockmark(row: NativeMappingRow) {
@@ -365,16 +377,16 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     setError(null);
     setMessage(null);
     try {
-      const mapping: NativeBookmarkMapping = {
-        ...row.mapping,
-        url: row.native.url,
-      };
+      const mapping: NativeBookmarkMapping = { ...row.mapping, url: row.native.url };
       await saveNativeBookmarkMappingsWithBridge([mapping]);
       acceptNativeMappingBaseline(mapping, row.native, row.cloud);
       await refreshMappingSnapshot();
-      setMessage("Kept the Dockmark version and accepted the current Browser ↔ Dockmark difference as the new mapping baseline. No browser data was changed.");
+      setMessage(tx(
+        "Kept the Dockmark version and accepted the current difference as the new baseline. No browser data was changed.",
+        "已保留 Dockmark 版本并将当前差异设为新基线，未改动浏览器书签。",
+      ));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not keep the Dockmark version.");
+      setError(caught instanceof Error ? caught.message : tx("Could not keep the Dockmark version.", "无法保留 Dockmark 版本。"));
     } finally {
       setBusy(false);
     }
@@ -393,17 +405,17 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
         url: row.cloud.url,
       });
 
-      const mapping: NativeBookmarkMapping = {
-        ...row.mapping,
-        url: row.cloud.url,
-      };
+      const mapping: NativeBookmarkMapping = { ...row.mapping, url: row.cloud.url };
       await saveNativeBookmarkMappingsWithBridge([mapping]);
       const nextSnapshot = await refreshMappingSnapshot();
       const nextNative = nextSnapshot.bookmarks.find((bookmark) => bookmark.id === row.mapping.browserBookmarkId);
       if (nextNative) acceptNativeMappingBaseline(mapping, nextNative, row.cloud);
-      setMessage(`Wrote Dockmark title and URL to the mapped browser bookmark “${row.cloud.title}”. The browser folder was not moved, and no other browser bookmarks were changed.`);
+      setMessage(tx(
+        `Wrote Dockmark title and URL to the mapped browser bookmark “${row.cloud.title}”. No folders were moved.`,
+        `已将「${row.cloud.title}」的标题与网址写回对应浏览器书签，未移动浏览器文件夹。`,
+      ));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not write this Dockmark bookmark back to the browser.");
+      setError(caught instanceof Error ? caught.message : tx("Could not write this Dockmark bookmark back to the browser.", "无法写回浏览器书签。"));
     } finally {
       setBusy(false);
     }
@@ -432,9 +444,12 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
         return next;
       });
       await refreshMappingSnapshot();
-      setMessage(`Re-linked the browser bookmark to “${target.title}”. Neither bookmark was modified.`);
+      setMessage(tx(
+        `Re-linked the browser bookmark to “${target.title}”. Neither bookmark was modified.`,
+        `已将该浏览器书签重新关联到「${target.title}」，两侧书签内容未改动。`,
+      ));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not re-link this mapping.");
+      setError(caught instanceof Error ? caught.message : tx("Could not re-link this mapping.", "无法重新关联此映射。"));
     } finally {
       setBusy(false);
     }
@@ -497,9 +512,12 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
       acceptNativeMappingBaseline(mapping, native, target);
       await onChanged();
       await refreshMappingSnapshot();
-      setMessage(`Resolved review using Browser as the source. Dockmark now follows “${native.title || native.url}”; the native browser bookmark was not modified.`);
+      setMessage(tx(
+        `Resolved review using Browser as source. Dockmark now follows “${native.title || native.url}”.`,
+        `已采用浏览器版本，Dockmark 已更新为「${native.title || native.url}」。`,
+      ));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not resolve this mapping using the browser version.");
+      setError(caught instanceof Error ? caught.message : tx("Could not resolve this mapping using the browser version.", "无法采用浏览器版本解决此冲突。"));
     } finally {
       setBusy(false);
     }
@@ -512,22 +530,16 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
     setMessage(null);
     try {
       for (const row of preferredReviewRows) {
-        if (conflictPreference === "browser") {
-          await useBrowser(row);
-        } else if (writebackCapable) {
-          await writeDockmarkToBrowser(row);
-        } else {
-          await keepDockmark(row);
-        }
+        if (conflictPreference === "browser") await useBrowser(row);
+        else if (writebackCapable) await writeDockmarkToBrowser(row);
+        else await keepDockmark(row);
       }
-      setMessage(
-        `Applied ${conflictPreferenceLabel(conflictPreference)} to ${preferredReviewRows.length} one-sided Dockmark change${preferredReviewRows.length === 1 ? "" : "s"}. ` +
-        (conflictPreference === "dockmark" && writebackCapable
-          ? "Each affected browser bookmark was explicitly written by this action; folders were not moved."
-          : "No background browser writes were enabled."),
-      );
+      setMessage(tx(
+        `Applied ${conflictPreferenceLabel(conflictPreference, locale)} to ${preferredReviewRows.length} one-sided Dockmark change${preferredReviewRows.length === 1 ? "" : "s"}.`,
+        `已按「${conflictPreferenceLabel(conflictPreference, locale)}」处理 ${preferredReviewRows.length} 条单侧 Dockmark 变更。`,
+      ));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not apply the preferred review policy.");
+      setError(caught instanceof Error ? caught.message : tx("Could not apply the preferred review policy.", "无法应用偏好策略。"));
     } finally {
       setPolicyApplying(false);
     }
@@ -634,24 +646,17 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
       if (toSave.length) await saveNativeBookmarkMappingsWithBridge(toSave);
       if (toRemove.length) await removeNativeBookmarkMappingsWithBridge(toRemove);
       await onChanged();
-      const nextSnapshot = await getNativeBookmarksWithBridge();
-      setSnapshot(nextSnapshot);
-      setItems(buildNativePreview(nextSnapshot.bookmarks, nextSnapshot.mappings, bookmarks));
-      setMessage(`Applied ${toSave.length + toRemove.length} safe mapping change${toSave.length + toRemove.length === 1 ? "" : "s"}: ${updated} updated/remapped, ${recreated} recreated, ${unlinked} stale mapping${unlinked === 1 ? "" : "s"} unlinked. Native browser bookmarks were not modified.`);
+      await refreshMappingSnapshot();
+      const total = toSave.length + toRemove.length;
+      setMessage(tx(
+        `Applied ${total} safe mapping change${total === 1 ? "" : "s"}: ${updated} updated, ${recreated} recreated, ${unlinked} unlinked. Browser bookmarks were not modified.`,
+        `已应用 ${total} 项安全映射变更：更新 ${updated} 项、重建 ${recreated} 项、解除过期映射 ${unlinked} 项，未改动浏览器书签。`,
+      ));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not apply mapping changes.");
+      setError(caught instanceof Error ? caught.message : tx("Could not apply mapping changes.", "无法应用映射变更。"));
     } finally {
       setBusy(false);
     }
-  }
-
-  function statusLabel(item: NativeImportCandidate) {
-    if (item.mappedDockmarkBookmarkId) return "MAPPED";
-    if (item.status === "invalid") return "INVALID";
-    if (item.existingBookmarkId) return "LINK";
-    if (item.status === "duplicate") return "DEDUP";
-    if (item.healthPolicy === "local-only") return "LOCAL ONLY";
-    return "NEW";
   }
 
   return (
@@ -659,189 +664,98 @@ export function NativeBookmarkImport({ bookmarks, categories, onChanged, onOpenE
       <article className="form-card native-import-card">
         <div className="card-heading">
           <div>
-            <h2>Browser bookmarks</h2>
-            <p>Read the connected browser directly, review imports, and maintain the local native↔Dockmark mapping.</p>
+            <h2>{tx("Browser bookmarks", "浏览器原生书签")}</h2>
+            <p>
+              {tx(
+                "Read bookmarks from the connected browser, review imports, and maintain local native ↔ Dockmark mappings.",
+                "直接读取已连接浏览器的书签树，预览导入并维护本地原生 ↔ Dockmark 映射。",
+              )}
+            </p>
           </div>
-          <span className="native-readonly">NO AUTO BROWSER WRITES</span>
+          <span className="native-readonly">{tx("No auto browser writes", "无自动写回")}</span>
         </div>
         <div className="native-import-actions">
           <button className="secondary" type="button" disabled={busy || policyApplying} onClick={() => void loadNativeBookmarks()}>
-            {busy && !loaded ? "Reading…" : loaded ? "Refresh browser snapshot" : "Read browser bookmarks"}
+            {busy && !loaded
+              ? tx("Reading…", "读取中…")
+              : loaded
+                ? tx("Refresh browser snapshot", "刷新浏览器快照")
+                : tx("Read browser bookmarks", "读取浏览器书签")}
           </button>
-          <span>Automatic sync never edits browser bookmarks. Extension 0.4+ can write title + URL only after an explicit Review action.</span>
-          <button className="text-action native-extension-link" type="button" onClick={onOpenExtension}>Extension / install →</button>
+          <span>
+            {tx(
+              "Automatic sync never edits browser bookmarks. Extension 0.4+ writes title + URL only after an explicit review click.",
+              "自动同步绝不改动浏览器书签；扩展 0.4+ 仅在你手动点击复核写回时更新标题与网址。",
+            )}
+          </span>
+          <button className="text-action native-extension-link" type="button" onClick={onOpenExtension}>
+            {tx("Extension / install →", "扩展与安装 →")}
+          </button>
         </div>
       </article>
 
       {error && (
         <div className="error-banner transfer-feedback" role="alert">
-          {error} <button className="text-action" type="button" onClick={onOpenExtension}>Open extension diagnostics →</button>
+          {error}{" "}
+          <button className="text-action" type="button" onClick={onOpenExtension}>
+            {tx("Open extension diagnostics →", "打开扩展诊断 →")}
+          </button>
         </div>
       )}
       {message && <div className="success-banner transfer-feedback" role="status">{message}</div>}
 
       {loaded && !syncCapable && (
         <div className="error-banner transfer-feedback">
-          This extension can import browser bookmarks but cannot preserve mapping drift for incremental sync. Update to Dockmark Extension 0.3.0 or newer. <button className="text-action" type="button" onClick={onOpenExtension}>Update extension →</button>
+          {tx(
+            "This extension can import browser bookmarks but cannot track mapping drift for incremental sync. Update to Dockmark Extension 0.3.0+.",
+            "当前扩展仅支持导入，暂不支持增量同步映射检测。请更新至 Dockmark 扩展 0.3.0 或更高版本。",
+          )}{" "}
+          <button className="text-action" type="button" onClick={onOpenExtension}>
+            {tx("Update extension →", "更新扩展 →")}
+          </button>
         </div>
       )}
 
       {loaded && syncCapable && mappingRows.length > 0 && (
-        <section className="mapping-preview">
-          <div className="preview-heading">
-            <div>
-              <p className="eyebrow">MAPPING HEALTH · {conflictPreferenceLabel(conflictPreference).toUpperCase()}</p>
-              <h2>Native ↔ Dockmark mappings</h2>
-            </div>
-            <div className="preview-actions">
-              {conflictPreference !== "ask" && (
-                <button className="secondary" type="button" onClick={() => void applyPreferredReviewChanges()} disabled={busy || policyApplying || !preferredReviewRows.length}>
-                  {policyApplying ? "Applying policy…" : `Apply preferred ${preferredReviewRows.length}`}
-                </button>
-              )}
-              <button className="primary" type="button" onClick={() => void applySafeMappingChanges()} disabled={busy || policyApplying || !mappingStats.safe}>
-                {busy ? "Applying…" : `Apply safe changes ${mappingStats.safe}`}
-              </button>
-            </div>
-          </div>
-          <div className="mapping-stats">
-            <span><strong>{mappingStats.total}</strong>Mapped</span>
-            <span><strong>{mappingStats.synced}</strong>Synced</span>
-            <span><strong>{mappingStats.safe}</strong>Safe changes</span>
-            <span><strong>{mappingStats.conflicts}</strong>Review</span>
-            <span><strong>{mappingStats.missing}</strong>Missing side</span>
-          </div>
-          {conflictPreference !== "ask" && (
-            <p className="mapping-note">
-              {conflictPreferenceLabel(conflictPreference)} recommends a source for Review rows. “Apply preferred” is still an explicit action and only batches one-sided DOCKMARK CHANGED rows; true REVIEW conflicts remain individual decisions.
-            </p>
-          )}
-          <div className="mapping-list">
-            {mappingRows.slice(0, 500).map((row) => {
-              const needsReview = row.state === "cloud-changed" || row.state === "conflict";
-              const selectedTarget = relinkTargets[row.mapping.browserBookmarkId] ?? "";
-              const recommendedAction = !needsReview || conflictPreference === "ask"
-                ? null
-                : conflictPreference === "browser"
-                  ? "browser"
-                  : writebackCapable
-                    ? "writeback"
-                    : "keep";
-              return (
-                <div className={`mapping-row ${needsReview ? "mapping-row-review" : ""} mapping-${row.state}`} key={row.mapping.browserBookmarkId}>
-                  <div className="mapping-row-main">
-                    <span className="mapping-copy">
-                      <strong>{row.native?.title ?? row.cloud?.title ?? row.mapping.url}</strong>
-                      <small>Browser · {row.native?.url ?? "bookmark removed"}</small>
-                      <small>Dockmark · {row.cloud?.url ?? "bookmark missing"}</small>
-                    </span>
-                    <span className={`mapping-status mapping-status-${row.state}`}>{nativeMappingStateLabel(row.state)}</span>
-                    {!needsReview && (
-                      <button className="text-action muted-action" type="button" disabled={busy || policyApplying} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
-                    )}
-                  </div>
-
-                  {needsReview && row.native && row.cloud && (
-                    <div className="mapping-review-panel">
-                      <p>{nativeMappingReviewDescription(row.state)}</p>
-                      {recommendedAction && (
-                        <small className="mapping-review-note">Policy recommendation: {recommendedAction === "browser" ? "Use Browser" : recommendedAction === "writeback" ? "Write Dockmark → Browser" : "Keep Dockmark"}. This is guidance only until you click an action.</small>
-                      )}
-                      <div className="mapping-review-sides">
-                        <div>
-                          <span>Browser</span>
-                          <strong>{row.native.title || row.native.url}</strong>
-                          <small>{row.native.url}</small>
-                          <small>{folderCategory(row.native.folderPath) ?? "Uncategorized"}</small>
-                        </div>
-                        <div>
-                          <span>Dockmark</span>
-                          <strong>{row.cloud.title}</strong>
-                          <small>{row.cloud.url}</small>
-                          <small>{row.cloud.categoryId ? categoryNames.get(row.cloud.categoryId) ?? "Unknown category" : "Uncategorized"}</small>
-                        </div>
-                      </div>
-                      <div className="mapping-review-actions">
-                        <button className={recommendedAction === "browser" ? "primary" : "secondary"} type="button" disabled={busy || policyApplying} onClick={() => void useBrowser(row)}>Use Browser</button>
-                        <button className={recommendedAction === "keep" ? "primary" : "secondary"} type="button" disabled={busy || policyApplying} onClick={() => void keepDockmark(row)}>Keep Dockmark</button>
-                        {writebackCapable && (
-                          <button className={recommendedAction === "writeback" ? "primary" : "secondary"} type="button" disabled={busy || policyApplying} onClick={() => void writeDockmarkToBrowser(row)}>Write Dockmark → Browser</button>
-                        )}
-                        <div className="mapping-relink-control">
-                          <select
-                            aria-label="Re-link browser bookmark to Dockmark bookmark"
-                            value={selectedTarget}
-                            disabled={busy || policyApplying}
-                            onChange={(event) => setRelinkTargets((current) => ({ ...current, [row.mapping.browserBookmarkId]: event.target.value }))}
-                          >
-                            <option value="">Choose Dockmark bookmark…</option>
-                            {relinkOptions.filter((bookmark) => bookmark.id !== row.cloud?.id).map((bookmark) => (
-                              <option value={bookmark.id} key={bookmark.id}>{bookmark.title} — {bookmark.url}</option>
-                            ))}
-                          </select>
-                          <button className="secondary" type="button" disabled={busy || policyApplying || !selectedTarget} onClick={() => void relinkMapping(row)}>Re-link</button>
-                        </div>
-                        <button className="text-action muted-action" type="button" disabled={busy || policyApplying} onClick={() => void unlinkMapping(row.mapping.browserBookmarkId)}>Unlink</button>
-                      </div>
-                      <small className="mapping-review-note">Use Browser may update Dockmark title, URL and category. Keep Dockmark accepts the current difference as intentional. Write Dockmark → Browser explicitly changes only the mapped browser bookmark title + URL; it never moves the browser folder. Re-link only changes the local mapping.</small>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <p className="mapping-note">Safe Apply remains browser → Dockmark only. Browser deletions unlink the mapping but keep the Dockmark bookmark. Preferred policy actions still require a click; no background browser mutation is enabled.</p>
-        </section>
+        <NativeMappingPreviewPanel
+          conflictPreference={conflictPreference}
+          mappingRows={mappingRows}
+          preferredReviewCount={preferredReviewRows.length}
+          mappingStats={mappingStats}
+          categoryNames={categoryNames}
+          relinkOptions={relinkOptions}
+          relinkTargets={relinkTargets}
+          writebackCapable={writebackCapable}
+          busy={busy}
+          policyApplying={policyApplying}
+          onApplyPreferred={() => void applyPreferredReviewChanges()}
+          onApplySafe={() => void applySafeMappingChanges()}
+          onUseBrowser={(row) => void useBrowser(row)}
+          onKeepDockmark={(row) => void keepDockmark(row)}
+          onWriteDockmarkToBrowser={(row) => void writeDockmarkToBrowser(row)}
+          onRelinkTargetChange={(id, value) => setRelinkTargets((current) => ({ ...current, [id]: value }))}
+          onRelinkMapping={(row) => void relinkMapping(row)}
+          onUnlinkMapping={(id) => void unlinkMapping(id)}
+        />
       )}
 
       {loaded && items.length > 0 && (
-        <section className="import-preview native-import-preview">
-          <div className="preview-heading">
-            <div><p className="eyebrow">BROWSER IMPORT PREVIEW</p><h2>Native bookmark tree</h2></div>
-            <div className="preview-actions">
-              <button className="text-action" type="button" onClick={() => selectAll(true)}>Select unmapped</button>
-              <button className="text-action muted-action" type="button" onClick={() => selectAll(false)}>Clear</button>
-              <button className="primary" type="button" onClick={() => void importSelected()} disabled={busy || policyApplying || !stats.selected}>
-                {busy ? "Importing…" : `Import / map ${stats.selected}`}
-              </button>
-            </div>
-          </div>
-
-          <div className="import-stats native-stats">
-            <span><strong>{stats.total}</strong>Total</span>
-            <span><strong>{stats.newCloud}</strong>New URLs</span>
-            <span><strong>{stats.linkExisting}</strong>Link URLs</span>
-            <span><strong>{stats.mapped}</strong>Mapped</span>
-            <span><strong>{stats.local}</strong>Local only</span>
-            <span><strong>{stats.invalid}</strong>Invalid</span>
-          </div>
-
-          <div className="import-list">
-            {items.slice(0, 500).map((item) => (
-              <label
-                className={`import-row ${item.mappedDockmarkBookmarkId ? "status-mapped" : `status-${item.status}`}`}
-                key={item.browserBookmarkId}
-              >
-                <input
-                  type="checkbox"
-                  checked={item.selected}
-                  disabled={item.status === "invalid" || Boolean(item.mappedDockmarkBookmarkId) || busy || policyApplying}
-                  onChange={() => toggle(item.browserBookmarkId)}
-                />
-                <span className="import-copy">
-                  <strong>{item.title}</strong>
-                  <small>{item.normalizedUrl ?? item.url}</small>
-                  <span>{item.categoryName ?? "Uncategorized"}</span>
-                </span>
-                <span className={`import-status policy-${item.healthPolicy ?? "none"}`}>{statusLabel(item)}</span>
-              </label>
-            ))}
-          </div>
-          {items.length > 500 && <p className="preview-limit">Showing the first 500 of {items.length} browser entries; selected hidden entries are still included.</p>}
-        </section>
+        <NativeImportTreePanel
+          items={items}
+          stats={stats}
+          busy={busy}
+          policyApplying={policyApplying}
+          onSelectAll={selectAll}
+          onImportSelected={() => void importSelected()}
+          onToggleItem={toggle}
+        />
       )}
 
-      {loaded && !items.length && <div className="success-banner transfer-feedback">No HTTP/HTTPS browser bookmarks were found.</div>}
+      {loaded && !items.length && (
+        <div className="success-banner transfer-feedback">
+          {tx("No HTTP/HTTPS browser bookmarks were found.", "未在浏览器中找到 HTTP/HTTPS 书签。")}
+        </div>
+      )}
     </>
   );
 }

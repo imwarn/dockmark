@@ -17,6 +17,7 @@
 
 .private-utility-brand {
   flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .private-utility-bar nav,
@@ -35,10 +36,13 @@
 
 .private-utility-bar nav {
   flex: 0 1 auto;
+  align-items: center;
   margin-left: auto;
 }
 
 .private-utility-bar nav button,
+.private-utility-bar nav .utility-quick-group,
+.private-utility-bar nav .private-utility-divider,
 .workspace-section-nav .ghost {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -163,18 +167,15 @@
     margin-left: 0;
   }
 
-  .hero {
-    padding-top: 42px;
-    padding-bottom: 34px;
-  }
-
-  .hero h1 {
-    font-size: clamp(34px, 11vw, 44px);
+  .hero,
+  .launcher-hero {
+    padding-top: 18px;
+    padding-bottom: 14px;
   }
 
   .command {
-    min-height: 56px;
-    padding-left: 13px;
+    min-height: 50px;
+    padding-left: 12px;
   }
 
   .command-shortcuts {
@@ -185,7 +186,9 @@
     width: 100%;
   }
 
-  .feature-grid {
-    margin-top: 34px;
+  .launcher-bookmark-grid,
+  .launcher-workspace-grid,
+  .launcher-tabs-strip {
+    grid-template-columns: 1fr;
   }
 }

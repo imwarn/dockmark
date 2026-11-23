@@ -1,65 +1,81 @@
-.extension-page { padding: 66px 0 20px; }
-.extension-state { flex: 0 0 auto; padding: 8px 11px; border: 1px solid #2b342f; border-radius: 999px; background: #111613; font-size: 12px; }
+.extension-page { padding: 28px 0 20px; }
+.extension-state { flex: 0 0 auto; padding: 6px 11px; border: 1px solid #2b342f; border-radius: 999px; background: #111613; font-size: 12px; white-space: nowrap; }
 .extension-state-neutral { color: #8b9790; }
 .extension-state-success { border-color: #31543c; color: #9fd0ae; }
 .extension-state-warning { border-color: #584b2c; color: #d6bd78; }
 .extension-state-danger { border-color: #5a3734; color: #d8a09c; }
-.extension-hero-card { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 30px; align-items: center; padding: 28px; border: 1px solid #2a342f; border-radius: 22px; background: radial-gradient(circle at 90% 20%, rgba(128,181,146,.13), transparent 16rem), rgba(15,20,18,.82); }
-.extension-hero-copy { max-width: 700px; }
+.extension-hero-card { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 24px; align-items: center; padding: 20px 22px; border: 1px solid #2a342f; border-radius: 16px; background: radial-gradient(circle at 90% 20%, rgba(128,181,146,.12), transparent 16rem), rgba(15,20,18,.82); }
+.extension-hero-copy { max-width: 720px; }
 .extension-version { color: #84b394; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; }
-.extension-hero-copy h2 { margin: 10px 0 9px; font-size: clamp(24px, 4vw, 36px); letter-spacing: -.035em; }
-.extension-hero-copy > p { max-width: 650px; margin: 0; color: #8a958f; line-height: 1.65; }
-.extension-permission-callout { display: grid; gap: 3px; max-width: 650px; margin-top: 16px; padding: 12px 14px; border: 1px solid #584b2c; border-radius: 12px; background: rgba(80,60,24,.16); }
+.extension-hero-copy h2 { margin: 6px 0 7px; font-size: clamp(18px, 2.4vw, 24px); letter-spacing: -.025em; }
+.extension-hero-copy > p { max-width: 660px; margin: 0; color: #8a958f; font-size: 13px; line-height: 1.6; }
+.extension-permission-callout { display: grid; gap: 3px; max-width: 650px; margin-top: 14px; padding: 11px 13px; border: 1px solid #584b2c; border-radius: 11px; background: rgba(80,60,24,.16); }
 .extension-permission-callout strong { color: #e1c985; font-size: 12px; }
 .extension-permission-callout span { color: #a99d7c; font-size: 12px; line-height: 1.5; }
-.extension-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
-.extension-channel-note { margin-top: 15px !important; color: #68746d !important; font-size: 12px; }
-.extension-mark { display: grid; place-items: center; width: 118px; height: 118px; justify-self: end; border: 1px solid #3a4b42; border-radius: 31px; background: #18211c; color: #bce2c7; font-size: 44px; font-weight: 680; letter-spacing: -.08em; box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 18px 55px rgba(0,0,0,.22); }
-.extension-profiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
-.extension-profile { min-width: 0; padding: 22px; border: 1px solid #28322d; border-radius: 18px; background: rgba(14,19,17,.78); }
+.extension-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+.extension-channel-note { margin-top: 14px !important; color: #68746d !important; font-size: 12px; }
+.extension-mark { display: grid; place-items: center; width: 92px; height: 92px; justify-self: end; border: 1px solid #3a4b42; border-radius: 24px; background: #18211c; color: #bce2c7; font-size: 36px; font-weight: 680; letter-spacing: -.08em; box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 14px 40px rgba(0,0,0,.22); }
+.extension-profiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.extension-profile { min-width: 0; padding: 18px 20px; border: 1px solid #28322d; border-radius: 15px; background: rgba(14,19,17,.78); }
 .extension-profile-recommended { border-color: #3c5a48; background: radial-gradient(circle at 95% 5%, rgba(111,164,128,.12), transparent 16rem), rgba(15,22,18,.9); box-shadow: inset 0 0 0 1px rgba(132,179,148,.035); }
 .extension-profile-firefox { grid-column: 1 / -1; border-color: #35443c; background: radial-gradient(circle at 92% 10%, rgba(113,145,126,.08), transparent 18rem), rgba(14,19,17,.78); }
-.extension-profile-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.extension-profile-heading h2 { margin: 5px 0 0; font-size: 22px; letter-spacing: -.025em; }
+.extension-profile-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.extension-profile-heading h2 { margin: 4px 0 0; font-size: 18px; letter-spacing: -.02em; }
 .extension-profile-kicker { color: #769683; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
-.extension-profile-badge { flex: 0 0 auto; padding: 6px 8px; border: 1px solid #33443a; border-radius: 999px; color: #88a995; font-size: 10px; letter-spacing: .06em; }
-.extension-profile > p { margin: 15px 0 0; color: #849088; font-size: 13px; line-height: 1.6; }
-.extension-profile ul { display: grid; gap: 7px; margin: 15px 0 0; padding-left: 18px; color: #748078; font-size: 12px; line-height: 1.5; }
-.extension-profile .extension-actions { margin-top: 18px; }
+.extension-profile-badge { flex: 0 0 auto; padding: 4px 8px; border: 1px solid #33443a; border-radius: 999px; color: #88a995; font-size: 10px; letter-spacing: .06em; white-space: nowrap; }
+.extension-profile > p { margin: 12px 0 0; color: #849088; font-size: 13px; line-height: 1.55; }
+.extension-profile ul { display: grid; gap: 6px; margin: 12px 0 0; padding-left: 18px; color: #748078; font-size: 12px; line-height: 1.5; }
+.extension-profile .extension-actions { margin-top: 16px; }
 .extension-profile-note { margin: 12px 2px 0; color: #68746d; font-size: 12px; line-height: 1.6; }
 .extension-profile-note code { padding: 2px 5px; border: 1px solid #2d3732; border-radius: 5px; background: #0e1311; color: #c8d4cd; }
-.extension-guide { margin-top: 16px; }
-.extension-guide-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 6px; }
+.extension-guide { margin-top: 14px; }
+.extension-guide-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 6px; }
 .extension-guide-columns > div { min-width: 0; }
-.extension-guide h3 { margin: 0 0 10px; font-size: 14px; }
-.extension-guide ol { display: grid; gap: 10px; margin: 4px 0 0; padding-left: 22px; color: #9ba69f; font-size: 13px; line-height: 1.55; }
+.extension-guide h3 { margin: 0 0 8px; font-size: 14px; }
+.extension-guide ol { display: grid; gap: 9px; margin: 4px 0 0; padding-left: 20px; color: #9ba69f; font-size: 13px; line-height: 1.55; }
 .extension-guide code { padding: 2px 5px; border: 1px solid #2d3732; border-radius: 5px; background: #0e1311; color: #c8d4cd; }
-.extension-diagnostics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+.extension-diagnostics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
 .extension-diagnostic-card { min-width: 0; }
 .diagnostic-list { display: grid; gap: 0; margin: 0; }
-.diagnostic-list > div, .capability-list > div { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 42px; border-top: 1px solid #202723; }
+.diagnostic-list > div, .capability-list > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 38px; border-top: 1px solid #202723; }
 .diagnostic-list > div:first-child, .capability-list > div:first-child { border-top: 0; }
 .diagnostic-list dt, .capability-list span { color: #7f8a84; font-size: 12px; }
 .diagnostic-list dd { min-width: 0; margin: 0; overflow: hidden; color: #bec9c2; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.capability-list strong { font-size: 11px; font-weight: 620; }
+.capability-list strong { font-size: 11px; font-weight: 620; white-space: nowrap; }
 .capability-on { color: #8ec39f; }
 .capability-off { color: #65706a; }
 .extension-diagnostic-note { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid #202723; color: #8e9993; font-size: 12px; line-height: 1.5; }
-.extension-nudge { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: min(820px, 100%); margin: 12px auto 0; padding: 14px 16px; border: 1px solid #2b3a32; border-radius: 14px; background: rgba(19,27,23,.72); color: inherit; cursor: pointer; text-align: left; }
+
+.extension-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 10px 14px;
+  border: 1px solid #2b3a32;
+  border-radius: 12px;
+  background: rgba(19,27,23,.72);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
 .extension-nudge:hover { border-color: #486253; background: rgba(23,33,28,.9); }
-.extension-nudge-copy { display: grid; gap: 3px; }
-.extension-nudge-copy strong { font-size: 13px; }
-.extension-nudge-copy span { color: #748078; font-size: 12px; }
-.extension-nudge-action { color: #a9d0b5; font-size: 12px; white-space: nowrap; }
+.extension-nudge-copy { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.extension-nudge-copy strong { font-size: 12px; font-weight: 620; white-space: nowrap; }
+.extension-nudge-copy span { color: #86948c; font-size: 12px; }
+.extension-nudge-action { flex: 0 0 auto; color: #a9d0b5; font-size: 12px; font-weight: 560; white-space: nowrap; }
 .native-extension-link { margin-left: auto; }
 
 @media (max-width: 760px) {
-  .extension-page { padding-top: 42px; }
+  .extension-page { padding-top: 20px; }
   .extension-hero-card { grid-template-columns: 1fr; }
   .extension-mark { display: none; }
   .extension-profiles { grid-template-columns: 1fr; }
   .extension-profile-firefox { grid-column: auto; }
   .extension-guide-columns { grid-template-columns: 1fr; }
   .extension-diagnostics-grid { grid-template-columns: 1fr; }
-  .extension-nudge { align-items: flex-start; }
+  .extension-nudge { align-items: flex-start; flex-direction: column; gap: 6px; }
 }
