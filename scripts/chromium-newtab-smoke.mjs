@@ -1,6 +1,6 @@
 /**
- * [INPUT]: depends on packaged apps/extension/.output/chrome-mv3-newtab and playwright Chromium
- * [OUTPUT]: verifies New Tab local-first snapshot refresh, offline search, category/collection filter pills, bilingual EN/zh-CN runtime, and cache clearing
+ * [INPUT]: depends on packaged apps/extension/.output/chrome-mv3-newtab, Standard chrome-mv3 manifest, and playwright Chromium
+ * [OUTPUT]: verifies modular WXT newtab-app.js bundle load, Standard manifest isolation, Pinyin initial search, local-first snapshot refresh, offline search, category/collection filter pills, bilingual EN/zh-CN runtime, and cache clearing
  * [POS]: primary Chromium E2E smoke test for the Dockmark New Tab extension variant in scripts/
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
@@ -47,6 +47,8 @@ try {
   assert.ok(extensionId, "Dockmark New Tab MV3 worker should expose an extension id.");
 
   const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`chrome-extension://${extensionId}/newtab.html`);
   await page.waitForLoadState("domcontentloaded");
 
@@ -55,6 +57,23 @@ try {
   assert.equal(manifest.name, "Dockmark New Tab");
   assert.equal(manifest.icons?.[128], "icons/dockmark-128.png");
   assert.equal(manifest.chrome_url_overrides?.newtab, "newtab.html");
+  const standardManifest = JSON.parse(await readFile(path.join(root, "apps/extension/.output/chrome-mv3/manifest.json"), "utf8"));
+  assert.equal(standardManifest.version, expectedExtensionVersion);
+  assert.equal(standardManifest.chrome_url_overrides, undefined, "Standard extension manifest must never include chrome_url_overrides.");
+  const bundleCheck = await page.evaluate(() => ({
+    hasAppScript: Boolean(document.querySelector('script[src="newtab-app.js"]')),
+    hasLegacyScripts: Boolean(document.querySelector('script[src="newtab.js"], script[src="newtab-search.js"]')),
+    hasRefreshHook: typeof window.refreshCloud === "function",
+  }));
+  assert.equal(bundleCheck.hasAppScript, true, "newtab.html must load the compiled WXT newtab-app.js bundle.");
+  assert.equal(bundleCheck.hasLegacyScripts, false, "Legacy monkey-patch New Tab scripts must no longer be loaded.");
+  assert.equal(bundleCheck.hasRefreshHook, true, "newtab-app.js must expose its runtime cleanly.");
+  assert.deepEqual(pageErrors, [], `newtab-app.js loaded with unexpected page errors: ${pageErrors.join("; ")}`);
+
+  await page.locator("#search").focus();
+  const searchOutline = await page.evaluate(() => getComputedStyle(document.querySelector("#search")).outlineStyle);
+  assert.equal(searchOutline, "none", "New Tab composite #search input must not render an inner focus outline.");
+
   const iconHref = await page.locator('link[rel="icon"]').getAttribute("href");
   assert.equal(iconHref, "newtab-icon.svg");
   const iconText = await page.evaluate(async () => {
@@ -76,18 +95,32 @@ try {
       counts[path] = (counts[path] || 0) + 1;
       if (path === "/api/bookmarks") {
         return {
-          bookmarks: [{
-            id: "online-bookmark",
-            categoryId: "online-category",
-            title: "Online Cached Example",
-            url: clickedTargetUrl,
-            description: "Fresh cloud bookmark for single-pass snapshot validation.",
-            healthPolicy: "normal",
-            healthStatus: "unknown",
-            position: 0,
-            createdAt: now,
-            updatedAt: now,
-          }],
+          bookmarks: [
+            {
+              id: "online-bookmark",
+              categoryId: "online-category",
+              title: "Online Cached Example",
+              url: clickedTargetUrl,
+              description: "Fresh cloud bookmark for single-pass snapshot validation.",
+              healthPolicy: "normal",
+              healthStatus: "unknown",
+              position: 0,
+              createdAt: now,
+              updatedAt: now,
+            },
+            {
+              id: "online-pinyin-bookmark",
+              categoryId: "online-category",
+              title: "知乎专栏",
+              url: "https://zhuanlan.zhihu.com/",
+              description: "中文深度阅读社区",
+              healthPolicy: "normal",
+              healthStatus: "unknown",
+              position: 1,
+              createdAt: now,
+              updatedAt: now,
+            },
+          ],
         };
       }
       if (path === "/api/categories") {
@@ -155,6 +188,8 @@ try {
   await page.locator("#command-results .result-row").filter({ hasText: "Online Cached Example" }).first().waitFor();
   await page.locator("#search").fill("Online dev");
   await page.locator("#command-results .result-row").filter({ hasText: "Online dev" }).first().waitFor();
+  await page.locator("#search").fill("zhzl");
+  await page.locator("#command-results .result-row").filter({ hasText: "知乎专栏" }).first().waitFor();
 
   const offlineOrigin = "https://offline.dockmark.invalid";
   await page.evaluate(async ({ offlineOrigin, clickedTargetUrl }) => {
@@ -417,8 +452,12 @@ try {
   assert.equal(storageAfterClear.dockmarkServerUrl, offlineOrigin);
   assert.equal(storageAfterClear.dockmarkBrowserSettingsV1?.newTab?.autoRefresh, false);
 
+  assert.deepEqual(pageErrors, [], `New Tab smoke encountered runtime page errors: ${pageErrors.join("; ")}`);
+
   console.log(`✓ Dockmark New Tab variant loaded: ${extensionId}`);
-  console.log("✓ New Tab manifest override is isolated to the opt-in variant");
+  console.log("✓ Modular WXT TypeScript bundle newtab-app.js loaded cleanly with zero page errors");
+  console.log("✓ New Tab manifest override is isolated to the opt-in variant (Standard manifest has no chrome_url_overrides)");
+  console.log("✓ Pinyin initial search matches Chinese titles (e.g. 'zhzl' -> '知乎专栏')");
   console.log("✓ Transparent adaptive D dot favicon and manifest brand icons are packaged");
   console.log("✓ Current refresh reads browser settings once and persists tags, Smart Collections and Inbox membership atomically");
   console.log("✓ Cached bookmarks and Workspaces render without Dockmark host permission/network");

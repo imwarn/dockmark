@@ -1,6 +1,6 @@
 /**
  * [INPUT]: depends on packaged apps/extension/.output/chrome-mv3-newtab and playwright Chromium
- * [OUTPUT]: verifies canonical Web/New Tab result ordering, eight-result cap with default Search slot, localized EN/zh-CN kind labels, and Escape-to-blur
+ * [OUTPUT]: verifies modular newtab-app.js boot, canonical Web/New Tab result ordering, Pinyin initial search parity, eight-result cap with default Search slot, localized EN/zh-CN kind labels, and Escape-to-blur
  * [POS]: launcher parity Chromium smoke test in scripts/
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
@@ -30,12 +30,16 @@ try {
   if (!serviceWorker) serviceWorker = await context.waitForEvent("serviceworker");
   const extensionId = new URL(serviceWorker.url()).host;
   const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`chrome-extension://${extensionId}/newtab.html`);
   await page.waitForLoadState("domcontentloaded");
   await page.waitForFunction(() => {
     const text = document.querySelector("#connection-state")?.textContent?.trim();
     return Boolean(text && text !== "Starting…" && text !== "启动中…");
   });
+  assert.equal(await page.evaluate(() => Boolean(document.querySelector('script[src="newtab-app.js"]'))), true);
+  assert.deepEqual(pageErrors, [], `newtab-app.js emitted page errors: ${pageErrors.join("; ")}`);
 
   await page.evaluate(() => {
     // Keep synthetic openTabs stable if document.title changes during EN/zh-CN assertions.
@@ -199,15 +203,43 @@ try {
   await workspaceRow.waitFor();
   assert.match(await workspaceRow.innerText(), /Workspace/i);
 
+  await page.evaluate(() => {
+    const now = new Date().toISOString();
+    snapshot = {
+      ...snapshot,
+      bookmarks: [
+        ...snapshot.bookmarks,
+        {
+          id: "pinyin-parity-bookmark",
+          title: "知乎专栏",
+          url: "https://zhuanlan.zhihu.com/",
+          description: "中文专栏阅读",
+          tags: [],
+          healthPolicy: "normal",
+          healthStatus: "unknown",
+          position: 99,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+    };
+  });
+  await search.fill("zhzl");
+  const pinyinRow = page.locator("#command-results .result-row").filter({ hasText: "知乎专栏" }).first();
+  await pinyinRow.waitFor();
+  assert.match(await pinyinRow.innerText(), /Bookmark/i);
+
   await search.fill("");
   await search.focus();
   await search.press("Escape");
   assert.equal(await search.evaluate((element) => document.activeElement === element), false, "Escape on an empty Launcher should blur it on both Web and New Tab.");
+  assert.deepEqual(pageErrors, [], `New Tab parity smoke emitted runtime errors: ${pageErrors.join("; ")}`);
 
   console.log("✓ New Tab canonical ordering is Open tab > Workspace > Session > Collection > Bookmark > Search");
   console.log("✓ New Tab keeps the eight-result Web Launcher cap and reserves the final slot for Search");
   console.log("✓ New Tab exposes the same human-readable result type labels as Web Launcher");
   console.log("✓ Workspace item title/URL content participates in New Tab Launcher search");
+  console.log("✓ Pinyin initial search parity matches Chinese bookmark titles ('zhzl' -> '知乎专栏')");
   console.log("✓ Escape clears first and blurs the empty Launcher consistently");
 } finally {
   await context?.close();
