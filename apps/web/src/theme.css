@@ -62,8 +62,6 @@ body::before {
 html[data-theme="light"] .topbar,
 html[data-theme="light"] .public-topbar,
 html[data-theme="light"] .public-footer { border-color: var(--dm-border); }
-/* Nav buttons are 16px body text, so light mode needs the softer text colour to
-   clear 4.5:1 rather than the muted tone used for small supporting copy. */
 html[data-theme="light"] .ghost { color: var(--dm-text-soft); }
 html[data-theme="light"] .public-intro,
 html[data-theme="light"] .settings-heading p { color: var(--dm-text-muted); }
@@ -79,12 +77,18 @@ html[data-theme="light"] .primary { border-color: #6c9a7d; background: #74a889; 
 html[data-theme="light"] .form-card,
 html[data-theme="light"] .panel,
 html[data-theme="light"] .bookmark-card,
-html[data-theme="light"] .feature-grid article,
 html[data-theme="light"] .settings-heading,
 html[data-theme="light"] .settings-actions-row,
 html[data-theme="light"] .public-card,
-html[data-theme="light"] .public-search { border-color: var(--dm-border); background: rgba(255,255,255,.82); box-shadow: 0 14px 38px rgba(40,67,54,.04); }
-html[data-theme="light"] .command { border-color: var(--dm-border-strong); background: rgba(255,255,255,.92); box-shadow: 0 20px 70px rgba(40,67,54,.08); }
+html[data-theme="light"] .public-search,
+html[data-theme="light"] .launcher-bookmark-card,
+html[data-theme="light"] .launcher-workspace-card,
+html[data-theme="light"] .launcher-tab-chip {
+  border-color: var(--dm-border);
+  background: rgba(255,255,255,.88);
+  box-shadow: 0 10px 28px rgba(40,67,54,.04);
+}
+html[data-theme="light"] .command { border-color: var(--dm-border-strong); background: rgba(255,255,255,.94); box-shadow: 0 16px 48px rgba(40,67,54,.08); }
 html[data-theme="light"] .command input,
 html[data-theme="light"] .public-search input,
 html[data-theme="light"] .field-grid input,
@@ -93,15 +97,15 @@ html[data-theme="light"] .compact-form input,
 html[data-theme="light"] .category-edit input,
 html[data-theme="light"] .settings-field input,
 html[data-theme="light"] .settings-field select { color: var(--dm-text); background: #fff; border-color: var(--dm-border); }
-html[data-theme="light"] .command input::placeholder { color: #91a097; }
+html[data-theme="light"] .command input::placeholder { color: #7e9187; }
 html[data-theme="light"] kbd { color: var(--dm-text-muted); border-color: var(--dm-border); background: var(--dm-bg-soft); }
 html[data-theme="light"] .result:hover,
 html[data-theme="light"] .public-card:hover { background: var(--dm-bg-soft); }
 html[data-theme="light"] .favicon,
 html[data-theme="light"] .bookmark-icon,
-html[data-theme="light"] .public-card-icon { border-color: var(--dm-border); background: var(--dm-accent-bg); color: var(--dm-accent-strong); }
+html[data-theme="light"] .public-card-icon,
+html[data-theme="light"] .launcher-card-icon { border-color: var(--dm-border); background: var(--dm-accent-bg); color: var(--dm-accent-strong); }
 html[data-theme="light"] .result-copy small,
-html[data-theme="light"] .feature-grid p,
 html[data-theme="light"] .bookmark-details small,
 html[data-theme="light"] .public-card-copy small,
 html[data-theme="light"] .settings-footnote,
@@ -122,42 +126,55 @@ html[data-theme="light"] .settings-toggle { border-color: var(--dm-border); back
 html[data-theme="light"] .error-banner,
 html[data-theme="light"] .public-error { border-color: #e1b8b4; background: #fff3f2; color: #9f4e49; }
 
-/* Some Settings rows intentionally keep Dockmark's dark inverse surface in light mode. */
-html[data-theme="light"] .security-device,
-html[data-theme="light"] .public-bookmark-row {
-  border-color: #203129;
-  background: var(--dm-inverse-bg);
+html[data-theme="light"] .security-device {
+  border-color: var(--dm-border);
+  background: var(--dm-bg-card);
 }
-html[data-theme="light"] .security-device strong,
-html[data-theme="light"] .public-bookmark-row strong { color: var(--dm-inverse-text); }
-html[data-theme="light"] .security-device small,
-html[data-theme="light"] .public-bookmark-row small { color: var(--dm-inverse-soft); }
-html[data-theme="light"] .public-bookmark-row em {
-  color: #aab9b1;
-  font-weight: 700;
-  letter-spacing: .1em;
+html[data-theme="light"] .security-device strong { color: var(--dm-text); }
+html[data-theme="light"] .security-device small { color: var(--dm-text-muted); }
+html[data-theme="light"] .pair-code-panel > code {
+  border-color: #a8cbb5;
+  background: var(--dm-bg-soft);
+  color: var(--dm-accent-strong);
 }
-html[data-theme="light"] .public-bookmark-row:has(input:checked) {
-  border-color: #5c8c6d;
-  background: #0e1a14;
-}
-html[data-theme="light"] .public-bookmark-row:has(input:checked) em { color: #b7e4c4; }
+
+.appearance-group { display: grid; gap: 10px; }
+.appearance-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.appearance-group-head h3 { margin: 0; font-size: 14px; font-weight: 620; color: var(--dm-text); }
+.appearance-group-head span { color: var(--dm-text-muted); font-size: 11px; }
 
 .appearance-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.appearance-option { display: grid; grid-template-columns: 92px 1fr 24px; align-items: center; gap: 14px; min-height: 118px; text-align: left; color: inherit; cursor: pointer; }
-.appearance-option.active { border-color: var(--dm-accent); box-shadow: inset 0 0 0 1px var(--dm-accent); }
+.appearance-option { display: grid; grid-template-columns: 84px 1fr 22px; align-items: center; gap: 12px; min-height: 102px; text-align: left; color: inherit; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
+.appearance-option:hover:not(:disabled) { border-color: color-mix(in srgb, var(--dm-accent) 44%, var(--dm-border)); }
+.appearance-option.active { border-color: var(--dm-accent); box-shadow: inset 0 0 0 1px var(--dm-accent); background: color-mix(in srgb, var(--dm-selected-bg) 42%, var(--dm-bg-card)); }
 .appearance-option:disabled { cursor: default; opacity: .72; }
-.appearance-option-copy { display: grid; gap: 5px; }
+.appearance-option-copy { display: grid; gap: 4px; min-width: 0; }
 .appearance-option-copy strong { font-size: 14px; }
-.appearance-option-copy small { color: var(--dm-text-muted); line-height: 1.45; }
+.appearance-option-copy small { color: var(--dm-text-muted); font-size: 12px; line-height: 1.4; }
 .appearance-check { color: var(--dm-accent-strong); font-weight: 800; text-align: center; }
-.appearance-preview { position: relative; display: block; width: 92px; height: 66px; overflow: hidden; border: 1px solid #34403a; border-radius: 10px; background: #0a0f0c; }
+
+.appearance-preview { position: relative; display: block; width: 84px; height: 60px; overflow: hidden; border: 1px solid #34403a; border-radius: 9px; background: #0a0f0c; }
 .appearance-preview-light { border-color: #c9d7cf; background: #f4f7f5; }
 .appearance-preview-system { background: linear-gradient(135deg, #f4f7f5 0 50%, #0a0f0c 50% 100%); }
-.appearance-preview-bar { position: absolute; top: 9px; left: 9px; right: 9px; height: 6px; border-radius: 5px; background: #789486; }
-.appearance-preview-card { position: absolute; left: 9px; bottom: 10px; width: 49px; height: 29px; border-radius: 7px; background: rgba(145,188,159,.24); border: 1px solid rgba(145,188,159,.42); }
+.appearance-preview-bar { position: absolute; top: 8px; left: 8px; right: 8px; height: 5px; border-radius: 4px; background: #789486; }
+.appearance-preview-card { position: absolute; left: 8px; bottom: 9px; width: 44px; height: 26px; border-radius: 6px; background: rgba(145,188,159,.24); border: 1px solid rgba(145,188,159,.42); }
 .appearance-preview-light .appearance-preview-card { background: #fff; border-color: #d1ddd6; }
-.appearance-preview-dot { position: absolute; right: 11px; bottom: 14px; width: 12px; height: 12px; border-radius: 50%; background: #91bc9f; }
+.appearance-preview-dot { position: absolute; right: 10px; bottom: 13px; width: 11px; height: 11px; border-radius: 50%; background: #91bc9f; }
+
+.locale-option { grid-template-columns: 60px 1fr 22px; min-height: 86px; }
+.locale-preview-badge {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 44px;
+  border: 1px solid var(--dm-border-strong);
+  border-radius: 9px;
+  background: var(--dm-accent-bg);
+  color: var(--dm-accent-strong);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
 
 @media (max-width: 820px) {
   .appearance-grid { grid-template-columns: 1fr; }
