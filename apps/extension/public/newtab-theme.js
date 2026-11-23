@@ -1,27 +1,42 @@
 /**
- * [INPUT]: depends on localStorage, matchMedia, and optional chrome.storage.local
- * [OUTPUT]: exposes window.dockmarkAppearance ({ apply, current, cycle, hydrate }) and updates html[data-theme] before first paint
- * [POS]: head-loaded theme bootstrapper for apps/extension/public/newtab.html
+ * [INPUT]: depends on localStorage, matchMedia, navigator.language, and optional chrome.storage.local
+ * [OUTPUT]: exposes window.dockmarkAppearance ({ STORAGE_KEY, apply, current, cycle, hydrate, resolved }) and sets html[data-theme] and html[lang] before first paint
+ * [POS]: head-loaded zero-FOUC theme and locale bootstrapper for apps/extension/public/newtab.html
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 (() => {
   const STORAGE_KEY = "dockmarkAppearanceV1";
+  const LOCALE_KEY = "dockmarkLocaleV1";
 
   function normalize(value) {
     return value === "light" || value === "dark" || value === "system" ? value : "system";
   }
 
-  function safeLocalGet() {
+  function normalizeLocale(value) {
+    if (typeof value !== "string") return "system";
+    const cleaned = value.trim().toLowerCase().replace(/_/g, "-");
+    if (cleaned === "en" || cleaned.startsWith("en-")) return "en";
+    if (cleaned === "zh" || cleaned.startsWith("zh-")) return "zh-CN";
+    return "system";
+  }
+
+  function resolveLocale(preference) {
+    if (preference === "en" || preference === "zh-CN") return preference;
+    const candidate = typeof navigator !== "undefined" ? navigator.language : "en";
+    return String(candidate || "").toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+  }
+
+  function safeLocalGet(key = STORAGE_KEY) {
     try {
-      return localStorage.getItem(STORAGE_KEY);
+      return localStorage.getItem(key);
     } catch {
       return null;
     }
   }
 
-  function safeLocalSet(value) {
+  function safeLocalSet(value, key = STORAGE_KEY) {
     try {
-      localStorage.setItem(STORAGE_KEY, value);
+      localStorage.setItem(key, value);
     } catch {
       // Ignore storage errors in restricted contexts.
     }
@@ -58,6 +73,14 @@
     return normalized;
   }
 
+  function bootstrapLocaleAttributes() {
+    const preference = normalizeLocale(safeLocalGet(LOCALE_KEY));
+    const locale = resolveLocale(preference);
+    document.documentElement.dataset.localePreference = preference;
+    document.documentElement.dataset.locale = locale;
+    document.documentElement.lang = locale;
+  }
+
   function current() {
     return normalize(safeLocalGet());
   }
@@ -83,6 +106,7 @@
   }
 
   apply(current(), false);
+  bootstrapLocaleAttributes();
 
   const media = matchMedia("(prefers-color-scheme: light)");
   media.addEventListener("change", () => {

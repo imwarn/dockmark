@@ -8,7 +8,6 @@
     <title>Dockmark New Tab</title>
     <link rel="icon" href="newtab-icon.svg" type="image/svg+xml" />
     <script src="newtab-theme.js"></script>
-    <script src="newtab-i18n.js"></script>
     <link rel="stylesheet" href="newtab.css" />
   </head>
   <body>
@@ -59,24 +58,36 @@
       <main>
         <section class="hero" aria-label="Launcher command bar">
           <div class="command-wrap">
-            <span class="command-icon" aria-hidden="true">⌕</span>
-            <input
-              id="search"
-              class="command-input"
-              type="search"
-              autocomplete="off"
-              spellcheck="false"
-              data-i18n-placeholder-en="Search bookmarks, tabs, Workspaces, Sessions… (!g, @Collection, #tag)"
-              data-i18n-placeholder-zh="搜索书签、打开的标签页、工作区、会话…（!g、@智能合集、#标签）"
-              placeholder="Search bookmarks, tabs, Workspaces, Sessions… (!g, @Collection, #tag)"
-              autofocus
-            />
-            <span
-              class="command-hint"
-              data-i18n-title-en="Enter opens here · Shift+Enter opens a new tab · Command/Ctrl+Enter opens a background tab"
-              data-i18n-title-zh="Enter 当前页打开 · Shift+Enter 新标签页打开 · Command/Ctrl+Enter 后台打开"
-              title="Enter opens here · Shift+Enter opens a new tab · Command/Ctrl+Enter opens a background tab"
-            >↵</span>
+            <div class="command-bar">
+              <span class="command-icon" aria-hidden="true">⌕</span>
+              <input
+                id="search"
+                class="command-input"
+                type="search"
+                autocomplete="off"
+                spellcheck="false"
+                data-i18n-placeholder-en="Search bookmarks, tabs, Workspaces, Sessions… (!g, @Collection, #tag)"
+                data-i18n-placeholder-zh="搜索书签、打开的标签页、工作区、会话…（支持拼音首字母、!g、@智能合集、#标签）"
+                placeholder="Search bookmarks, tabs, Workspaces, Sessions… (!g, @Collection, #tag)"
+                autofocus
+              />
+              <button
+                id="search-clear"
+                class="command-clear"
+                type="button"
+                hidden
+                data-i18n-title-en="Clear search"
+                data-i18n-title-zh="清空搜索"
+                title="Clear search"
+                aria-label="Clear search"
+              >×</button>
+              <span
+                class="command-hint"
+                data-i18n-title-en="Enter opens here · Shift+Enter opens a new tab · Command/Ctrl+Enter opens a background tab"
+                data-i18n-title-zh="Enter 当前页打开 · Shift+Enter 新标签页打开 · Command/Ctrl+Enter 后台打开"
+                title="Enter opens here · Shift+Enter opens a new tab · Command/Ctrl+Enter opens a background tab"
+              >↵</span>
+            </div>
             <div id="command-results" class="command-results" hidden></div>
           </div>
 
@@ -87,7 +98,7 @@
             <span class="hint-sep" aria-hidden="true">·</span>
             <span><kbd>#</kbd> <em data-i18n-en="Tag" data-i18n-zh="标签">Tag</em></span>
             <span class="hint-sep" aria-hidden="true">·</span>
-            <span><kbd>Alt+Shift+D</kbd> <em data-i18n-en="Focus launcher" data-i18n-zh="唤起启动台">Focus launcher</em></span>
+            <span><kbd id="shortcut-kbd">Alt+Shift+D</kbd> <em data-i18n-en="Focus launcher" data-i18n-zh="唤起启动台">Focus launcher</em></span>
           </div>
 
           <div id="offline-banner" class="offline-banner" hidden></div>
@@ -139,11 +150,6 @@
         </div>
       </footer>
     </div>
-    <script src="newtab-auth.js"></script>
-    <script src="newtab.js"></script>
-    <script src="newtab-library-cache.js"></script>
-    <script src="newtab-search.js"></script>
-    <script src="newtab-ux.js"></script>
-    <script src="newtab-parity.js"></script>
+    <script src="newtab-app.js"></script>
   </body>
 </html>
