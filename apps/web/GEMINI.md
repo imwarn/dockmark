@@ -30,6 +30,9 @@ src/BrowserExtensionManager.tsx: Extension hub (`/app/extension`) with Chromium 
 ## `src/` — Library, Workspace & Triage Managers
 src/BookmarkManager.tsx: Tabbed Bookmarks hub coordinating Library, Organize, Health, and Change Journal views
 src/BookmarkManagerLegacy.tsx: Category sidebar and bookmark CRUD/tagging/reordering library manager
+src/BookmarkCategorySidebar.tsx: Left sidebar of BookmarkManagerLegacy handling category CRUD/reordering and tag filter chips
+src/BookmarkFormFields.tsx: Shared bookmark form field grid (`BookmarkFields`) and localized `HealthBadge` extracted from BookmarkManagerLegacy
+src/BookmarkFavicon.tsx: Shared HTTP/HTTPS favicon renderer with domain monogram fallback and `safeDomainLabel` helper
 src/BookmarkMaintenance.tsx: URL reachability checks (server + local bridge), health policy overrides, metadata refresh, and archive management
 src/LibraryBulkOrganizer.tsx: Bulk category/tag organizer and reviewed AI batch organization workflow
 src/LibraryBulkMaintenance.tsx: Bulk archive, restore, and health-policy maintenance actions
@@ -40,7 +43,9 @@ src/SessionManager.tsx: Saved tab-window Session CRUD, capture from live tabs, a
 src/SearchEngineManager.tsx: Custom search engine and `!bang` keyword CRUD with default engine selection
 src/TransferManager.tsx: HTML/JSON bookmark import/export workflow and native browser import hub
 src/NativeBookmarkImport.tsx: Reviewed native browser bookmark import, mapping reconciliation, conflict review, and manual writeback
+src/NativeBookmarkSyncPanels.tsx: Extracted mapping preview (`NativeMappingPreviewPanel`) and import tree (`NativeImportTreePanel`) views for NativeBookmarkImport
 src/InboxPage.tsx: Capture Inbox triage view with AI/metadata review and filing/archiving actions
+src/InboxReviewCard.tsx: Single-bookmark Inbox review card handling filing, AI triage selection, and opt-in metadata suggestions
 src/SmartCollectionsPage.tsx: Saved dynamic filter collection builder, live preview, and bulk handoff
 src/DuplicateReviewPage.tsx: Duplicate URL group detector and reviewed merge/archive workflow
 
