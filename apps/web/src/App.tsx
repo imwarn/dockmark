@@ -1,17 +1,20 @@
 /**
- * [INPUT]: depends on @dockmark/core domain types, ./api, ./browser-bridge, ./i18n, ./LauncherDashboard, and workspace section manager views
- * [OUTPUT]: exports App root workspace shell with sticky 64px topbar, command palette launcher, and section router
+ * [INPUT]: depends on @dockmark/core domain types, ./api, ./browser-bridge, ./BrowserSettingsManager, ./i18n, ./LauncherDashboard, and workspace section manager views
+ * [OUTPUT]: exports App root workspace shell with sticky 64px topbar, customizable command palette shortcuts, and section router
  * [POS]: Primary authenticated workspace mounted by PrivateRoot for /app and /app/(workspaces|sessions|bookmarks|search|transfer|extension).
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import type {
-  Bookmark,
-  Category,
-  CommandResult,
-  SearchEngine,
-  SessionWithItems,
-  WorkspaceWithItems,
+import {
+  normalizeBrowserSettings,
+  type Bookmark,
+  type BrowserSettings,
+  type Category,
+  type CommandResult,
+  type LauncherShortcutKey,
+  type SearchEngine,
+  type SessionWithItems,
+  type WorkspaceWithItems,
 } from "@dockmark/core";
 import {
   activateBridgeTab,
@@ -29,6 +32,13 @@ import {
   listSessions,
   listWorkspaces,
 } from "./api";
+import {
+  BROWSER_SETTINGS_EVENT,
+  BROWSER_SETTINGS_STORAGE_KEY,
+  fetchCloudBrowserSettings,
+  readLocalBrowserSettings,
+  writeLocalBrowserSettings,
+} from "./BrowserSettingsManager";
 import { useI18n } from "./i18n";
 import { listInbox } from "./inbox-api";
 import {
@@ -79,9 +89,27 @@ function openUrls(urls: string[]) {
   }
 }
 
+function matchesLauncherShortcut(event: KeyboardEvent, shortcut: LauncherShortcutKey): boolean {
+  const key = event.key.toLowerCase();
+  if (shortcut === "mod-j") {
+    return (event.metaKey || event.ctrlKey) && !event.altKey && key === "j";
+  }
+  if (shortcut === "alt-k") {
+    return event.altKey && !event.metaKey && !event.ctrlKey && key === "k";
+  }
+  return (event.metaKey || event.ctrlKey) && !event.altKey && key === "k";
+}
+
+function shortcutBadgeLabel(shortcut: LauncherShortcutKey): string {
+  if (shortcut === "mod-j") return "⌘ J";
+  if (shortcut === "alt-k") return "⌥ K";
+  return "⌘ K";
+}
+
 export function App() {
   const { locale, tx } = useI18n();
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname));
+  const [browserSettings, setBrowserSettings] = useState<BrowserSettings>(() => readLocalBrowserSettings());
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -175,6 +203,33 @@ export function App() {
   }, [refreshBridge]);
 
   useEffect(() => {
+    const onBrowserSettings = (event: Event) => {
+      const detail = (event as CustomEvent<BrowserSettings | undefined>).detail;
+      setBrowserSettings(detail ? normalizeBrowserSettings(detail) : readLocalBrowserSettings());
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === BROWSER_SETTINGS_STORAGE_KEY) {
+        setBrowserSettings(readLocalBrowserSettings());
+      }
+    };
+    window.addEventListener(BROWSER_SETTINGS_EVENT, onBrowserSettings);
+    window.addEventListener("storage", onStorage);
+    let cancelled = false;
+    void fetchCloudBrowserSettings()
+      .then((cloud) => {
+        if (cancelled) return;
+        setBrowserSettings(cloud);
+        writeLocalBrowserSettings(cloud);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(BROWSER_SETTINGS_EVENT, onBrowserSettings);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  useEffect(() => {
     const focusLauncher = () => {
       navigateView("launcher");
       setView("launcher");
@@ -182,11 +237,12 @@ export function App() {
       requestAnimationFrame(() => commandInputRef.current?.focus());
     };
     const onGlobalKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (matchesLauncherShortcut(event, browserSettings.launcherShortcut)) {
         event.preventDefault();
         focusLauncher();
         return;
       }
+      if (!browserSettings.slashFocus) return;
       if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
       if (
@@ -202,7 +258,7 @@ export function App() {
     };
     window.addEventListener("keydown", onGlobalKeyDown);
     return () => window.removeEventListener("keydown", onGlobalKeyDown);
-  }, [refreshBridge]);
+  }, [browserSettings.launcherShortcut, browserSettings.slashFocus, refreshBridge]);
 
   const defaultEngine = useMemo(
     () => searchEngines.find((engine) => engine.isDefault) ?? searchEngines[0] ?? null,
@@ -531,7 +587,7 @@ export function App() {
                   ×
                 </button>
               )}
-              <span className="command-shortcuts"><kbd>⌘ K</kbd></span>
+              <span className="command-shortcuts"><kbd>{shortcutBadgeLabel(browserSettings.launcherShortcut)}</kbd></span>
             </div>
 
             <div className="command-syntax-bar">
@@ -577,6 +633,7 @@ export function App() {
               launcherStatus={launcherStatus}
               loading={loading}
               locale={locale}
+              slashFocus={browserSettings.slashFocus}
               onSelectIndex={setSelectedIndex}
               onExecute={executeResult}
             />

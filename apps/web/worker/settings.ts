@@ -1,25 +1,39 @@
 /**
- * [INPUT]: depends on browser/appearance settings helpers and LocalePreference from @dockmark/core; queries D1 app_settings, bookmark_tags, smart_collections, and bookmarks tables
- * [OUTPUT]: exports SettingsDbLike, SettingsHttpError, loadAppearanceSettings, and handleSettingsApi
- * [POS]: Worker HTTP handler for /api/settings/browser and /api/settings/appearance in apps/web/worker
+ * [INPUT]: depends on browser, appearance, public-page, and AI settings helpers plus URL policy checks from @dockmark/core; queries D1 app_settings, bookmark_tags, smart_collections, and bookmarks tables
+ * [OUTPUT]: exports SettingsDbLike, SettingsHttpError, loadAppearanceSettings, loadPublicPageSettings, loadAiSettings, and handleSettingsApi
+ * [POS]: Worker HTTP handler for /api/settings/browser, /api/settings/appearance, /api/settings/public-page, and /api/settings/ai in apps/web/worker
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 import {
+  DEFAULT_AI_SETTINGS,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_BROWSER_SETTINGS,
+  DEFAULT_PUBLIC_PAGE_SETTINGS,
+  inferHealthPolicy,
+  mergeAiSettings,
   mergeAppearanceSettings,
   mergeBrowserSettings,
+  mergePublicPageSettings,
+  normalizeAiSettings,
   normalizeAppearancePreference,
   normalizeAppearanceSettings,
+  normalizeBookmarkUrl,
   normalizeBrowserSettings,
+  normalizePublicPageSettings,
+  type AiSettings,
   type AppearancePreference,
   type AppearanceSettings,
   type BookmarkConflictPreference,
   type BrowserNewTabSettings,
   type BrowserSettings,
+  type LauncherShortcutKey,
   type LocalePreference,
+  type PublicPageLayout,
+  type PublicPageSettings,
+  type UpdateAiSettingsInput,
   type UpdateAppearanceSettingsInput,
   type UpdateBrowserSettingsInput,
+  type UpdatePublicPageSettingsInput,
 } from "@dockmark/core";
 
 type BindValue = string | number | null;
@@ -97,6 +111,11 @@ function parseConflictPreference(value: unknown): BookmarkConflictPreference {
   throw new SettingsHttpError(400, "invalid_field", "conflictPreference must be ask, browser or dockmark.");
 }
 
+function parseLauncherShortcut(value: unknown): LauncherShortcutKey {
+  if (value === "mod-k" || value === "mod-j" || value === "alt-k") return value;
+  throw new SettingsHttpError(400, "invalid_field", "launcherShortcut must be mod-k, mod-j or alt-k.");
+}
+
 function parseAppearancePreference(value: unknown): AppearancePreference {
   const preference = normalizeAppearancePreference(value);
   if (preference === value) return preference;
@@ -106,6 +125,57 @@ function parseAppearancePreference(value: unknown): AppearancePreference {
 function parseLocalePreference(value: unknown): LocalePreference {
   if (value === "system" || value === "en" || value === "zh-CN") return value;
   throw new SettingsHttpError(400, "invalid_field", "locale must be system, en or zh-CN.");
+}
+
+function parsePublicPageLayout(value: unknown): PublicPageLayout {
+  if (value === "grid" || value === "compact" || value === "list") return value;
+  throw new SettingsHttpError(400, "invalid_field", "defaultLayout must be grid, compact or list.");
+}
+
+function parseBoolean(value: unknown, key: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new SettingsHttpError(400, "invalid_field", `${key} must be a boolean.`);
+  }
+  return value;
+}
+
+function parseBoundedString(value: unknown, key: string, maxLength: number): string {
+  if (typeof value !== "string") {
+    throw new SettingsHttpError(400, "invalid_field", `${key} must be a string.`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > maxLength) {
+    throw new SettingsHttpError(400, "invalid_field", `${key} must be at most ${maxLength} characters.`);
+  }
+  return trimmed;
+}
+
+function parseAiEndpoint(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new SettingsHttpError(400, "invalid_field", "endpoint must be a string.");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed.length > 500) {
+    throw new SettingsHttpError(400, "invalid_field", "endpoint must be at most 500 characters.");
+  }
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new SettingsHttpError(400, "invalid_field", "endpoint must be a valid HTTPS URL.");
+  }
+  if (url.protocol !== "https:") {
+    throw new SettingsHttpError(400, "invalid_field", "endpoint must use HTTPS.");
+  }
+  if (url.username || url.password) {
+    throw new SettingsHttpError(400, "invalid_field", "endpoint must not contain URL credentials.");
+  }
+  const normalized = normalizeBookmarkUrl(url.toString());
+  if (inferHealthPolicy(normalized) === "local-only") {
+    throw new SettingsHttpError(400, "invalid_field", "endpoint must be a public HTTPS URL.");
+  }
+  return trimmed;
 }
 
 function parseInteger(value: unknown, key: string, min: number, max: number) {
@@ -221,9 +291,19 @@ export async function loadAppearanceSettings(db: SettingsDbLike): Promise<Appear
   return loadSetting(db, "appearance", DEFAULT_APPEARANCE_SETTINGS, normalizeAppearanceSettings);
 }
 
+export async function loadPublicPageSettings(db: SettingsDbLike): Promise<PublicPageSettings> {
+  return loadSetting(db, "public_page", DEFAULT_PUBLIC_PAGE_SETTINGS, normalizePublicPageSettings);
+}
+
+export async function loadAiSettings(db: SettingsDbLike): Promise<AiSettings> {
+  return loadSetting(db, "ai", DEFAULT_AI_SETTINGS, normalizeAiSettings);
+}
+
 function parseBrowserUpdate(body: Record<string, unknown>): UpdateBrowserSettingsInput {
   const update: UpdateBrowserSettingsInput = {};
   if (hasOwn(body, "conflictPreference")) update.conflictPreference = parseConflictPreference(body.conflictPreference);
+  if (hasOwn(body, "launcherShortcut")) update.launcherShortcut = parseLauncherShortcut(body.launcherShortcut);
+  if (hasOwn(body, "slashFocus")) update.slashFocus = parseBoolean(body.slashFocus, "slashFocus");
   if (hasOwn(body, "newTab")) update.newTab = parseNewTab(body.newTab);
   return update;
 }
@@ -232,6 +312,33 @@ function parseAppearanceUpdate(body: Record<string, unknown>): UpdateAppearanceS
   const update: UpdateAppearanceSettingsInput = {};
   if (hasOwn(body, "preference")) update.preference = parseAppearancePreference(body.preference);
   if (hasOwn(body, "locale")) update.locale = parseLocalePreference(body.locale);
+  return update;
+}
+
+function parsePublicPageUpdate(body: Record<string, unknown>): UpdatePublicPageSettingsInput {
+  const update: UpdatePublicPageSettingsInput = {};
+  if (hasOwn(body, "siteTitle")) update.siteTitle = parseBoundedString(body.siteTitle, "siteTitle", 80);
+  if (hasOwn(body, "siteSubtitle")) update.siteSubtitle = parseBoundedString(body.siteSubtitle, "siteSubtitle", 200);
+  if (hasOwn(body, "defaultLayout")) update.defaultLayout = parsePublicPageLayout(body.defaultLayout);
+  if (hasOwn(body, "showSearchBar")) update.showSearchBar = parseBoolean(body.showSearchBar, "showSearchBar");
+  if (hasOwn(body, "showWebSearch")) update.showWebSearch = parseBoolean(body.showWebSearch, "showWebSearch");
+  if (hasOwn(body, "showCategoryNav")) update.showCategoryNav = parseBoolean(body.showCategoryNav, "showCategoryNav");
+  if (hasOwn(body, "openInNewTab")) update.openInNewTab = parseBoolean(body.openInNewTab, "openInNewTab");
+  return update;
+}
+
+function parseAiUpdate(body: Record<string, unknown>): UpdateAiSettingsInput {
+  if (hasOwn(body, "apiKey") || hasOwn(body, "api_key")) {
+    throw new SettingsHttpError(
+      400,
+      "secret_not_allowed",
+      "API keys cannot be stored in settings; configure DOCKMARK_AI_API_KEY as a Worker secret.",
+    );
+  }
+  const update: UpdateAiSettingsInput = {};
+  if (hasOwn(body, "endpoint")) update.endpoint = parseAiEndpoint(body.endpoint);
+  if (hasOwn(body, "model")) update.model = parseBoundedString(body.model, "model", 160);
+  if (hasOwn(body, "timeoutSeconds")) update.timeoutSeconds = parseInteger(body.timeoutSeconds, "timeoutSeconds", 15, 180);
   return update;
 }
 
@@ -268,6 +375,28 @@ export async function handleSettingsApi(
       return json({ settings });
     }
     throw new SettingsHttpError(405, "method_not_allowed", "Only GET and PATCH are supported for appearance settings.");
+  }
+
+  if (pathname === "/api/settings/public-page") {
+    if (request.method === "GET") return json({ settings: await loadPublicPageSettings(db) });
+    if (request.method === "PATCH") {
+      const current = await loadPublicPageSettings(db);
+      const settings = mergePublicPageSettings(current, parsePublicPageUpdate(await readBody(request)));
+      await saveSetting(db, "public_page", settings);
+      return json({ settings });
+    }
+    throw new SettingsHttpError(405, "method_not_allowed", "Only GET and PATCH are supported for public page settings.");
+  }
+
+  if (pathname === "/api/settings/ai") {
+    if (request.method === "GET") return json({ settings: await loadAiSettings(db) });
+    if (request.method === "PATCH") {
+      const current = await loadAiSettings(db);
+      const settings = mergeAiSettings(current, parseAiUpdate(await readBody(request)));
+      await saveSetting(db, "ai", settings);
+      return json({ settings });
+    }
+    throw new SettingsHttpError(405, "method_not_allowed", "Only GET and PATCH are supported for AI settings.");
   }
 
   return null;

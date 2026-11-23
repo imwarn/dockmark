@@ -1,15 +1,19 @@
 /**
- * [INPUT]: depends on tx and preference types from ../../lib/ext-locale
- * [OUTPUT]: exports SettingsDrawer component for theme, language, server connection, pairing, and native bookmarks permission
+ * [INPUT]: depends on useState from react; depends on browser from wxt/browser; depends on tx and preference types from ../../lib/ext-locale
+ * [OUTPUT]: exports SettingsDrawer component for theme, language, browser shortcut guide, server connection, pairing, and native bookmarks permission
  * [POS]: collapsible settings panel inside apps/extension/entrypoints/popup
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
+import { useState } from "react";
+import { browser } from "wxt/browser";
 import {
   tx,
   type AppearancePreference,
   type LocalePreference,
   type ResolvedLocale,
 } from "../../lib/ext-locale";
+
+const SHORTCUTS_URL = "chrome://extensions/shortcuts";
 
 interface SettingsDrawerProps {
   locale: ResolvedLocale;
@@ -49,6 +53,21 @@ const LOCALE_OPTIONS: Array<{ value: LocalePreference; en: string; zh: string }>
 
 export function SettingsDrawer(props: SettingsDrawerProps) {
   const { locale } = props;
+  const [shortcutFeedback, setShortcutFeedback] = useState<string | null>(null);
+
+  async function openShortcutsSettings() {
+    setShortcutFeedback(null);
+    try {
+      await browser.tabs.create({ url: SHORTCUTS_URL });
+    } catch {
+      try {
+        await navigator.clipboard.writeText(SHORTCUTS_URL);
+        setShortcutFeedback(tx(locale, `Copied ${SHORTCUTS_URL}`, `已复制 ${SHORTCUTS_URL}`));
+      } catch {
+        setShortcutFeedback(SHORTCUTS_URL);
+      }
+    }
+  }
 
   return (
     <div className="settings-drawer" data-testid="popup-settings">
@@ -100,6 +119,33 @@ export function SettingsDrawer(props: SettingsDrawerProps) {
             ))}
           </div>
         </div>
+      </section>
+
+      <section className="card compact-card" data-testid="popup-shortcut-guide">
+        <div className="section-heading">
+          <strong>{tx(locale, "Shortcuts", "快捷入口")}</strong>
+          <span>{tx(locale, "Browser commands", "浏览器指令")}</span>
+        </div>
+        <div className="shortcut-guide-row">
+          <div className="shortcut-badges">
+            <span className="shortcut-chip">
+              <kbd>Alt+Shift+D</kbd>
+              <em>{tx(locale, "Launcher", "启动台")}</em>
+            </span>
+            <span className="shortcut-chip">
+              <kbd>d</kbd>
+              <em>{tx(locale, "Omnibox", "地址栏")}</em>
+            </span>
+          </div>
+          <button
+            className="secondary compact-btn"
+            type="button"
+            onClick={() => void openShortcutsSettings()}
+          >
+            {tx(locale, "Customize", "自定义")}
+          </button>
+        </div>
+        {shortcutFeedback && <p className="muted-copy">{shortcutFeedback}</p>}
       </section>
 
       <section className="card compact-card">

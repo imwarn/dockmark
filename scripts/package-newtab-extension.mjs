@@ -33,12 +33,7 @@ await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 for (const required of [
   "newtab.html",
-  "newtab.js",
-  "newtab-i18n.js",
-  "newtab-search.js",
-  "newtab-ux.js",
-  "newtab-parity.js",
-  "newtab-auth.js",
+  "newtab-app.js",
   "newtab-theme.js",
   "newtab.css",
   "newtab-icon.svg",

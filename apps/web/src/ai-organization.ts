@@ -1,10 +1,17 @@
 /**
- * [INPUT]: depends on ResolvedLocale from @dockmark/core and currentResolvedLocale from ./i18n; calls /api/ai/status, /api/ai/organize, and /api/ai/apply
- * [OUTPUT]: exports AI provider settings storage helpers, timeout constants, status fetch, locale-aware suggestion generator, and patch applier
- * [POS]: web client wrapper for AI-assisted bookmark organization in apps/web/src; consumed by AiOrganizationSettings.tsx and InboxPage.tsx
+ * [INPUT]: depends on AiSettings, UpdateAiSettingsInput, DEFAULT_AI_SETTINGS, normalizeAiSettings, and ResolvedLocale from @dockmark/core and currentResolvedLocale from ./i18n; calls /api/settings/ai, /api/ai/status, /api/ai/organize, and /api/ai/apply
+ * [OUTPUT]: exports AI provider local/cloud settings sync helpers (fetchAiSettings, saveCloudAiSettings, loadAiProviderSettings, saveAiProviderSettings), timeout constants, status fetch, locale-aware suggestion generator, and patch applier
+ * [POS]: web client wrapper for AI-assisted bookmark organization and non-secret AI settings sync in apps/web/src; consumed by AiOrganizationSettings.tsx and InboxPage.tsx
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
-import type { ResolvedLocale } from "@dockmark/core";
+import {
+  AI_SETTINGS_VERSION,
+  DEFAULT_AI_SETTINGS,
+  normalizeAiSettings,
+  type AiSettings,
+  type ResolvedLocale,
+  type UpdateAiSettingsInput,
+} from "@dockmark/core";
 import { currentResolvedLocale } from "./i18n";
 
 export interface AiProviderSettings {
@@ -41,10 +48,10 @@ interface ErrorEnvelope {
 }
 
 const STORAGE_KEY = "dockmarkAiProviderV1";
-const DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_ENDPOINT = DEFAULT_AI_SETTINGS.endpoint;
 export const MIN_AI_TIMEOUT_SECONDS = 15;
 export const MAX_AI_TIMEOUT_SECONDS = 180;
-export const DEFAULT_AI_TIMEOUT_SECONDS = 90;
+export const DEFAULT_AI_TIMEOUT_SECONDS = DEFAULT_AI_SETTINGS.timeoutSeconds;
 
 function normalizedTimeout(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= MIN_AI_TIMEOUT_SECONDS && value <= MAX_AI_TIMEOUT_SECONDS
@@ -74,10 +81,15 @@ export function loadAiProviderSettings(): AiProviderSettings {
 }
 
 export function saveAiProviderSettings(settings: AiProviderSettings) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    ...settings,
-    timeoutSeconds: normalizedTimeout(settings.timeoutSeconds),
-  }));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      endpoint: settings.endpoint,
+      model: settings.model,
+      timeoutSeconds: normalizedTimeout(settings.timeoutSeconds),
+    }));
+  } catch {
+    // Ignore storage quota or private browsing errors.
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -90,6 +102,48 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new Error(payload.error?.message ?? `Request failed with status ${response.status}.`);
   }
   return payload;
+}
+
+export async function fetchAiSettings(): Promise<AiSettings> {
+  const response = await request<{ settings: AiSettings }>("/api/settings/ai");
+  const cloud = normalizeAiSettings(response.settings);
+  const local = loadAiProviderSettings();
+
+  if (!cloud.model.trim() && local.model.trim()) {
+    return normalizeAiSettings({
+      version: AI_SETTINGS_VERSION,
+      endpoint: local.endpoint,
+      model: local.model,
+      timeoutSeconds: local.timeoutSeconds,
+      updatedAt: cloud.updatedAt,
+    });
+  }
+
+  if (cloud.model.trim() || cloud.updatedAt !== null) {
+    saveAiProviderSettings({
+      endpoint: cloud.endpoint,
+      model: cloud.model,
+      timeoutSeconds: cloud.timeoutSeconds,
+    });
+  }
+  return cloud;
+}
+
+export async function saveCloudAiSettings(input: UpdateAiSettingsInput): Promise<AiSettings> {
+  const response = await request<{ settings: AiSettings }>("/api/settings/ai", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  const settings = normalizeAiSettings(response.settings);
+  saveAiProviderSettings({
+    endpoint: settings.endpoint,
+    model: settings.model,
+    timeoutSeconds: settings.timeoutSeconds,
+  });
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("dockmark:ai-settings", { detail: settings }));
+  }
+  return settings;
 }
 
 export function getAiProviderStatus() {

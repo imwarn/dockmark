@@ -4,7 +4,7 @@ TypeScript ^7.0.2 + React ^19.2.8 + Vite ^8.2.2 + Cloudflare Workers & D1 (Wrang
 
 <directory>
 apps/ - Deployable web app, Cloudflare Worker API, and browser extensions (2 subdirectories: web/, extension/)
-packages/ - Shared domain contracts, settings normalization, i18n, search, and URL policy (1 subdirectory: core/)
+packages/ - Shared domain contracts, settings normalization, i18n, Pinyin/command search, and URL policy (1 subdirectory: core/)
 scripts/ - Release packaging, Cloudflare deploy/migration helpers, and Chromium smoke suites (14 scripts)
 docs/ - Architecture, API, security, roadmap, and Firefox validation specifications (1 subdirectory: brand/)
 </directory>

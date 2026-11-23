@@ -295,6 +295,7 @@ export function LauncherCommandPanel({
   launcherStatus,
   loading,
   locale,
+  slashFocus = true,
   onSelectIndex,
   onExecute,
 }: {
@@ -305,6 +306,7 @@ export function LauncherCommandPanel({
   launcherStatus: string;
   loading: boolean;
   locale: ResolvedLocale;
+  slashFocus?: boolean;
   onSelectIndex: (index: number) => void;
   onExecute: (item: CommandResult, forceNewTab: boolean) => Promise<void>;
 }) {
@@ -362,7 +364,7 @@ export function LauncherCommandPanel({
           <kbd>↑</kbd><kbd>↓</kbd> {tx("select", "选择")} <kbd>Enter</kbd> {tx("run", "打开")} <kbd>Tab</kbd> {tx("accept bang", "补全快捷词")}
         </span>
         <span>
-          <kbd>Shift</kbd>/<kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> {tx("new tab", "新标签页")} <kbd>/</kbd> {tx("focus", "聚焦")} <kbd>Esc</kbd> {tx("clear", "清空")}
+          <kbd>Shift</kbd>/<kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> {tx("new tab", "新标签页")}{slashFocus && <> <kbd>/</kbd> {tx("focus", "聚焦")}</>} <kbd>Esc</kbd> {tx("clear", "清空")}
         </span>
       </div>
     </section>

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: depends on defineConfig from wxt
  * [OUTPUT]: exports WXT build configuration and MV3 manifest definition for Chrome and Firefox
- * [POS]: extension build root for apps/extension; declares version 1.6.0, default_locale, localized manifest messages, and optional permissions
+ * [POS]: extension build root for apps/extension; declares version 1.6.1, default_locale, localized manifest messages, and optional permissions
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 import { defineConfig } from "wxt";
@@ -11,7 +11,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: ({ browser }) => ({
     name: "Dockmark",
-    version: "1.6.0",
+    version: "1.6.1",
     default_locale: "en",
     description: "__MSG_extDescription__",
     icons: {

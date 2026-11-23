@@ -1,10 +1,11 @@
 /**
- * [INPUT]: depends on React hooks; depends on browser from wxt/browser; depends on TabSummary, hostLabel, hostMonogram from ./api; depends on tx and ResolvedLocale from ../../lib/ext-locale
- * [OUTPUT]: exports OpenTabsPanel component providing real-time filterable open-tab switching with keyboard navigation
+ * [INPUT]: depends on React hooks; depends on textContainsTokenOrPinyin from @dockmark/core; depends on browser from wxt/browser; depends on TabSummary, hostLabel, hostMonogram from ./api; depends on tx and ResolvedLocale from ../../lib/ext-locale
+ * [OUTPUT]: exports OpenTabsPanel component providing real-time filterable open-tab switching with Pinyin initial matching, clear button, and keyboard navigation
  * [POS]: searchable open-tabs view rendered in Capture tab and local-only mode of apps/extension/entrypoints/popup
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { textContainsTokenOrPinyin } from "@dockmark/core";
 import { browser } from "wxt/browser";
 import { tx, type ResolvedLocale } from "../../lib/ext-locale";
 import { hostLabel, hostMonogram, type TabSummary } from "./api";
@@ -18,14 +19,16 @@ export function OpenTabsPanel({
 }) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredTabs = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     if (!needle) return tabs;
     const terms = needle.split(/\s+/).filter(Boolean);
     return tabs.filter((tab) => {
-      const haystack = `${tab.title || ""} ${tab.url || ""}`.toLocaleLowerCase();
-      return terms.every((term) => haystack.includes(term));
+      const title = tab.title || "";
+      const url = tab.url || "";
+      return terms.every((term) => textContainsTokenOrPinyin(title, term) || textContainsTokenOrPinyin(url, term));
     });
   }, [tabs, query]);
 
@@ -39,6 +42,11 @@ export function OpenTabsPanel({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape" && query) {
+      event.preventDefault();
+      setQuery("");
+      return;
+    }
     if (!filteredTabs.length) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -49,9 +57,6 @@ export function OpenTabsPanel({
     } else if (event.key === "Enter") {
       event.preventDefault();
       activateTab(filteredTabs[selectedIndex] ?? filteredTabs[0]);
-    } else if (event.key === "Escape" && query) {
-      event.preventDefault();
-      setQuery("");
     }
   }
 
@@ -62,7 +67,9 @@ export function OpenTabsPanel({
         <span>{query.trim() ? `${filteredTabs.length} / ${tabs.length}` : tabs.length}</span>
       </div>
       <div className="tab-search-wrap">
+        <span className="tab-search-icon" aria-hidden="true">⌕</span>
         <input
+          ref={inputRef}
           className="tab-search-input"
           type="search"
           value={query}
@@ -71,10 +78,22 @@ export function OpenTabsPanel({
           placeholder={tx(
             locale,
             `Filter ${tabs.length} open tabs… (Enter to switch)`,
-            `筛选 ${tabs.length} 个打开的标签页…（回车切换）`,
+            `筛选 ${tabs.length} 个打开的标签页…（支持拼音首字母，回车切换）`,
           )}
           aria-label={tx(locale, "Filter open tabs", "筛选打开的标签页")}
         />
+        {query && (
+          <button
+            type="button"
+            className="tab-search-clear"
+            aria-label={tx(locale, "Clear search", "清空搜索")}
+            title={tx(locale, "Clear search", "清空搜索")}
+            onClick={() => {
+              setQuery("");
+              inputRef.current?.focus();
+            }}
+          >×</button>
+        )}
       </div>
       <div className="tabs">
         {filteredTabs.map((tab, index) => (

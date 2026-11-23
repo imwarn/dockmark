@@ -1,7 +1,7 @@
 /**
- * [INPUT]: depends on useEffect, useMemo, useState from react; Category from @dockmark/core; listCategories, refreshBookmarkMetadata, updateBookmark, BookmarkMetadata from ./api; generateAiOrganizationSuggestions, getAiProviderStatus, loadAiProviderSettings, AiOrganizationSuggestion from ./ai-organization; listInbox, resolveInboxBookmark, reviewInboxBatch, InboxBookmark, InboxReviewPatch from ./inbox-api; listBookmarkTags from ./tag-api; useI18n from ./i18n; BookmarkFavicon from ./BookmarkFavicon; InboxReviewCard and metadata helpers from ./InboxReviewCard
- * [OUTPUT]: exports InboxPage component for reviewing, enriching, AI-triaging, and filing captured Inbox bookmarks
- * [POS]: top-level /app/inbox triage view; coordinates batch AI preview and delegates per-bookmark review cards to InboxReviewCard
+ * [INPUT]: depends on useEffect, useMemo, useState from react; Category from @dockmark/core; listCategories, refreshBookmarkMetadata, updateBookmark, BookmarkMetadata from ./api; fetchAiSettings, generateAiOrganizationSuggestions, getAiProviderStatus, loadAiProviderSettings, AiOrganizationSuggestion, AiProviderSettings from ./ai-organization; listInbox, resolveInboxBookmark, reviewInboxBatch, InboxBookmark, InboxReviewPatch from ./inbox-api; listBookmarkTags from ./tag-api; useI18n from ./i18n; BookmarkFavicon from ./BookmarkFavicon; InboxReviewCard and metadata helpers from ./InboxReviewCard; ./ai-organization.css
+ * [OUTPUT]: exports InboxPage component for reviewing, enriching, AI-triaging, and filing captured Inbox bookmarks with live AI Settings sync
+ * [POS]: top-level /app/inbox triage view; coordinates batch AI preview, links to /app/settings/ai, and delegates per-bookmark review cards to InboxReviewCard
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 
@@ -14,10 +14,12 @@ import {
   type BookmarkMetadata,
 } from "./api";
 import {
+  fetchAiSettings,
   generateAiOrganizationSuggestions,
   getAiProviderStatus,
   loadAiProviderSettings,
   type AiOrganizationSuggestion,
+  type AiProviderSettings,
 } from "./ai-organization";
 import { BookmarkFavicon } from "./BookmarkFavicon";
 import { useI18n } from "./i18n";
@@ -36,6 +38,7 @@ import {
   type MetadataSelection,
 } from "./InboxReviewCard";
 import { listBookmarkTags } from "./tag-api";
+import "./ai-organization.css";
 
 function sameTags(left: string[], right: string[]): boolean {
   const a = left.map((tag) => tag.toLocaleLowerCase()).sort();
@@ -45,6 +48,19 @@ function sameTags(left: string[], right: string[]): boolean {
 
 function messageFrom(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+function safeEndpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host || endpoint;
+  } catch {
+    return endpoint || "—";
+  }
+}
+
+function openAiSettingsPage() {
+  window.history.pushState({}, "", "/app/settings/ai");
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 export function InboxPage() {
@@ -59,6 +75,7 @@ export function InboxPage() {
   const [aiGeneratedIds, setAiGeneratedIds] = useState<Set<string>>(() => new Set());
   const [aiSuggestions, setAiSuggestions] = useState<AiOrganizationSuggestion[]>([]);
   const [aiAcceptedIds, setAiAcceptedIds] = useState<Set<string>>(() => new Set());
+  const [aiProvider, setAiProvider] = useState<AiProviderSettings>(() => loadAiProviderSettings());
   const [aiApiReady, setAiApiReady] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -138,8 +155,44 @@ export function InboxPage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
     void refresh();
     void refreshAiStatus();
+    void fetchAiSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setAiProvider({
+          endpoint: settings.endpoint,
+          model: settings.model,
+          timeoutSeconds: settings.timeoutSeconds,
+        });
+      })
+      .catch(() => {
+        // Keep local provider settings fallback.
+      });
+
+    const onAiSettingsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<AiProviderSettings> | undefined>).detail;
+      if (
+        detail &&
+        typeof detail.endpoint === "string" &&
+        typeof detail.model === "string" &&
+        typeof detail.timeoutSeconds === "number"
+      ) {
+        setAiProvider({
+          endpoint: detail.endpoint,
+          model: detail.model,
+          timeoutSeconds: detail.timeoutSeconds,
+        });
+        return;
+      }
+      setAiProvider(loadAiProviderSettings());
+    };
+    window.addEventListener("dockmark:ai-settings", onAiSettingsChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("dockmark:ai-settings", onAiSettingsChanged);
+    };
   }, []);
 
   async function fetchMetadata(bookmark: InboxBookmark) {
@@ -297,9 +350,8 @@ export function InboxPage() {
     setError(null);
     setNotice(null);
     try {
-      const provider = loadAiProviderSettings();
       const next = await generateAiOrganizationSuggestions(
-        provider,
+        aiProvider,
         selected.map((bookmark) => bookmark.id),
         locale,
       );
@@ -460,6 +512,29 @@ export function InboxPage() {
           </div>
         </div>
 
+        <div className="ai-config-strip ai-config-strip-inline">
+          <div className="ai-config-strip-meta">
+            <span className={`ai-config-badge${aiProvider.model.trim() ? " is-ready" : " is-warn"}`}>
+              {aiProvider.model.trim() || tx("No model configured", "未配置模型")}
+            </span>
+            <span className="ai-config-detail" title={aiProvider.endpoint}>
+              {safeEndpointHost(aiProvider.endpoint)} · {aiProvider.timeoutSeconds}s
+            </span>
+            <span className={`ai-config-badge${aiApiReady ? " is-ready" : ""}`}>
+              {aiApiReady === null
+                ? tx("Checking secret…", "检查密钥中…")
+                : aiApiReady
+                  ? tx("Secret ready", "密钥就绪")
+                  : tx("Secret missing", "需配置密钥")}
+            </span>
+          </div>
+          <div className="ai-config-strip-actions">
+            <button className="secondary ai-settings-nav-btn" type="button" onClick={openAiSettingsPage}>
+              {tx("Configure in Settings → AI Service →", "前往「设置 → AI 服务」配置 →")}
+            </button>
+          </div>
+        </div>
+
         <div className="inbox-ai-actions">
           <button
             className="secondary"
@@ -480,20 +555,26 @@ export function InboxPage() {
           <button
             className="primary"
             type="button"
-            disabled={aiApiReady !== true || !aiSelectedIds.size || aiGenerating || aiApplying || aiSuggestions.length > 0}
+            disabled={
+              aiApiReady !== true ||
+              !aiProvider.model.trim() ||
+              !aiSelectedIds.size ||
+              aiGenerating ||
+              aiApplying ||
+              aiSuggestions.length > 0
+            }
             onClick={() => void generateAiTriage()}
           >
             {aiGenerating
               ? tx("Generating…", "生成中…")
               : aiSuggestions.length
                 ? tx("Review current preview first", "请先处理当前预览")
-                : tx(`Generate suggestions (${aiSelectedIds.size})`, `生成整理建议（${aiSelectedIds.size}）`)}
+                : aiApiReady === false
+                  ? tx("Configure Worker AI secret first", "请先配置 Worker AI 密钥")
+                  : !aiProvider.model.trim()
+                    ? tx("Configure AI model first", "请先配置 AI 模型")
+                    : tx(`Generate suggestions (${aiSelectedIds.size})`, `生成整理建议（${aiSelectedIds.size}）`)}
           </button>
-          {aiApiReady === false && (
-            <a className="text-action" href="/app/settings">
-              {tx("Configure AI provider →", "前往配置 AI 提供商 →")}
-            </a>
-          )}
           {aiApiReady === null && (
             <button className="text-action" type="button" onClick={() => void refreshAiStatus()}>
               {tx("Refresh AI status", "刷新 AI 状态")}

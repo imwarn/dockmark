@@ -37,11 +37,177 @@ html[data-theme="light"] {
 
 button:focus-visible,
 a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--dm-accent);
   outline-offset: 2px;
+}
+
+/* Standalone text controls use a single border + soft focus ring instead of a
+   double native browser outline around the field. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):focus,
+input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):focus-visible,
+select:focus,
+select:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--dm-accent);
+  box-shadow: 0 0 0 3px var(--dm-focus-ring);
+}
+
+/* Composite search and prefix wrappers own the outer border and :focus-within
+   ring; their inner inputs stay borderless and outline-free. */
+.command input,
+.command input:focus,
+.command input:focus-visible,
+.public-search input,
+.public-search input:focus,
+.public-search input:focus-visible,
+.public-publish-search input,
+.public-publish-search input:focus,
+.public-publish-search input:focus-visible,
+.bang-input input,
+.bang-input input:focus,
+.bang-input input:focus-visible,
+.dm-search-box input,
+.dm-search-box input:focus,
+.dm-search-box input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.command input[type="search"]::-webkit-search-cancel-button,
+.public-search input[type="search"]::-webkit-search-cancel-button,
+.public-publish-search input[type="search"]::-webkit-search-cancel-button,
+.dm-search-box input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.command:focus-within,
+.public-search:focus-within,
+.public-publish-search:focus-within,
+.bang-input:focus-within,
+.dm-search-box:focus-within,
+html[data-theme="light"] .command:focus-within,
+html[data-theme="light"] .public-search:focus-within,
+html[data-theme="light"] .public-publish-search:focus-within,
+html[data-theme="light"] .bang-input:focus-within,
+html[data-theme="light"] .dm-search-box:focus-within {
+  border-color: var(--dm-accent);
+  box-shadow: 0 0 0 3px var(--dm-focus-ring);
+}
+
+.command:focus-within {
+  box-shadow: 0 0 0 3px var(--dm-focus-ring), 0 14px 44px rgba(0, 0, 0, .24);
+}
+
+html[data-theme="light"] .command:focus-within {
+  border-color: var(--dm-accent);
+  box-shadow: 0 0 0 3px var(--dm-focus-ring), 0 16px 48px rgba(40, 67, 54, .08);
+}
+
+/* Global custom select styling replaces inconsistent OS native dropdowns. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  min-height: 38px;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--dm-border-strong);
+  border-radius: 10px;
+  color: var(--dm-text);
+  background-color: var(--dm-input-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='%238b968f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 11px center !important;
+  background-size: 14px 14px !important;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+html[data-theme="light"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='%234e665b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border-strong));
+  background-color: var(--dm-input-hover);
+}
+
+select:focus {
+  background-color: var(--dm-input-bg);
+}
+
+select:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+/* Reusable composite search box with integrated clear button. */
+.dm-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--dm-border-strong);
+  border-radius: 11px;
+  background: var(--dm-input-bg);
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.dm-search-box:hover {
+  border-color: color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border-strong));
+  background: var(--dm-input-hover);
+}
+
+.dm-search-box > .dm-search-icon,
+.dm-search-box > span:first-child {
+  flex: 0 0 auto;
+  color: var(--dm-text-muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.dm-search-box input {
+  flex: 1;
+  min-width: 0;
+  color: var(--dm-text);
+  font-size: 13px;
+  caret-color: var(--dm-accent);
+}
+
+.dm-search-box input::placeholder {
+  color: var(--dm-placeholder);
+  opacity: 1;
+}
+
+.dm-search-clear {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--dm-border);
+  border-radius: 7px;
+  background: var(--dm-bg-soft);
+  color: var(--dm-text-soft);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.dm-search-clear:hover {
+  border-color: var(--dm-border-strong);
+  background: var(--dm-hover-bg);
+  color: var(--dm-text);
 }
 
 /* Keep form controls on one visual system across Library, Settings, Workspaces,
@@ -75,7 +241,7 @@ textarea:focus-visible {
 .ai-bookmark-search {
   border-color: var(--dm-border-strong);
   color: var(--dm-text);
-  background: var(--dm-input-bg);
+  background-color: var(--dm-input-bg);
   caret-color: var(--dm-accent);
 }
 
@@ -130,9 +296,15 @@ textarea:focus-visible {
 .smart-filter-grid select:hover,
 .inbox-review select:hover,
 .auth-card input:hover,
-.ai-bookmark-search:hover {
+.ai-bookmark-search:hover,
+html[data-theme="light"] .field-grid input:hover,
+html[data-theme="light"] .field-grid select:hover,
+html[data-theme="light"] .compact-form input:hover,
+html[data-theme="light"] .category-edit input:hover,
+html[data-theme="light"] .settings-field input:hover,
+html[data-theme="light"] .settings-field select:hover {
   border-color: color-mix(in srgb, var(--dm-accent) 42%, var(--dm-border-strong));
-  background: var(--dm-input-hover);
+  background-color: var(--dm-input-hover);
 }
 
 .field-grid input:focus,
@@ -161,9 +333,15 @@ textarea:focus-visible {
 .smart-filter-grid select:focus,
 .inbox-review select:focus,
 .auth-card input:focus,
-.ai-bookmark-search:focus {
+.ai-bookmark-search:focus,
+html[data-theme="light"] .field-grid input:focus,
+html[data-theme="light"] .field-grid select:focus,
+html[data-theme="light"] .compact-form input:focus,
+html[data-theme="light"] .category-edit input:focus,
+html[data-theme="light"] .settings-field input:focus,
+html[data-theme="light"] .settings-field select:focus {
   border-color: var(--dm-accent);
-  background: var(--dm-input-bg);
+  background-color: var(--dm-input-bg);
   box-shadow: 0 0 0 3px var(--dm-focus-ring);
   outline: 0;
 }
