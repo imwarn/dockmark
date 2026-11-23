@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: depends on useEffect, useMemo, useState from react; Category from @dockmark/core; listCategories, refreshBookmarkMetadata, updateBookmark, BookmarkMetadata from ./api; generateAiOrganizationSuggestions, getAiProviderStatus, loadAiProviderSettings, AiOrganizationSuggestion from ./ai-organization; listInbox, resolveInboxBookmark, reviewInboxBatch, InboxBookmark, InboxReviewPatch from ./inbox-api; listBookmarkTags from ./tag-api; useI18n from ./i18n; BookmarkFavicon from ./BookmarkFavicon; InboxReviewCard and metadata helpers from ./InboxReviewCard
+ * [OUTPUT]: exports InboxPage component for reviewing, enriching, AI-triaging, and filing captured Inbox bookmarks
+ * [POS]: top-level /app/inbox triage view; coordinates batch AI preview and delegates per-bookmark review cards to InboxReviewCard
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import type { Category } from "@dockmark/core";
 import {
@@ -12,6 +19,8 @@ import {
   loadAiProviderSettings,
   type AiOrganizationSuggestion,
 } from "./ai-organization";
+import { BookmarkFavicon } from "./BookmarkFavicon";
+import { useI18n } from "./i18n";
 import {
   listInbox,
   resolveInboxBookmark,
@@ -19,54 +28,27 @@ import {
   type InboxBookmark,
   type InboxReviewPatch,
 } from "./inbox-api";
+import {
+  InboxReviewCard,
+  emptyMetadataSelection,
+  selectionCount,
+  type MetadataField,
+  type MetadataSelection,
+} from "./InboxReviewCard";
 import { listBookmarkTags } from "./tag-api";
 
-type MetadataField = "title" | "description" | "canonicalUrl" | "iconUrl";
-type MetadataSelection = Record<MetadataField, boolean>;
-
-function emptyMetadataSelection(): MetadataSelection {
-  return {
-    title: false,
-    description: false,
-    canonicalUrl: false,
-    iconUrl: false,
-  };
-}
-
-function hostLabel(url: string) {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
-
-function dateLabel(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function selectionCount(selection: MetadataSelection | undefined) {
-  return selection ? Object.values(selection).filter(Boolean).length : 0;
-}
-
-function sameTags(left: string[], right: string[]) {
+function sameTags(left: string[], right: string[]): boolean {
   const a = left.map((tag) => tag.toLocaleLowerCase()).sort();
   const b = right.map((tag) => tag.toLocaleLowerCase()).sort();
   return a.length === b.length && a.every((tag, index) => tag === b[index]);
 }
 
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
+function messageFrom(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
 export function InboxPage() {
+  const { locale, tx } = useI18n();
   const [bookmarks, setBookmarks] = useState<InboxBookmark[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [bookmarkTags, setBookmarkTags] = useState<Record<string, string[]>>({});
@@ -110,6 +92,10 @@ export function InboxPage() {
     () => aiEligible.filter((bookmark) => aiGeneratedIds.has(bookmark.id)).length,
     [aiEligible, aiGeneratedIds],
   );
+  const aiPreviewIds = useMemo(
+    () => new Set(aiSuggestions.map((suggestion) => suggestion.bookmarkId)),
+    [aiSuggestions],
+  );
 
   async function refresh() {
     setLoading(true);
@@ -136,7 +122,7 @@ export function InboxPage() {
         return next;
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load Inbox.");
+      setError(messageFrom(caught, tx("Could not load Inbox.", "无法加载收件箱。")));
     } finally {
       setLoading(false);
     }
@@ -165,9 +151,14 @@ export function InboxPage() {
       const metadata = await refreshBookmarkMetadata(bookmark.id);
       setMetadataById((current) => ({ ...current, [bookmark.id]: metadata }));
       setMetadataSelections((current) => ({ ...current, [bookmark.id]: emptyMetadataSelection() }));
-      setNotice(`Metadata refreshed for “${bookmark.title}”. Nothing was applied automatically.`);
+      setNotice(
+        tx(
+          `Metadata refreshed for “${bookmark.title}”. Nothing was applied automatically.`,
+          `已刷新「${bookmark.title}」的页面元数据，尚未自动写入。`,
+        ),
+      );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not fetch bookmark metadata.");
+      setError(messageFrom(caught, tx("Could not fetch bookmark metadata.", "无法抓取书签元数据。")));
     } finally {
       setMetadataBusyId(null);
     }
@@ -214,7 +205,12 @@ export function InboxPage() {
 
       if (selection.title && metadata?.title && metadata.title !== bookmark.title) {
         if (metadata.title.length > 200) {
-          throw new Error("The suggested metadata title is longer than Dockmark's 200-character bookmark title limit.");
+          throw new Error(
+            tx(
+              "The suggested metadata title is longer than Dockmark's 200-character bookmark title limit.",
+              "建议的元数据标题超过了 Dockmark 的 200 字符书签标题上限。",
+            ),
+          );
         }
         input.title = metadata.title;
       }
@@ -236,21 +232,29 @@ export function InboxPage() {
       removeLocalState(removed);
       setAiSuggestions((current) => current.filter((suggestion) => !removed.has(suggestion.bookmarkId)));
       setAiAcceptedIds((current) => new Set(Array.from(current).filter((id) => !removed.has(id))));
-      const categoryName = categoryId ? categoryById.get(categoryId) ?? "selected category" : "Uncategorized";
+      const categoryName = categoryId
+        ? categoryById.get(categoryId) ?? tx("selected category", "所选分类")
+        : tx("Uncategorized", "未分类");
       const applied = Object.keys(input).length;
       setNotice(
         applied
-          ? `Reviewed “${bookmark.title}” with ${applied} metadata suggestion${applied === 1 ? "" : "s"} → ${categoryName}.`
-          : `Reviewed “${bookmark.title}” → ${categoryName}.`,
+          ? tx(
+              `Reviewed “${bookmark.title}” with ${applied} metadata suggestion${applied === 1 ? "" : "s"} → ${categoryName}.`,
+              `已归档「${bookmark.title}」（应用 ${applied} 项元数据建议）→ ${categoryName}。`,
+            )
+          : tx(
+              `Reviewed “${bookmark.title}” → ${categoryName}.`,
+              `已归档「${bookmark.title}」→ ${categoryName}。`,
+            ),
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not review Inbox bookmark.");
+      setError(messageFrom(caught, tx("Could not review Inbox bookmark.", "无法归档收件箱书签。")));
     } finally {
       setBusyId(null);
     }
   }
 
-  function nextAiIds(progress = aiGeneratedIds, source = bookmarks) {
+  function nextAiIds(progress = aiGeneratedIds, source = bookmarks): string[] {
     return source
       .filter((bookmark) => bookmark.healthPolicy === "normal" && !progress.has(bookmark.id))
       .filter((bookmark) => selectionCount(metadataSelections[bookmark.id]) === 0)
@@ -266,7 +270,9 @@ export function InboxPage() {
   }
 
   function toggleAiBookmark(bookmark: InboxBookmark) {
-    if (bookmark.healthPolicy !== "normal" || selectionCount(metadataSelections[bookmark.id]) > 0 || aiSuggestions.length) return;
+    if (bookmark.healthPolicy !== "normal" || selectionCount(metadataSelections[bookmark.id]) > 0 || aiSuggestions.length) {
+      return;
+    }
     setAiSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(bookmark.id)) next.delete(bookmark.id);
@@ -277,7 +283,12 @@ export function InboxPage() {
 
   async function generateAiTriage() {
     if (aiSuggestions.length) {
-      setError("Apply or discard the current Inbox AI preview before generating another batch.");
+      setError(
+        tx(
+          "Apply or discard the current Inbox AI preview before generating another batch.",
+          "生成下一批之前，请先应用或放弃当前的收件箱 AI 预览。",
+        ),
+      );
       return;
     }
     const selected = bookmarks.filter((bookmark) => aiSelectedIds.has(bookmark.id) && bookmark.healthPolicy === "normal");
@@ -287,7 +298,11 @@ export function InboxPage() {
     setNotice(null);
     try {
       const provider = loadAiProviderSettings();
-      const next = await generateAiOrganizationSuggestions(provider, selected.map((bookmark) => bookmark.id));
+      const next = await generateAiOrganizationSuggestions(
+        provider,
+        selected.map((bookmark) => bookmark.id),
+        locale,
+      );
       const generatedAfter = new Set(aiGeneratedIds);
       next.forEach((suggestion) => generatedAfter.add(suggestion.bookmarkId));
       setAiGeneratedIds(generatedAfter);
@@ -296,11 +311,13 @@ export function InboxPage() {
       const nextBatch = nextAiIds(generatedAfter);
       setAiSelectedIds(new Set(nextBatch));
       setNotice(
-        `Generated ${next.length} reviewed Inbox suggestion${next.length === 1 ? "" : "s"}. ` +
-        `${nextBatch.length} next pending item${nextBatch.length === 1 ? " is" : "s are"} queued; nothing has been filed yet.`,
+        tx(
+          `Generated ${next.length} reviewed Inbox suggestion${next.length === 1 ? "" : "s"}. ${nextBatch.length} next pending item${nextBatch.length === 1 ? " is" : "s are"} queued; nothing has been filed yet.`,
+          `已生成 ${next.length} 条收件箱整理建议，已预选下批 ${nextBatch.length} 项待处理书签；当前尚未归档。`,
+        ),
       );
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, tx("Could not generate AI suggestions.", "无法生成 AI 整理建议。")));
     } finally {
       setAiGenerating(false);
     }
@@ -319,7 +336,12 @@ export function InboxPage() {
     setAiSuggestions([]);
     setAiAcceptedIds(new Set());
     setError(null);
-    setNotice("Inbox AI preview discarded. Generated markers and queued selection were kept; no bookmark data changed.");
+    setNotice(
+      tx(
+        "Inbox AI preview discarded. Generated markers and queued selection were kept; no bookmark data changed.",
+        "已放弃收件箱 AI 预览。已保留生成标记与待选队列，书签数据未发生更改。",
+      ),
+    );
   }
 
   async function applyAiTriage() {
@@ -332,19 +354,29 @@ export function InboxPage() {
       const patches: InboxReviewPatch[] = accepted.map((suggestion) => {
         const bookmark = bookmarkById.get(suggestion.bookmarkId);
         if (!bookmark || bookmark.healthPolicy !== "normal") {
-          throw new Error("One or more Inbox bookmarks changed eligibility. Refresh and regenerate before filing.");
+          throw new Error(
+            tx(
+              "One or more Inbox bookmarks changed eligibility. Refresh and regenerate before filing.",
+              "部分收件箱书签的健康检查策略已变化，请刷新后重新生成再归档。",
+            ),
+          );
         }
         const categoryId = suggestion.categoryName
           ? categoryByName.get(suggestion.categoryName.toLocaleLowerCase())
           : null;
         if (suggestion.categoryName && !categoryId) {
-          throw new Error(`Suggested category “${suggestion.categoryName}” no longer exists. Refresh and regenerate before filing.`);
+          throw new Error(
+            tx(
+              `Suggested category “${suggestion.categoryName}” no longer exists. Refresh and regenerate before filing.`,
+              `建议分类「${suggestion.categoryName}」已不存在，请刷新后重新生成再归档。`,
+            ),
+          );
         }
         return {
           bookmarkId: bookmark.id,
           title: suggestion.title || bookmark.title,
           description: suggestion.description || null,
-          categoryId,
+          categoryId: categoryId ?? null,
           tags: suggestion.tags,
         };
       });
@@ -362,11 +394,13 @@ export function InboxPage() {
       setAiSuggestions((current) => current.filter((suggestion) => !appliedIds.has(suggestion.bookmarkId)));
       setAiAcceptedIds((current) => new Set(Array.from(current).filter((id) => !appliedIds.has(id))));
       setNotice(
-        `Applied and filed ${result.applied} reviewed Inbox AI suggestion${result.applied === 1 ? "" : "s"} in one atomic D1 batch. ` +
-        "URL, favicon, HealthPolicy and HealthStatus were untouched.",
+        tx(
+          `Applied and filed ${result.applied} reviewed Inbox AI suggestion${result.applied === 1 ? "" : "s"} in one batch. URL, favicon, and health fields stayed untouched.`,
+          `已一次性应用并归档 ${result.applied} 条 AI 整理建议，链接、图标与健康检查字段均保持不变。`,
+        ),
       );
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(messageFrom(caught, tx("Could not apply Inbox AI suggestions.", "无法应用收件箱 AI 整理建议。")));
     } finally {
       setAiApplying(false);
     }
@@ -374,76 +408,191 @@ export function InboxPage() {
 
   return (
     <main className="inbox-shell">
-      <section className="inbox-hero">
-        <div>
-          <p className="eyebrow">QUICK CAPTURE</p>
-          <h1>Inbox</h1>
-          <p>Tabs saved from the Dockmark extension land here as a review state, not as a special category. Public pages can optionally fetch metadata suggestions, or you can run reviewed AI triage across up to 20 Inbox items before filing.</p>
+      <header className="inbox-hero">
+        <div className="inbox-hero-copy">
+          <h1>{tx("Inbox", "收件箱")}</h1>
+          <p>
+            {tx(
+              "Review tabs captured from the Dockmark extension, fetch optional page metadata, or run reviewed AI triage before filing into your library.",
+              "审核来自 Dockmark 扩展的收录页面，按需抓取页面元数据或批量运行 AI 整理后再归档到书签库。",
+            )}
+          </p>
         </div>
-        <div className="inbox-count" aria-label={`${bookmarks.length} Inbox bookmarks`}>
-          <strong>{bookmarks.length}</strong>
-          <span>waiting</span>
+        <div className="inbox-hero-pills">
+          <span className="inbox-stat-pill" aria-label={tx(`${bookmarks.length} Inbox bookmarks`, `收件箱中有 ${bookmarks.length} 条待归档书签`)}>
+            <strong>{bookmarks.length}</strong>
+            <span>{tx("waiting", "待归档")}</span>
+          </span>
+          <span className="inbox-stat-pill muted">
+            <strong>{aiEligible.length}</strong>
+            <span>{tx("AI eligible", "可 AI 整理")}</span>
+          </span>
         </div>
-      </section>
+      </header>
 
-      {(notice || error) && <div className={`inbox-notice ${error ? "error" : "success"}`}>{error ?? notice}</div>}
+      {(notice || error) && (
+        <div className={`inbox-notice ${error ? "error" : "success"}`} role={error ? "alert" : "status"}>
+          {error ?? notice}
+        </div>
+      )}
 
-      <section className="inbox-ai-panel" aria-label="AI-assisted Inbox triage">
+      <section className="inbox-ai-panel" aria-label={tx("AI-assisted Inbox triage", "收件箱 AI 辅助整理")}>
         <div className="inbox-ai-heading">
           <div>
-            <p className="eyebrow">AI TRIAGE · REVIEWED</p>
-            <h2>Organize a capture batch, then file it once.</h2>
-            <p>Uses the same browser-local provider/model/timeout from Settings. Only <code>normal</code> Inbox bookmarks are eligible. AI can suggest title, description, an existing category and tags; URL, favicon and health fields stay outside this batch write surface.</p>
+            <h2>{tx("AI Triage (Reviewed)", "AI 批量整理（审核后归档）")}</h2>
+            <p>
+              {tx(
+                "Uses your Settings AI provider for up to 20 normal bookmarks per batch. Suggests title, description, existing category, and tags while leaving URL, favicon, and health fields untouched.",
+                "使用设置中的 AI 模型，单批最多处理 20 条常规书签；仅建议标题、描述、已有分类和标签，不改动链接、图标及健康检查字段。",
+              )}
+            </p>
           </div>
           <div className="inbox-ai-summary">
-            <strong>{aiSelectedIds.size}/20 selected</strong>
-            <span>{generatedInInbox} generated this session · {aiPending.length} pending</span>
+            <span className="inbox-ai-pill">
+              <strong>{aiSelectedIds.size}/20</strong> {tx("selected", "已选")}
+            </span>
+            <span className="inbox-ai-meta">
+              {tx(
+                `${generatedInInbox} generated · ${aiPending.length} pending`,
+                `本轮已生成 ${generatedInInbox} · 待处理 ${aiPending.length}`,
+              )}
+            </span>
           </div>
         </div>
+
         <div className="inbox-ai-actions">
-          <button className="secondary" type="button" disabled={loading || aiGenerating || aiApplying || aiSuggestions.length > 0 || !aiPending.length} onClick={selectNextAi}>Select next {Math.min(20, aiPending.length)}</button>
-          <button className="text-action" type="button" disabled={!aiSelectedIds.size || aiGenerating || aiApplying || aiSuggestions.length > 0} onClick={() => setAiSelectedIds(new Set())}>Clear selection</button>
-          <button className="primary" type="button" disabled={aiApiReady !== true || !aiSelectedIds.size || aiGenerating || aiApplying || aiSuggestions.length > 0} onClick={() => void generateAiTriage()}>
-            {aiGenerating ? "Generating…" : aiSuggestions.length ? "Review current preview first" : `Generate Inbox suggestions ${aiSelectedIds.size}`}
+          <button
+            className="secondary"
+            type="button"
+            disabled={loading || aiGenerating || aiApplying || aiSuggestions.length > 0 || !aiPending.length}
+            onClick={selectNextAi}
+          >
+            {tx(`Select next ${Math.min(20, aiPending.length)}`, `选中下批 ${Math.min(20, aiPending.length)} 项`)}
           </button>
-          {aiApiReady === false && <a className="text-action" href="/app/settings">Configure AI provider →</a>}
-          {aiApiReady === null && <button className="text-action" type="button" onClick={() => void refreshAiStatus()}>Refresh AI status</button>}
+          <button
+            className="text-action"
+            type="button"
+            disabled={!aiSelectedIds.size || aiGenerating || aiApplying || aiSuggestions.length > 0}
+            onClick={() => setAiSelectedIds(new Set())}
+          >
+            {tx("Clear selection", "清空选择")}
+          </button>
+          <button
+            className="primary"
+            type="button"
+            disabled={aiApiReady !== true || !aiSelectedIds.size || aiGenerating || aiApplying || aiSuggestions.length > 0}
+            onClick={() => void generateAiTriage()}
+          >
+            {aiGenerating
+              ? tx("Generating…", "生成中…")
+              : aiSuggestions.length
+                ? tx("Review current preview first", "请先处理当前预览")
+                : tx(`Generate suggestions (${aiSelectedIds.size})`, `生成整理建议（${aiSelectedIds.size}）`)}
+          </button>
+          {aiApiReady === false && (
+            <a className="text-action" href="/app/settings">
+              {tx("Configure AI provider →", "前往配置 AI 提供商 →")}
+            </a>
+          )}
+          {aiApiReady === null && (
+            <button className="text-action" type="button" onClick={() => void refreshAiStatus()}>
+              {tx("Refresh AI status", "刷新 AI 状态")}
+            </button>
+          )}
         </div>
-        <p className="inbox-ai-note">Items with page-metadata fields already selected are excluded from AI selection so the two reviewed filing paths cannot silently override each other.</p>
+        <p className="inbox-ai-note">
+          {tx(
+            "Items with page-metadata fields checked are excluded from AI selection so the two review paths cannot conflict.",
+            "已勾选页面元数据字段的书签会自动排除在 AI 选择之外，避免两条归档路径互相覆盖。",
+          )}
+        </p>
 
         {aiSuggestions.length > 0 && (
           <div className="inbox-ai-preview">
             <div className="inbox-ai-preview-heading">
-              <div><strong>AI preview · nothing filed yet</strong><span>Accept whole reviewed suggestions. Unchecked rows remain in Inbox.</span></div>
               <div>
-                <button className="text-action" type="button" onClick={() => setAiAcceptedIds(new Set(aiSuggestions.map((suggestion) => suggestion.bookmarkId)))}>Select all</button>
-                <button className="text-action" type="button" onClick={() => setAiAcceptedIds(new Set())}>Clear</button>
-                <button className="text-action" type="button" disabled={aiApplying} onClick={discardAiPreview}>Discard preview</button>
-                <button className="primary" type="button" disabled={aiApplying || !aiAcceptedIds.size} onClick={() => void applyAiTriage()}>{aiApplying ? "Applying & filing…" : `Apply & file ${aiAcceptedIds.size}`}</button>
+                <strong>{tx("AI preview · nothing filed yet", "AI 整理预览 · 尚未归档")}</strong>
+                <span>
+                  {tx(
+                    "Check suggestions to apply and file. Unchecked items remain in Inbox.",
+                    "勾选需要应用并归档的建议；未勾选项将保留在收件箱。",
+                  )}
+                </span>
+              </div>
+              <div className="inbox-ai-preview-actions">
+                <button
+                  className="text-action"
+                  type="button"
+                  onClick={() => setAiAcceptedIds(new Set(aiSuggestions.map((suggestion) => suggestion.bookmarkId)))}
+                >
+                  {tx("Select all", "全选")}
+                </button>
+                <button
+                  className="text-action"
+                  type="button"
+                  onClick={() => setAiAcceptedIds(new Set())}
+                >
+                  {tx("Clear", "清空")}
+                </button>
+                <button
+                  className="text-action"
+                  type="button"
+                  disabled={aiApplying}
+                  onClick={discardAiPreview}
+                >
+                  {tx("Discard preview", "放弃预览")}
+                </button>
+                <button
+                  className="primary"
+                  type="button"
+                  disabled={aiApplying || !aiAcceptedIds.size}
+                  onClick={() => void applyAiTriage()}
+                >
+                  {aiApplying
+                    ? tx("Applying & filing…", "应用并归档中…")
+                    : tx(`Apply & file (${aiAcceptedIds.size})`, `应用并归档（${aiAcceptedIds.size}）`)}
+                </button>
               </div>
             </div>
             <div className="inbox-ai-preview-list">
               {aiSuggestions.map((suggestion) => {
                 const bookmark = bookmarkById.get(suggestion.bookmarkId);
                 if (!bookmark) return null;
-                const currentCategory = bookmark.categoryId ? categoryById.get(bookmark.categoryId) ?? "Unknown category" : "Uncategorized";
-                const nextCategory = suggestion.categoryName ?? "Uncategorized";
+                const currentCategory = bookmark.categoryId
+                  ? categoryById.get(bookmark.categoryId) ?? tx("Unknown category", "未知分类")
+                  : tx("Uncategorized", "未分类");
+                const nextCategory = suggestion.categoryName ?? tx("Uncategorized", "未分类");
                 const currentTags = bookmarkTags[bookmark.id] ?? [];
                 const changes = [
-                  suggestion.title !== bookmark.title && "TITLE",
-                  suggestion.description !== (bookmark.description ?? "") && "DESCRIPTION",
-                  nextCategory !== currentCategory && "CATEGORY",
-                  !sameTags(suggestion.tags, currentTags) && "TAGS",
+                  suggestion.title !== bookmark.title && tx("TITLE", "标题"),
+                  suggestion.description !== (bookmark.description ?? "") && tx("DESCRIPTION", "描述"),
+                  nextCategory !== currentCategory && tx("CATEGORY", "分类"),
+                  !sameTags(suggestion.tags, currentTags) && tx("TAGS", "标签"),
                 ].filter(Boolean);
                 return (
                   <label className="inbox-ai-suggestion" key={suggestion.bookmarkId}>
-                    <input type="checkbox" checked={aiAcceptedIds.has(suggestion.bookmarkId)} onChange={() => toggleAiSuggestion(suggestion.bookmarkId)} />
+                    <input
+                      type="checkbox"
+                      checked={aiAcceptedIds.has(suggestion.bookmarkId)}
+                      onChange={() => toggleAiSuggestion(suggestion.bookmarkId)}
+                    />
+                    <BookmarkFavicon
+                      iconUrl={bookmark.iconUrl ?? null}
+                      title={suggestion.title || bookmark.title}
+                      url={bookmark.url}
+                      className="inbox-ai-favicon"
+                    />
                     <span>
                       <strong>{suggestion.title || bookmark.title}</strong>
-                      <small>{nextCategory} · {suggestion.tags.length ? suggestion.tags.map((tag) => `#${tag}`).join(" ") : "no tags"}</small>
-                      <small>{suggestion.description || "No suggested description"}</small>
+                      <small>
+                        {nextCategory} ·{" "}
+                        {suggestion.tags.length
+                          ? suggestion.tags.map((tag) => `#${tag}`).join(" ")
+                          : tx("no tags", "无标签")}
+                      </small>
+                      <small>{suggestion.description || tx("No suggested description", "无建议描述")}</small>
                     </span>
-                    <em>{changes.join(" · ") || "NO FIELD CHANGE"}</em>
+                    <em>{changes.join(" · ") || tx("NO CHANGE", "无字段变更")}</em>
                   </label>
                 );
               })}
@@ -454,138 +603,74 @@ export function InboxPage() {
 
       <section className="inbox-panel">
         <div className="inbox-panel-heading">
-          <div><strong>Captured bookmarks</strong><span>Exact URL duplicates are rejected before a second bookmark is created. Metadata stays behind the same review gate.</span></div>
-          <button className="secondary" type="button" disabled={loading || busyId !== null || metadataBusyId !== null || aiGenerating || aiApplying} onClick={() => void refresh()}>Refresh</button>
+          <div>
+            <strong>{tx("Captured bookmarks", "待审核书签")}</strong>
+            <span>
+              {tx(
+                "Exact URL duplicates are blocked on capture; metadata updates stay behind your review.",
+                "收录时已自动拦截完全重复的链接；元数据仅在审核确认后写入。",
+              )}
+            </span>
+          </div>
+          <button
+            className="secondary"
+            type="button"
+            disabled={loading || busyId !== null || metadataBusyId !== null || aiGenerating || aiApplying}
+            onClick={() => void refresh()}
+          >
+            {tx("Refresh", "刷新")}
+          </button>
         </div>
 
         {loading ? (
-          <div className="inbox-empty">Loading Inbox…</div>
+          <div className="inbox-empty">{tx("Loading Inbox…", "正在加载收件箱…")}</div>
         ) : bookmarks.length ? (
           <div className="inbox-list">
-            {bookmarks.map((bookmark) => {
-              const metadata = metadataById[bookmark.id] ?? null;
-              const selection = metadataSelections[bookmark.id] ?? emptyMetadataSelection();
-              const selectedMetadataCount = selectionCount(selection);
-              const metadataBusy = metadataBusyId === bookmark.id;
-              const titleAvailable = Boolean(metadata?.title && metadata.title !== bookmark.title && metadata.title.length <= 200);
-              const descriptionAvailable = Boolean(metadata?.description && metadata.description !== bookmark.description);
-              const canonicalAvailable = Boolean(metadata?.canonicalUrl && metadata.canonicalUrl !== bookmark.url);
-              const iconAvailable = Boolean(metadata?.iconUrl && metadata.iconUrl !== bookmark.iconUrl);
-              const aiSelectable = bookmark.healthPolicy === "normal" && !selectedMetadataCount && !aiSuggestions.length;
-
-              return (
-                <article className="inbox-row" key={bookmark.id}>
-                  <div className="inbox-copy">
-                    <div className="inbox-title-line">
-                      <label className={`inbox-ai-select${aiSelectable ? "" : " disabled"}`} title={selectedMetadataCount ? "Clear selected metadata fields before adding this item to AI triage." : bookmark.healthPolicy !== "normal" ? `AI excludes HealthPolicy=${bookmark.healthPolicy}.` : "Select for reviewed Inbox AI triage."}>
-                        <input
-                          type="checkbox"
-                          checked={aiSelectedIds.has(bookmark.id)}
-                          disabled={!aiSelectable || (!aiSelectedIds.has(bookmark.id) && aiSelectedIds.size >= 20)}
-                          onChange={() => toggleAiBookmark(bookmark)}
-                          aria-label={`Select ${bookmark.title} for AI triage`}
-                        />
-                        <span>AI</span>
-                      </label>
-                      <a href={bookmark.url} target="_blank" rel="noreferrer">{bookmark.title}</a>
-                      <span>{bookmark.healthPolicy === "local-only" ? "Local only" : "Captured"}</span>
-                    </div>
-                    <div className="inbox-meta">
-                      <span>{hostLabel(bookmark.url)}</span>
-                      <span>Captured {dateLabel(bookmark.inboxAt)}</span>
-                      {bookmark.categoryId && <span>Currently {bookmark.categoryName ?? categoryById.get(bookmark.categoryId) ?? "categorized"}</span>}
-                      {(bookmarkTags[bookmark.id] ?? []).slice(0, 4).map((tag) => <span key={tag.toLocaleLowerCase()}>#{tag}</span>)}
-                    </div>
-                    {bookmark.description && <p>{bookmark.description}</p>}
-                  </div>
-
-                  <div className="inbox-review">
-                    <label>
-                      <span>File to</span>
-                      <select
-                        value={categoryDrafts[bookmark.id] ?? bookmark.categoryId ?? ""}
-                        disabled={busyId === bookmark.id || aiApplying}
-                        onChange={(event) => setCategoryDrafts((current) => ({ ...current, [bookmark.id]: event.target.value }))}
-                      >
-                        <option value="">Uncategorized</option>
-                        {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                      </select>
-                    </label>
-                    <button className="primary" type="button" disabled={busyId !== null || metadataBusyId !== null || aiApplying} onClick={() => void review(bookmark)}>
-                      {busyId === bookmark.id
-                        ? "Filing…"
-                        : selectedMetadataCount
-                          ? `Apply ${selectedMetadataCount} + file`
-                          : "Review & file"}
-                    </button>
-                  </div>
-
-                  <section className="inbox-metadata-review" aria-label={`Metadata suggestions for ${bookmark.title}`}>
-                    <div className="inbox-metadata-heading">
-                      <div>
-                        <strong>Page metadata suggestions</strong>
-                        <span>
-                          {bookmark.healthPolicy === "local-only"
-                            ? "Local/private metadata stays disabled on the server."
-                            : "Fetch is read-only for the bookmark. Select individual fields to apply only when you file this Inbox item."}
-                        </span>
-                      </div>
-                      <button
-                        className="secondary"
-                        type="button"
-                        disabled={busyId !== null || metadataBusyId !== null || aiGenerating || aiApplying || bookmark.healthPolicy === "local-only" || aiSuggestions.some((suggestion) => suggestion.bookmarkId === bookmark.id)}
-                        onClick={() => void fetchMetadata(bookmark)}
-                      >
-                        {bookmark.healthPolicy === "local-only"
-                          ? "Server metadata disabled"
-                          : metadataBusy
-                            ? "Fetching…"
-                            : metadata
-                              ? "Refresh metadata"
-                              : "Fetch metadata"}
-                      </button>
-                    </div>
-
-                    {metadata && (
-                      <div className="inbox-metadata-fields">
-                        <label className={`inbox-metadata-field${titleAvailable ? " available" : ""}`}>
-                          <input type="checkbox" checked={selection.title && titleAvailable} disabled={!titleAvailable || busyId !== null || aiSuggestions.some((suggestion) => suggestion.bookmarkId === bookmark.id)} onChange={() => toggleMetadata(bookmark.id, "title")} />
-                          <span><small>Title</small><strong>{metadata.title ?? "Not provided"}</strong></span>
-                          <em>{metadata.title && metadata.title.length > 200 ? "Too long to apply" : titleAvailable ? "Apply on file" : "Already matches / unavailable"}</em>
-                        </label>
-                        <label className={`inbox-metadata-field${descriptionAvailable ? " available" : ""}`}>
-                          <input type="checkbox" checked={selection.description && descriptionAvailable} disabled={!descriptionAvailable || busyId !== null || aiSuggestions.some((suggestion) => suggestion.bookmarkId === bookmark.id)} onChange={() => toggleMetadata(bookmark.id, "description")} />
-                          <span><small>Description</small><strong>{metadata.description ?? "Not provided"}</strong></span>
-                          <em>{descriptionAvailable ? "Apply on file" : "Already matches / unavailable"}</em>
-                        </label>
-                        <label className={`inbox-metadata-field${canonicalAvailable ? " available" : ""}`}>
-                          <input type="checkbox" checked={selection.canonicalUrl && canonicalAvailable} disabled={!canonicalAvailable || busyId !== null || aiSuggestions.some((suggestion) => suggestion.bookmarkId === bookmark.id)} onChange={() => toggleMetadata(bookmark.id, "canonicalUrl")} />
-                          <span><small>Canonical URL</small><strong>{metadata.canonicalUrl ?? "Not provided"}</strong></span>
-                          <em>{canonicalAvailable ? "Replace URL on file" : "Already matches / unavailable"}</em>
-                        </label>
-                        <label className={`inbox-metadata-field${iconAvailable ? " available" : ""}`}>
-                          <input type="checkbox" checked={selection.iconUrl && iconAvailable} disabled={!iconAvailable || busyId !== null || aiSuggestions.some((suggestion) => suggestion.bookmarkId === bookmark.id)} onChange={() => toggleMetadata(bookmark.id, "iconUrl")} />
-                          <span><small>Favicon</small><strong>{metadata.iconUrl ?? "Not provided"}</strong></span>
-                          <em>{iconAvailable ? "Apply on file" : "Already matches / unavailable"}</em>
-                        </label>
-                        {metadata.finalUrl && metadata.finalUrl !== bookmark.url && (
-                          <div className="inbox-metadata-info">
-                            <span><small>Resolved URL</small><strong>{metadata.finalUrl}</strong></span>
-                            <em>Informational only · redirects are not treated as canonical</em>
-                          </div>
-                        )}
-                        <div className="inbox-metadata-footnote">Fetched {dateLabel(metadata.fetchedAt)} · suggestions remain separate until Review &amp; file.</div>
-                      </div>
-                    )}
-                  </section>
-                </article>
-              );
-            })}
+            {bookmarks.map((bookmark) => (
+              <InboxReviewCard
+                key={bookmark.id}
+                bookmark={bookmark}
+                categories={categories}
+                categoryName={
+                  bookmark.categoryId
+                    ? bookmark.categoryName ?? categoryById.get(bookmark.categoryId) ?? tx("Categorized", "已分类")
+                    : null
+                }
+                tags={bookmarkTags[bookmark.id] ?? []}
+                categoryDraft={categoryDrafts[bookmark.id] ?? bookmark.categoryId ?? ""}
+                metadata={metadataById[bookmark.id] ?? null}
+                selection={metadataSelections[bookmark.id] ?? emptyMetadataSelection()}
+                aiSelected={aiSelectedIds.has(bookmark.id)}
+                aiSelectionLimitReached={aiSelectedIds.size >= 20}
+                aiPreviewOpen={aiSuggestions.length > 0}
+                inAiPreview={aiPreviewIds.has(bookmark.id)}
+                busy={busyId === bookmark.id}
+                anyBusy={busyId !== null}
+                metadataBusy={metadataBusyId === bookmark.id}
+                anyMetadataBusy={metadataBusyId !== null}
+                aiGenerating={aiGenerating}
+                aiApplying={aiApplying}
+                locale={locale}
+                tx={tx}
+                onToggleAi={toggleAiBookmark}
+                onCategoryChange={(bookmarkId, categoryId) =>
+                  setCategoryDrafts((current) => ({ ...current, [bookmarkId]: categoryId }))
+                }
+                onReview={(item) => void review(item)}
+                onFetchMetadata={(item) => void fetchMetadata(item)}
+                onToggleMetadata={toggleMetadata}
+              />
+            ))}
           </div>
         ) : (
           <div className="inbox-empty">
-            <strong>Inbox is clear.</strong>
-            <span>Use the paired Dockmark extension → Save current tab or Reviewed multi-tab capture to collect the next pages.</span>
+            <strong>{tx("Inbox is clear.", "收件箱已清空。")}</strong>
+            <span>
+              {tx(
+                "Use the paired Dockmark extension to save the current tab or capture multiple tabs for review.",
+                "使用已配对的 Dockmark 浏览器扩展收录当前标签页或批量收录多个标签页。",
+              )}
+            </span>
           </div>
         )}
       </section>
