@@ -1,7 +1,7 @@
 /**
- * [INPUT]: depends on D1 bookmarks, categories, and bookmark_metadata tables via DuplicateReviewDatabase
+ * [INPUT]: depends on D1 bookmarks, categories, bookmark_metadata, bookmark_tags, and tags tables via DuplicateReviewDatabase
  * [OUTPUT]: exports handleDuplicateReviewApi, reviewFingerprint, DuplicateReviewHttpError, and DuplicateReview types
- * [POS]: Worker handler for GET /api/library/duplicates; detects canonical, resolved, and normalized URL duplicates while preserving SPA hash routes
+ * [POS]: Worker handler for GET /api/library/duplicates; detects canonical, resolved, and normalized URL duplicates with active bookmark tags while preserving SPA hash routes
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 
@@ -33,6 +33,11 @@ interface DuplicateRow {
   fetched_at: string | null;
 }
 
+interface BookmarkTagRow {
+  bookmark_id: string;
+  name: string;
+}
+
 export type DuplicateCandidateKind = "canonical" | "resolved" | "normalized";
 
 export interface DuplicateReviewMember {
@@ -45,6 +50,7 @@ export interface DuplicateReviewMember {
   categoryName?: string;
   healthPolicy: string;
   healthStatus: string;
+  tags: string[];
   createdAt?: string;
   updatedAt?: string;
   canonicalUrl?: string;
@@ -141,7 +147,7 @@ function displayEvidenceUrl(raw: string | null | undefined) {
   }
 }
 
-function member(row: DuplicateRow): DuplicateReviewMember {
+function member(row: DuplicateRow, tagsByBookmarkId: Map<string, string[]>): DuplicateReviewMember {
   return {
     id: row.id,
     title: row.title,
@@ -152,6 +158,7 @@ function member(row: DuplicateRow): DuplicateReviewMember {
     ...(row.category_name ? { categoryName: row.category_name } : {}),
     healthPolicy: row.health_policy,
     healthStatus: row.health_status,
+    tags: tagsByBookmarkId.get(row.id) ?? [],
     ...(row.created_at ? { createdAt: row.created_at } : {}),
     ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
     ...(row.canonical_url ? { canonicalUrl: row.canonical_url } : {}),
@@ -170,6 +177,7 @@ function addCandidate(
   rightRow: DuplicateRow,
   kind: DuplicateCandidateKind,
   reason: string,
+  tagsByBookmarkId: Map<string, string[]>,
   evidenceUrl?: string,
 ) {
   if (leftRow.id === rightRow.id) return;
@@ -183,8 +191,8 @@ function addCandidate(
     kind,
     reason,
     ...(evidenceUrl ? { evidenceUrl } : {}),
-    left: member(left),
-    right: member(right),
+    left: member(left, tagsByBookmarkId),
+    right: member(right, tagsByBookmarkId),
   });
 }
 
@@ -199,6 +207,7 @@ function addMetadataPairs(
   candidates: Map<string, DuplicateReviewCandidate>,
   rows: DuplicateRow[],
   kind: "canonical" | "resolved",
+  tagsByBookmarkId: Map<string, string[]>,
 ) {
   const originals = new Map<string, DuplicateRow[]>();
   const evidence = new Map<string, DuplicateRow[]>();
@@ -233,6 +242,7 @@ function addMetadataPairs(
           kind === "canonical"
             ? "Saved page metadata points these bookmarks at the same canonical target."
             : "Saved metadata shows these bookmarks resolving to the same final target.",
+          tagsByBookmarkId,
           displayEvidenceUrl(rawEvidence),
         );
       }
@@ -240,7 +250,11 @@ function addMetadataPairs(
   }
 }
 
-function addNormalizedPairs(candidates: Map<string, DuplicateReviewCandidate>, rows: DuplicateRow[]) {
+function addNormalizedPairs(
+  candidates: Map<string, DuplicateReviewCandidate>,
+  rows: DuplicateRow[],
+  tagsByBookmarkId: Map<string, string[]>,
+) {
   const groups = new Map<string, DuplicateRow[]>();
   for (const row of rows) pushBucket(groups, reviewFingerprint(row.url), row);
   for (const group of groups.values()) {
@@ -257,6 +271,7 @@ function addNormalizedPairs(candidates: Map<string, DuplicateReviewCandidate>, r
           rightRow,
           "normalized",
           "The URLs become equivalent after ignoring protocol/www, fragments, trailing slashes and known tracking parameters.",
+          tagsByBookmarkId,
         );
       }
     }
@@ -264,32 +279,53 @@ function addNormalizedPairs(candidates: Map<string, DuplicateReviewCandidate>, r
 }
 
 async function duplicateReview(db: DuplicateReviewDatabase) {
-  const result = await db.prepare(
-    `SELECT b.id,
-            b.title,
-            b.url,
-            b.description,
-            b.icon_url,
-            b.category_id,
-            c.name AS category_name,
-            b.health_status,
-            b.health_policy,
-            b.created_at,
-            b.updated_at,
-            m.canonical_url,
-            m.final_url,
-            m.fetched_at
-       FROM bookmarks b
-       LEFT JOIN categories c ON c.id = b.category_id
-       LEFT JOIN bookmark_metadata m ON m.bookmark_id = b.id
-      WHERE b.archived_at IS NULL
-      ORDER BY b.updated_at DESC, b.id ASC`,
-  ).all<DuplicateRow>();
-  const rows = result.results ?? [];
+  const [result, tagResult] = await Promise.all([
+    db.prepare(
+      `SELECT b.id,
+              b.title,
+              b.url,
+              b.description,
+              b.icon_url,
+              b.category_id,
+              c.name AS category_name,
+              b.health_status,
+              b.health_policy,
+              b.created_at,
+              b.updated_at,
+              m.canonical_url,
+              m.final_url,
+              m.fetched_at
+         FROM bookmarks b
+         LEFT JOIN categories c ON c.id = b.category_id
+         LEFT JOIN bookmark_metadata m ON m.bookmark_id = b.id
+        WHERE b.archived_at IS NULL
+        ORDER BY b.updated_at DESC, b.id ASC`,
+    ).all<DuplicateRow>(),
+    db.prepare(
+      `SELECT bt.bookmark_id, t.name
+         FROM bookmark_tags bt
+         JOIN bookmarks b ON b.id = bt.bookmark_id
+         JOIN tags t ON t.id = bt.tag_id
+        WHERE b.archived_at IS NULL
+        ORDER BY bt.bookmark_id ASC, t.name COLLATE NOCASE ASC`,
+    ).all<BookmarkTagRow>(),
+  ]);
+
+  const rows = result?.results ?? [];
+  const tagsByBookmarkId = new Map<string, string[]>();
+  for (const tagRow of tagResult?.results ?? []) {
+    if (typeof tagRow?.bookmark_id !== "string" || typeof tagRow?.name !== "string") continue;
+    const trimmed = tagRow.name.trim();
+    if (!trimmed) continue;
+    const list = tagsByBookmarkId.get(tagRow.bookmark_id);
+    if (list) list.push(trimmed);
+    else tagsByBookmarkId.set(tagRow.bookmark_id, [trimmed]);
+  }
+
   const candidates = new Map<string, DuplicateReviewCandidate>();
-  addMetadataPairs(candidates, rows, "canonical");
-  addMetadataPairs(candidates, rows, "resolved");
-  addNormalizedPairs(candidates, rows);
+  addMetadataPairs(candidates, rows, "canonical", tagsByBookmarkId);
+  addMetadataPairs(candidates, rows, "resolved", tagsByBookmarkId);
+  addNormalizedPairs(candidates, rows, tagsByBookmarkId);
 
   const rank: Record<DuplicateCandidateKind, number> = { canonical: 3, resolved: 2, normalized: 1 };
   const allCandidates = Array.from(candidates.values()).sort((left, right) => {
