@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: depends on baseWorker from ./index and domain API handlers across apps/web/worker
+ * [OUTPUT]: exports the top-level Cloudflare Worker fetch dispatcher
+ * [POS]: primary Worker entrypoint enforcing auth, CSRF same-origin checks, public GET exemptions, and API routing in apps/web/worker
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
 import baseWorker from "./index";
 import {
   AiBatchApplyHttpError,
@@ -108,9 +114,9 @@ export default {
       const authResponse = await handleAuthApi(request, env, pathname);
       if (authResponse) return authResponse;
 
-      // Health and the selected appearance are intentionally public.
+      // Health, appearance, and public navigation station settings are intentionally public on GET.
       if (pathname === "/api/health") return baseWorker.fetch(request, env);
-      if (pathname === "/api/settings/appearance" && request.method === "GET") {
+      if ((pathname === "/api/settings/appearance" || pathname === "/api/settings/public-page") && request.method === "GET") {
         return (await settingsResponse(request, env, pathname)) ?? problem(404, "not_found", "Settings route not found.");
       }
 
@@ -303,7 +309,12 @@ export default {
         }
       }
 
-      if (pathname === "/api/settings/browser" || pathname === "/api/settings/appearance") {
+      if (
+        pathname === "/api/settings/browser" ||
+        pathname === "/api/settings/appearance" ||
+        pathname === "/api/settings/public-page" ||
+        pathname === "/api/settings/ai"
+      ) {
         return (await settingsResponse(request, env, pathname)) ?? problem(404, "not_found", "Settings route not found.");
       }
 

@@ -1,4 +1,10 @@
-import type { Bookmark } from "@dockmark/core";
+/**
+ * [INPUT]: depends on Bookmark and textContainsTokenOrPinyin from @dockmark/core
+ * [OUTPUT]: exports queryTokens, textMatchesQuery, and bookmarkMatchesQuery
+ * [POS]: client-side tokenized text, #tag, and Pinyin initial search predicates in apps/web/src
+ * [PROTOCOL]: Update this header on change, then check GEMINI.md
+ */
+import { textContainsTokenOrPinyin, type Bookmark } from "@dockmark/core";
 
 export function queryTokens(value: string) {
   return value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
@@ -7,8 +13,7 @@ export function queryTokens(value: string) {
 export function textMatchesQuery(query: string, values: string[]) {
   const tokens = queryTokens(query);
   if (!tokens.length) return true;
-  const haystack = values.join("\n").toLocaleLowerCase();
-  return tokens.every((token) => haystack.includes(token));
+  return tokens.every((token) => values.some((value) => textContainsTokenOrPinyin(value, token)));
 }
 
 export function bookmarkMatchesQuery(
@@ -19,20 +24,19 @@ export function bookmarkMatchesQuery(
 ) {
   const tokens = queryTokens(query);
   if (!tokens.length) return true;
-  const normalizedTags = tags.map((tag) => tag.toLocaleLowerCase());
-  const haystack = [
+  const fields = [
     bookmark.title,
     bookmark.url,
     bookmark.description ?? "",
     categoryName,
     ...tags,
-  ].join("\n").toLocaleLowerCase();
+  ];
 
   return tokens.every((token) => {
     if (token.startsWith("#") && token.length > 1) {
       const tagNeedle = token.slice(1);
-      return normalizedTags.some((tag) => tag.includes(tagNeedle));
+      return tags.some((tag) => textContainsTokenOrPinyin(tag, tagNeedle));
     }
-    return haystack.includes(token);
+    return fields.some((field) => textContainsTokenOrPinyin(field, token));
   });
 }
