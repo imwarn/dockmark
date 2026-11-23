@@ -1,17 +1,19 @@
 /**
- * [INPUT]: depends on useEffect, useMemo, useState from react; HEALTH_POLICY_LABELS, HEALTH_STATUS_LABELS, ResolvedLocale from @dockmark/core; getDuplicateReview, DuplicateCandidateKind, DuplicateReviewCandidate, DuplicateReviewMember, DuplicateReviewResult from ./duplicate-review-api; useI18n from ./i18n; BookmarkFavicon, safeDomainLabel from ./BookmarkFavicon; ./duplicate-review.css
- * [OUTPUT]: exports DuplicateReviewPage component for read-only side-by-side inspection of conservative duplicate bookmark pairs
- * [POS]: top-level /app/duplicates workspace; displays URL/metadata evidence without mutating bookmarks
+ * [INPUT]: depends on useEffect, useMemo, useState from react; formatRelativeTime, HEALTH_POLICY_LABELS, HEALTH_STATUS_LABELS, ResolvedLocale from @dockmark/core; textMatchesQuery from ./bookmark-search; maintainLibraryBatch from ./library-maintenance-api; getDuplicateReview and DuplicateReview types from ./duplicate-review-api; useI18n from ./i18n; BookmarkFavicon, safeDomainLabel from ./BookmarkFavicon; ./duplicate-review.css
+ * [OUTPUT]: exports DuplicateReviewPage component for side-by-side duplicate bookmark inspection, URL diff highlighting, safe reviewed archive/undo, and Library deep-linking
+ * [POS]: top-level /app/duplicates workspace; never auto-mutates bookmarks and records explicit archive/restore actions in the Change Journal
  * [PROTOCOL]: Update this header on change, then check GEMINI.md
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  formatRelativeTime,
   HEALTH_POLICY_LABELS,
   HEALTH_STATUS_LABELS,
   type ResolvedLocale,
 } from "@dockmark/core";
 import { BookmarkFavicon, safeDomainLabel } from "./BookmarkFavicon";
+import { textMatchesQuery } from "./bookmark-search";
 import {
   getDuplicateReview,
   type DuplicateCandidateKind,
@@ -20,9 +22,16 @@ import {
   type DuplicateReviewResult,
 } from "./duplicate-review-api";
 import { useI18n } from "./i18n";
+import { maintainLibraryBatch } from "./library-maintenance-api";
 import "./duplicate-review.css";
 
 type TxFn = (en: string, zh: string) => string;
+
+interface ArchiveNotice {
+  archivedId: string;
+  archivedTitle: string;
+  keptTitle: string;
+}
 
 const KNOWN_REASON_ZH: Record<string, string> = {
   "Saved page metadata points these bookmarks at the same canonical target.":
@@ -30,7 +39,7 @@ const KNOWN_REASON_ZH: Record<string, string> = {
   "Saved metadata shows these bookmarks resolving to the same final target.":
     "已保存的页面元数据显示这两条书签最终跳转到同一个目标地址。",
   "The URLs become equivalent after ignoring protocol/www, fragments, trailing slashes and known tracking parameters.":
-    "忽略协议/www、锚点片段、末尾斜杠及常见追踪参数后，两条链接等价。",
+    "忽略协议/www、文档锚点、末尾斜杠及常见追踪参数后，两条链接等价。",
 };
 
 function kindLabel(kind: DuplicateCandidateKind, tx: TxFn): string {
@@ -70,7 +79,7 @@ function healthStatusLabel(status: string, locale: ResolvedLocale): string {
   return labels[status] ?? status;
 }
 
-function formatFetchedDate(value: string, locale: ResolvedLocale): string {
+function formatFullDate(value: string, locale: ResolvedLocale): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(locale, {
@@ -82,10 +91,43 @@ function formatFetchedDate(value: string, locale: ResolvedLocale): string {
   }).format(date);
 }
 
+function renderUrlWithDiff(url: string, otherUrl: string): ReactNode {
+  const leftChars = Array.from(url);
+  const rightChars = Array.from(otherUrl);
+  let prefixLen = 0;
+  while (
+    prefixLen < leftChars.length &&
+    prefixLen < rightChars.length &&
+    leftChars[prefixLen] === rightChars[prefixLen]
+  ) {
+    prefixLen += 1;
+  }
+
+  let suffixLen = 0;
+  while (
+    suffixLen < leftChars.length - prefixLen &&
+    suffixLen < rightChars.length - prefixLen &&
+    leftChars[leftChars.length - 1 - suffixLen] === rightChars[rightChars.length - 1 - suffixLen]
+  ) {
+    suffixLen += 1;
+  }
+
+  const diff = leftChars.slice(prefixLen, leftChars.length - suffixLen).join("");
+  if (!diff) return url;
+  const prefix = leftChars.slice(0, prefixLen).join("");
+  const suffix = suffixLen > 0 ? leftChars.slice(leftChars.length - suffixLen).join("") : "";
+
+  return (
+    <>
+      {prefix}
+      <mark className="duplicate-url-diff">{diff}</mark>
+      {suffix}
+    </>
+  );
+}
+
 function matches(candidate: DuplicateReviewCandidate, query: string): boolean {
-  const normalized = query.trim().toLocaleLowerCase();
-  if (!normalized) return true;
-  const haystack = [
+  return textMatchesQuery(query, [
     candidate.left.title,
     candidate.left.url,
     candidate.left.categoryName ?? "",
@@ -93,24 +135,30 @@ function matches(candidate: DuplicateReviewCandidate, query: string): boolean {
     candidate.right.url,
     candidate.right.categoryName ?? "",
     candidate.evidenceUrl ?? "",
-  ]
-    .join("\n")
-    .toLocaleLowerCase();
-  return normalized.split(/\s+/).every((token) => haystack.includes(token));
+  ]);
+}
+
+function locateInLibrary(title: string) {
+  window.history.pushState({}, "", `/app/bookmarks?q=${encodeURIComponent(title)}`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 function MemberCard({
   side,
-  candidate,
+  bookmark,
+  otherUrl,
   locale,
   tx,
 }: {
   side: "left" | "right";
-  candidate: DuplicateReviewCandidate;
+  bookmark: DuplicateReviewMember;
+  otherUrl: string;
   locale: ResolvedLocale;
   tx: TxFn;
 }) {
-  const bookmark = candidate[side] as DuplicateReviewMember & { iconUrl?: string | null };
+  const timestamp = bookmark.updatedAt ?? bookmark.createdAt ?? null;
+  const relativeUpdated = timestamp ? formatRelativeTime(timestamp, locale) : null;
+
   return (
     <article className="duplicate-member">
       <div className="duplicate-member-heading">
@@ -125,16 +173,25 @@ function MemberCard({
             <span className="duplicate-side-badge">{side === "left" ? "A" : "B"}</span>
             <strong>{bookmark.title}</strong>
           </div>
-          <small>
-            {safeDomainLabel(bookmark.url)} · {bookmark.categoryName ?? tx("Uncategorized", "未分类")} ·{" "}
-            {healthPolicyLabel(bookmark.healthPolicy, locale)} ·{" "}
-            {healthStatusLabel(bookmark.healthStatus, locale)}
-          </small>
+          <div className="duplicate-member-meta">
+            <span className="duplicate-meta-domain">{safeDomainLabel(bookmark.url)}</span>
+            <span className={`duplicate-meta-pill${bookmark.categoryName ? " is-categorized" : " is-muted"}`}>
+              {bookmark.categoryName ?? tx("Uncategorized", "未分类")}
+            </span>
+            <span className="duplicate-meta-pill">
+              {healthPolicyLabel(bookmark.healthPolicy, locale)} · {healthStatusLabel(bookmark.healthStatus, locale)}
+            </span>
+            {relativeUpdated && timestamp && (
+              <span className="duplicate-meta-pill" title={formatFullDate(timestamp, locale)}>
+                {tx(`Updated ${relativeUpdated}`, `更新于 ${relativeUpdated}`)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      <a className="duplicate-url" href={bookmark.url} target="_blank" rel="noreferrer">
-        {bookmark.url}
+      <a className="duplicate-url" href={bookmark.url} target="_blank" rel="noreferrer" title={bookmark.url}>
+        {renderUrlWithDiff(bookmark.url, otherUrl)}
       </a>
       {bookmark.description && <p>{bookmark.description}</p>}
 
@@ -155,8 +212,8 @@ function MemberCard({
           {bookmark.metadataFetchedAt && (
             <small>
               {tx(
-                `Metadata fetched ${formatFetchedDate(bookmark.metadataFetchedAt, locale)}`,
-                `元数据抓取于 ${formatFetchedDate(bookmark.metadataFetchedAt, locale)}`,
+                `Metadata fetched ${formatFullDate(bookmark.metadataFetchedAt, locale)}`,
+                `元数据抓取于 ${formatFullDate(bookmark.metadataFetchedAt, locale)}`,
               )}
             </small>
           )}
@@ -174,13 +231,21 @@ export function DuplicateReviewPage() {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<"all" | DuplicateCandidateKind>("all");
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set());
+  const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const [archiveNotice, setArchiveNotice] = useState<ArchiveNotice | null>(null);
+  const [restoreNotice, setRestoreNotice] = useState<string | null>(null);
 
-  async function refresh() {
+  async function refresh(options?: { keepHidden?: boolean; keepNotices?: boolean }) {
     setLoading(true);
     setError(null);
+    if (!options?.keepNotices) {
+      setArchiveNotice(null);
+      setRestoreNotice(null);
+    }
     try {
       setResult(await getDuplicateReview());
-      setHiddenIds(new Set());
+      if (!options?.keepHidden) setHiddenIds(new Set());
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -211,7 +276,64 @@ export function DuplicateReviewPage() {
     setHiddenIds((current) => new Set(current).add(id));
   }
 
+  async function archiveDuplicate(candidate: DuplicateReviewCandidate, keepSide: "left" | "right") {
+    const kept = candidate[keepSide];
+    const archived = keepSide === "left" ? candidate.right : candidate.left;
+    setBusyCandidateId(candidate.id);
+    setError(null);
+    setRestoreNotice(null);
+    try {
+      await maintainLibraryBatch({ bookmarkIds: [archived.id], action: "archive" });
+      setArchiveNotice({
+        archivedId: archived.id,
+        archivedTitle: archived.title,
+        keptTitle: kept.title,
+      });
+      await refresh({ keepHidden: true, keepNotices: true });
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : tx("Could not archive the duplicate bookmark.", "无法归档该重复书签。"),
+      );
+    } finally {
+      setBusyCandidateId(null);
+    }
+  }
+
+  async function undoArchive() {
+    if (!archiveNotice) return;
+    const target = archiveNotice;
+    setUndoBusy(true);
+    setError(null);
+    try {
+      await maintainLibraryBatch({ bookmarkIds: [target.archivedId], action: "restore" });
+      setArchiveNotice(null);
+      setRestoreNotice(
+        tx(
+          `Restored “${target.archivedTitle}” back to your library.`,
+          `已将「${target.archivedTitle}」恢复至书签库。`,
+        ),
+      );
+      await refresh({ keepHidden: true, keepNotices: true });
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : tx("Could not restore the archived bookmark.", "无法撤销归档该书签。"),
+      );
+    } finally {
+      setUndoBusy(false);
+    }
+  }
+
   const stats = result?.stats;
+  const kindOptions: Array<{ id: "all" | DuplicateCandidateKind; label: string; count: number }> = [
+    { id: "all", label: tx("All", "全部"), count: stats?.totalCandidates ?? 0 },
+    { id: "canonical", label: tx("Canonical", "规范链接"), count: stats?.canonicalCandidates ?? 0 },
+    { id: "resolved", label: tx("Resolved", "跳转目标"), count: stats?.resolvedCandidates ?? 0 },
+    { id: "normalized", label: tx("URL variants", "URL 变体"), count: stats?.normalizedCandidates ?? 0 },
+  ];
 
   return (
     <main className="duplicate-shell">
@@ -220,8 +342,8 @@ export function DuplicateReviewPage() {
           <h1>{tx("Duplicate Review", "重复项审查")}</h1>
           <p>
             {tx(
-              "Compare saved URLs with canonical and resolved metadata evidence. Read-only — Dockmark never merges, edits, or deletes bookmarks automatically.",
-              "结合规范链接与跳转目标元数据识别候选重复书签。仅提供审查建议，不会自动合并、修改或删除书签。",
+              "Compare saved URLs with canonical and resolved metadata evidence. Nothing mutates automatically — keep one side to safely archive the duplicate with instant undo and Change Journal tracking.",
+              "结合规范链接与跳转目标元数据识别候选重复书签。不会自动修改数据，可手动保留一侧并安全归档另一侧，支持一键撤销与变更日志追踪。",
             )}
           </p>
         </div>
@@ -242,6 +364,49 @@ export function DuplicateReviewPage() {
       </header>
 
       {error && <div className="error-banner" role="alert">{error}</div>}
+
+      {archiveNotice && (
+        <div className="duplicate-action-banner" role="status">
+          <span>
+            {tx(
+              `Archived “${archiveNotice.archivedTitle}” (kept “${archiveNotice.keptTitle}”). Recorded in Change Journal.`,
+              `已归档“${archiveNotice.archivedTitle}”（保留“${archiveNotice.keptTitle}”），记录已写入变更日志。`,
+            )}
+          </span>
+          <div className="duplicate-action-banner-controls">
+            <button
+              className="secondary"
+              type="button"
+              disabled={undoBusy || busyCandidateId !== null}
+              onClick={() => void undoArchive()}
+            >
+              {undoBusy ? tx("Restoring…", "撤销中…") : tx("Undo", "撤销归档")}
+            </button>
+            <button
+              className="command-clear"
+              type="button"
+              aria-label={tx("Dismiss notice", "关闭提示")}
+              onClick={() => setArchiveNotice(null)}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {restoreNotice && (
+        <div className="duplicate-action-banner" role="status">
+          <span>{restoreNotice}</span>
+          <button
+            className="command-clear"
+            type="button"
+            aria-label={tx("Dismiss notice", "关闭提示")}
+            onClick={() => setRestoreNotice(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <section className="duplicate-stats" aria-label={tx("Duplicate review summary", "重复项审查摘要")}>
         <div>
@@ -289,28 +454,43 @@ export function DuplicateReviewPage() {
         </div>
       )}
 
-      <section className="duplicate-toolbar panel">
-        <label>
-          <span>{tx("Search review queue", "搜索审查列表")}</span>
+      <section className="duplicate-toolbar" aria-label={tx("Filter duplicate candidates", "筛选重复项候选")}>
+        <div className="duplicate-search-box">
+          <span className="duplicate-search-icon" aria-hidden="true">⌕</span>
           <input
-            type="search"
+            type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={tx("Title, URL, category, or evidence target…", "按标题、链接、分类或依据地址搜索…")}
+            placeholder={tx("Search title, URL, category, or Pinyin…", "搜索标题、链接、分类或拼音首字母…")}
+            aria-label={tx("Search review queue", "搜索审查列表")}
           />
-        </label>
-        <label>
-          <span>{tx("Evidence", "依据类型")}</span>
-          <select
-            value={kind}
-            onChange={(event) => setKind(event.target.value as "all" | DuplicateCandidateKind)}
-          >
-            <option value="all">{tx("All evidence", "全部依据")}</option>
-            <option value="canonical">{tx("Canonical target", "规范链接")}</option>
-            <option value="resolved">{tx("Resolved target", "跳转目标")}</option>
-            <option value="normalized">{tx("URL variant", "URL 变体")}</option>
-          </select>
-        </label>
+          {query && (
+            <button
+              className="command-clear"
+              type="button"
+              aria-label={tx("Clear search", "清空搜索")}
+              onClick={() => setQuery("")}
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        <div className="duplicate-kind-pills" role="group" aria-label={tx("Evidence type", "依据类型")}>
+          {kindOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={`duplicate-kind-pill${kind === option.id ? " is-active" : ""}`}
+              aria-pressed={kind === option.id}
+              onClick={() => setKind(option.id)}
+            >
+              <span>{option.label}</span>
+              <small>{option.count}</small>
+            </button>
+          ))}
+        </div>
+
         <div className="duplicate-toolbar-state">
           <strong>{tx(`${visible.length} visible`, `显示 ${visible.length} 组`)}</strong>
           {hiddenIds.size > 0 && (
@@ -319,7 +499,7 @@ export function DuplicateReviewPage() {
               type="button"
               onClick={() => setHiddenIds(new Set())}
             >
-              {tx(`Restore ${hiddenIds.size} hidden`, `恢复 ${hiddenIds.size} 组已隐藏`)}
+              {tx(`Restore ${hiddenIds.size} hidden`, `恢复已隐藏 (${hiddenIds.size})`)}
             </button>
           )}
         </div>
@@ -327,62 +507,94 @@ export function DuplicateReviewPage() {
 
       <section className="duplicate-list">
         {loading && !result ? (
-          <div className="panel duplicate-empty">
+          <div className="duplicate-empty">
             {tx("Analyzing saved bookmark and metadata evidence…", "正在分析书签与页面元数据依据…")}
           </div>
         ) : (
-          visible.map((candidate) => (
-            <article className={`panel duplicate-candidate kind-${candidate.kind}`} key={candidate.id}>
-              <header className="duplicate-candidate-heading">
-                <div className="duplicate-candidate-copy">
-                  <div className="duplicate-kind-row">
-                    <span className="duplicate-kind">{kindLabel(candidate.kind, tx)}</span>
-                    <small>{kindDescription(candidate.kind, tx)}</small>
+          visible.map((candidate) => {
+            const archiving = busyCandidateId === candidate.id;
+            return (
+              <article className={`duplicate-candidate kind-${candidate.kind}`} key={candidate.id}>
+                <header className="duplicate-candidate-heading">
+                  <div className="duplicate-candidate-copy">
+                    <div className="duplicate-kind-row">
+                      <span className="duplicate-kind">{kindLabel(candidate.kind, tx)}</span>
+                      <small>{kindDescription(candidate.kind, tx)}</small>
+                    </div>
+                    <p>{localizedReason(candidate, isZh)}</p>
+                    {candidate.evidenceUrl && (
+                      <code className="duplicate-evidence-url">{candidate.evidenceUrl}</code>
+                    )}
                   </div>
-                  <p>{localizedReason(candidate, isZh)}</p>
-                  {candidate.evidenceUrl && (
-                    <code className="duplicate-evidence-url">{candidate.evidenceUrl}</code>
-                  )}
-                </div>
-                <button
-                  className="text-action muted-action"
-                  type="button"
-                  onClick={() => hide(candidate.id)}
-                >
-                  {tx("Hide for now", "暂时隐藏")}
-                </button>
-              </header>
+                  <button
+                    className="text-action muted-action"
+                    type="button"
+                    onClick={() => hide(candidate.id)}
+                  >
+                    {tx("Hide for now", "暂时隐藏")}
+                  </button>
+                </header>
 
-              <div className="duplicate-pair">
-                <MemberCard side="left" candidate={candidate} locale={locale} tx={tx} />
-                <div className="duplicate-vs" aria-hidden="true">
-                  ≈
+                <div className="duplicate-pair">
+                  <MemberCard
+                    side="left"
+                    bookmark={candidate.left}
+                    otherUrl={candidate.right.url}
+                    locale={locale}
+                    tx={tx}
+                  />
+                  <span className="duplicate-divider-badge" aria-hidden="true">≈</span>
+                  <MemberCard
+                    side="right"
+                    bookmark={candidate.right}
+                    otherUrl={candidate.left.url}
+                    locale={locale}
+                    tx={tx}
+                  />
                 </div>
-                <MemberCard side="right" candidate={candidate} locale={locale} tx={tx} />
-              </div>
 
-              <footer className="duplicate-candidate-footer">
-                <span>
-                  {tx(
-                    "Recommendation only — review in Bookmarks or Metadata & Health before editing or deleting.",
-                    "仅供参考 — 请在「书签库」或「元数据与健康」中确认后再编辑或删除。",
-                  )}
-                </span>
-                <div>
-                  <a className="secondary" href={candidate.left.url} target="_blank" rel="noreferrer">
-                    {tx("Open A", "打开 A")}
-                  </a>
-                  <a className="secondary" href={candidate.right.url} target="_blank" rel="noreferrer">
-                    {tx("Open B", "打开 B")}
-                  </a>
-                </div>
-              </footer>
-            </article>
-          ))
+                <footer className="duplicate-candidate-footer">
+                  <div className="duplicate-review-actions">
+                    <button
+                      className="secondary duplicate-keep-btn"
+                      type="button"
+                      disabled={archiving || undoBusy || busyCandidateId !== null}
+                      onClick={() => void archiveDuplicate(candidate, "left")}
+                    >
+                      {archiving ? tx("Archiving…", "归档中…") : tx("Keep A · Archive B", "保留 A · 归档 B")}
+                    </button>
+                    <button
+                      className="secondary duplicate-keep-btn"
+                      type="button"
+                      disabled={archiving || undoBusy || busyCandidateId !== null}
+                      onClick={() => void archiveDuplicate(candidate, "right")}
+                    >
+                      {archiving ? tx("Archiving…", "归档中…") : tx("Keep B · Archive A", "保留 B · 归档 A")}
+                    </button>
+                  </div>
+                  <div className="duplicate-utility-actions">
+                    <button
+                      className="text-action"
+                      type="button"
+                      onClick={() => locateInLibrary(candidate.left.title)}
+                    >
+                      {tx("Locate in Library", "在书签库定位")}
+                    </button>
+                    <a className="text-action duplicate-open-link" href={candidate.left.url} target="_blank" rel="noreferrer">
+                      {tx("Open A ↗", "打开 A ↗")}
+                    </a>
+                    <a className="text-action duplicate-open-link" href={candidate.right.url} target="_blank" rel="noreferrer">
+                      {tx("Open B ↗", "打开 B ↗")}
+                    </a>
+                  </div>
+                </footer>
+              </article>
+            );
+          })
         )}
 
         {!loading && result && visible.length === 0 && (
-          <div className="panel duplicate-empty">
+          <div className="duplicate-empty">
             <strong>
               {result.stats.totalCandidates
                 ? tx("No candidates match this filter.", "当前筛选条件下没有匹配的候选重复项。")
