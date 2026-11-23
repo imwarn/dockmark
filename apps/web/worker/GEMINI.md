@@ -7,7 +7,7 @@ Cloudflare Worker HTTP API layer backed by D1 (`DB`), mounted at `router.ts` and
 router.ts: Top-level Worker `fetch` dispatcher enforcing auth/device access, CSRF same-origin checks, public route exemptions (`/api/health`, `GET /api/settings/appearance`, `GET /api/settings/public-page`, `GET /api/public/bookmarks`), and domain handler routing
 index.ts: Base Worker handling `/api/health`, `/api/categories`, `/api/bookmarks`, workspace delegation, health checks, and static asset fallback
 auth.ts: Session cookie and paired-device bearer token authentication, PBKDF2 password hashing, device pairing exchange, and `/api/auth/*` endpoints
-settings.ts: `/api/settings/browser` (including launcher shortcuts), `/api/settings/appearance`, `/api/settings/public-page`, and non-secret `/api/settings/ai` persistence in `app_settings` plus browser bootstrap payloads
+settings.ts: `/api/settings/browser` (including launcher shortcuts), `/api/settings/appearance`, `/api/settings/public-page` (including `pinnedBookmarkIds` validation up to `MAX_PUBLIC_PINNED_BOOKMARKS`), and non-secret `/api/settings/ai` persistence in `app_settings` plus browser bootstrap payloads
 ai-organization.ts: `/api/ai/status` and `/api/ai/organize` OpenAI-compatible proxy with SSRF/redirect guards, `HealthPolicy === "normal"` gating, and locale-aware (`en` / `zh-CN`) prompt instructions
 ai-batch-apply.ts: `/api/ai/apply` transactional D1 batch updater applying reviewed AI title, description, category, and tag suggestions
 bookmark-details.ts: `/api/bookmarks/with-tags` and `/api/bookmarks/:id/with-tags` composite bookmark + tag create/update endpoints
